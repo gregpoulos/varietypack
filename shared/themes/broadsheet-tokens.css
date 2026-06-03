@@ -1,0 +1,53 @@
+:root {
+  --font-serif: Georgia, 'Times New Roman', serif;
+
+  /* Page */
+  --color-bg:   #f9f7f1;
+  --color-text: #111;
+  --color-muted: #555;
+
+  /* Borders / headings */
+  --color-strong-border: #222;
+  --color-soft-border:   #bbb;
+
+  /* Buttons (primary) */
+  --color-btn-bg:       #222;
+  --color-btn-text:     #fff;
+  --color-btn-hover:    #444;
+  --color-btn-disabled: #999;
+
+  /* Secondary / toggle buttons */
+  --color-btn2-bg:     #f0ece0;
+  --color-btn2-text:   #333;
+  --color-btn2-border: #aaa;
+  --color-btn2-hover:  #e4e0d4;
+
+  /* Grid cells */
+  --color-cell-bg:     #fff;
+  --color-cell-stroke: #999;
+
+  /* Cell / clue states */
+  --color-highlight:            #deeeff;
+  --color-highlight-band-even:  #cee2f8;
+  --color-active:               #b8d4f5;
+  --color-active-stroke:    #1e5799;
+  --color-clue-hover:       #ede8d2;
+  --color-secondary-entry:  #f5f0e0;
+
+  /* Correct state */
+  --color-correct-bg:     #c8e6c9;
+  --color-correct-stroke: #4caf50;
+  --color-correct-text:   #1a6e22;
+
+  /* Congrats banner */
+  --color-congrats-bg:     #2e7d32;
+  --color-congrats-border: #1b5e20;
+  --color-congrats-text:   #ffffff;
+
+  /* Done-wrong banner */
+  --color-done-wrong-bg:     #fff3e0;
+  --color-done-wrong-border: #e65100;
+
+  /* Danger (destructive actions) */
+  --color-danger: #b91c1c;
+}

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <style>
+{{CSS}}
+  </style>
+</head>
+<body>
+  <div id="active-clue-bar">
+    <div class="active-clue-row" id="active-clue-primary">
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+    <div class="active-clue-row" id="active-clue-secondary">
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+  </div>
+  <div class="puzzle-main">
+    <div class="puzzle-header">
+      <h1 class="title">{{TITLE}}</h1>
+      <p class="byline"></p>
+    </div>
+    <div class="puzzle-body">
+      <div id="ring-wrap">
+        <div id="controls">
+          <div id="loop-toggle"></div>
+          <button id="check-btn" type="button" disabled>Check Cell</button>
+          <button id="clear-btn" type="button">Clear</button>
+        </div>
+        <div id="ring-container">
+          <svg id="ring-svg"></svg>
+        </div>
+      </div>
+      <div id="clue-list">
+        <div id="instructions" hidden></div>
+        <ol id="clues"></ol>
+      </div>
+    </div>
+  </div>
+  <div id="congrats-overlay" hidden>
+    <div id="congrats" aria-live="polite">Puzzle solved!</div>
+  </div>
+  <div id="done-wrong" hidden>
+    <p>All cells filled — but something's not right yet.</p>
+  </div>
+  <input id="hidden-input" type="text" autocomplete="off" autocorrect="off"
+         autocapitalize="off" spellcheck="false" aria-hidden="true">
+  <script>{{PUZZLE_DATA}}</script>
+  <script>
+{{JS}}
+  </script>
+</body>
+</html>

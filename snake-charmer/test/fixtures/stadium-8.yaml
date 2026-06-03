@@ -1,0 +1,12 @@
+kind: snake-charmer
+title: "Test N=8 (stadium)"
+shape: stadium
+entries:
+  - clue: "Compass rose direction"
+    answer: "AAAA"
+  - clue: "Park bench, e.g."
+    answer: "BBBBA"
+  - clue: "Night's opposite"
+    answer: "AAABB"
+  - clue: "Billiards stick"
+    answer: "BB"

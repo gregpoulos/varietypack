@@ -1,0 +1,36 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.4; }
+
+.clue-item {
+  font-size: 0.875rem;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.cell { cursor: pointer; }
+.cell-letter { pointer-events: none; }
+
+#congrats-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+/* The `hidden` attribute is UA-origin `display: none`, which the author
+   `display: flex` above overrides — restate the hide at higher specificity. */
+#congrats-overlay[hidden] { display: none; }
+
+@keyframes flash-wrong {
+  0%   { opacity: 1; }
+  20%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+.flash-wrong-overlay {
+  fill: #ef9a9a;
+  pointer-events: none;
+  animation: flash-wrong 600ms ease-out forwards;
+}

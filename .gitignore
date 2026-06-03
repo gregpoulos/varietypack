@@ -1,0 +1,15 @@
+*/build/
+!shared/build/
+node_modules/
+*/test/fixtures/*.html
+**/puzzles/*.html
+examples/*.html
+.DS_Store
+.claude/settings.local.json
+.claude/todos/
+.claude/worktrees/
+.claude/__pycache__/
+.superpowers/
+test-results/
+playwright-report/
+snake-charmer/devtools/ring-preview.html

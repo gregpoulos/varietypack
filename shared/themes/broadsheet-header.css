@@ -1,0 +1,18 @@
+.puzzle-header {
+  text-align: center;
+  border-bottom: 2px solid var(--color-strong-border);
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+}
+
+h1.title {
+  font-size: 2rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.byline {
+  font-style: italic;
+  color: var(--color-muted);
+  margin-top: 6px;
+}

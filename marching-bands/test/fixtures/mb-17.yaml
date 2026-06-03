@@ -1,0 +1,232 @@
+kind: marching-bands
+title: Marching Bands — N=17 (large, odd)
+author: Fixtures
+date: "2026"
+size: 17
+rows:
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: ABCDEF
+      - clue: Lyric poem
+        answer: GHIJKL
+      - clue: Sushi tuna
+        answer: MNOPQ
+  - entries:
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: RSTUVW
+      - clue: Curved letter
+        answer: XYZABC
+      - clue: Two, in Rome
+        answer: DEFGH
+  - entries:
+      - clue: A clue that overstays its welcome on purpose, just to see how a two-line entry sits beside its neighbours
+        answer: IJKLMN
+      - clue: Soft mineral
+        answer: OPQRST
+      - clue: Big ape
+        answer: UVWXY
+  - entries:
+      - clue: A deliberately verbose clue included so the side clue column has to wrap it across at least two lines
+        answer: ZABCDE
+      - clue: Ocean motion
+        answer: FGHIJK
+      - clue: Tiny insect
+        answer: LMNOP
+  - entries:
+      - clue: The sort of long-winded definition a setter writes when a short answer somehow demands a paragraph
+        answer: QRSTUV
+      - clue: Hearing organ
+        answer: WXYZAB
+      - clue: Distress call
+        answer: CDEFG
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: HIJKLM
+      - clue: Marsh plant
+        answer: NOPQRS
+      - clue: Zodiac ram
+        answer: TUVWX
+  - entries:
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: YZABCD
+      - clue: Pub brew
+        answer: EFGHIJ
+      - clue: Morning moisture
+        answer: KLMNO
+  - entries:
+      - clue: A clue that overstays its welcome on purpose, just to see how a two-line entry sits beside its neighbours
+        answer: PQRSTU
+      - clue: Nautical yes
+        answer: VWXYZA
+      - clue: Glowing coal
+        answer: BCDEF
+  - entries:
+      - clue: A deliberately verbose clue included so the side clue column has to wrap it across at least two lines
+        answer: GHIJKL
+      - clue: Garden tool
+        answer: MNPQR
+      - clue: Run away
+        answer: STUVW
+  - entries:
+      - clue: The sort of long-winded definition a setter writes when a short answer somehow demands a paragraph
+        answer: XYZABC
+      - clue: Feline pet
+        answer: DEFGHI
+      - clue: Frozen water
+        answer: JKLMN
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: OPQRST
+      - clue: Lyric poem
+        answer: UVWXYZ
+      - clue: Sushi tuna
+        answer: ABCDE
+  - entries:
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: FGHIJK
+      - clue: Curved letter
+        answer: LMNOPQ
+      - clue: Two, in Rome
+        answer: RSTUV
+  - entries:
+      - clue: A clue that overstays its welcome on purpose, just to see how a two-line entry sits beside its neighbours
+        answer: WXYZAB
+      - clue: Soft mineral
+        answer: CDEFGH
+      - clue: Big ape
+        answer: IJKLM
+  - entries:
+      - clue: A deliberately verbose clue included so the side clue column has to wrap it across at least two lines
+        answer: NOPQRS
+      - clue: Ocean motion
+        answer: TUVWXY
+      - clue: Tiny insect
+        answer: ZABCD
+  - entries:
+      - clue: The sort of long-winded definition a setter writes when a short answer somehow demands a paragraph
+        answer: EFGHIJ
+      - clue: Hearing organ
+        answer: KLMNOP
+      - clue: Distress call
+        answer: QRSTU
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: VWXYZA
+      - clue: Marsh plant
+        answer: BCDEFG
+      - clue: Zodiac ram
+        answer: HIJKL
+  - entries:
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: MNOPQR
+      - clue: Pub brew
+        answer: STUVWX
+      - clue: Morning moisture
+        answer: YZABC
+bands:
+  - entries:
+      - clue: A clue that overstays its welcome on purpose, just to see how a two-line entry sits beside its neighbours
+        answer: ABCDEF
+      - clue: Nautical yes
+        answer: GHIJKL
+      - clue: Glowing coal
+        answer: MNOPQH
+      - clue: Garden tool
+        answer: YPGXOF
+      - clue: A deliberately verbose clue included so the side clue column has to wrap it across at least two lines
+        answer: WNEVMD
+      - clue: Run away
+        answer: ULCBAZ
+      - clue: Feline pet
+        answer: YXWVUT
+      - clue: Frozen water
+        answer: SRQPON
+      - clue: The sort of long-winded definition a setter writes when a short answer somehow demands a paragraph
+        answer: MVENWF
+      - clue: Lyric poem
+        answer: OXGPY
+      - clue: Sushi tuna
+        answer: HQZIR
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: STUVWXY
+      - clue: Curved letter
+        answer: ZABCDEF
+      - clue: Two, in Rome
+        answer: GXOFWN
+      - clue: Soft mineral
+        answer: EVMDUL
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: CTKJIH
+      - clue: Big ape
+        answer: GFEDCB
+      - clue: Ocean motion
+        answer: AZYXWF
+      - clue: Tiny insect
+        answer: OXGPYH
+      - clue: A clue that overstays its welcome on purpose, just to see how a two-line entry sits beside its neighbours
+        answer: QZIRAJ
+  - entries:
+      - clue: A deliberately verbose clue included so the side clue column has to wrap it across at least two lines
+        answer: KLMNOP
+      - clue: Hearing organ
+        answer: QRSTUV
+      - clue: Distress call
+        answer: WNEVMD
+      - clue: Marsh plant
+        answer: ULCTKB
+      - clue: The sort of long-winded definition a setter writes when a short answer somehow demands a paragraph
+        answer: SRQPON
+      - clue: Zodiac ram
+        answer: MLKJIH
+      - clue: Pub brew
+        answer: GPYHQZ
+      - clue: Morning moisture
+        answer: IRAJSB
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: CDEFGH
+      - clue: Nautical yes
+        answer: IJKLMD
+      - clue: Glowing coal
+        answer: ULCTKB
+      - clue: Garden tool
+        answer: SJAZYX
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: WVUTSR
+      - clue: Run away
+        answer: QZIRA
+      - clue: Feline pet
+        answer: JSBKT
+  - entries:
+      - clue: A clue that overstays its welcome on purpose, just to see how a two-line entry sits beside its neighbours
+        answer: UVWXYZA
+      - clue: Frozen water
+        answer: BCTKBSJ
+      - clue: Lyric poem
+        answer: ARIHGF
+      - clue: Sushi tuna
+        answer: EDCBAJ
+      - clue: A deliberately verbose clue included so the side clue column has to wrap it across at least two lines
+        answer: SBKTCL
+  - entries:
+      - clue: The sort of long-winded definition a setter writes when a short answer somehow demands a paragraph
+        answer: MNOPQR
+      - clue: Curved letter
+        answer: SJARIZ
+      - clue: Two, in Rome
+        answer: QPONML
+      - clue: Soft mineral
+        answer: KTCLUD
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: EFGHIZ
+      - clue: Big ape
+        answer: QHYXW
+      - clue: Ocean motion
+        answer: VUDMV
+  - entries:
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: WXYP
+      - clue: Tiny insect
+        answer: GFEN

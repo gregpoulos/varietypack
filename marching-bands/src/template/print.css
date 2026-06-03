@@ -1,0 +1,36 @@
+/* Shared print resets live in shared/themes/print-base.css (concatenated just
+   before this file). Only marching-bands-specific print rules belong here. */
+@media print {
+  .puzzle-main   { padding: 8px 16px; }
+  .puzzle-header { margin-bottom: 8px; }
+  .byline        { font-size: 0.8rem; }
+  #instructions  { font-size: 0.8rem; margin-bottom: 8px; }
+  .clue-section h2 { margin-bottom: 4px; }
+  .clue-item     { padding: 1px 4px; }
+
+  .puzzle-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "center center"
+      "left   right";
+  }
+  .clue-section { break-inside: avoid; }
+
+  /* MB uses .clue-group.active-clue (not .clue-item.active-clue) — reset here since print-base.css covers the item selector */
+  .clue-group.active-clue { background: transparent !important; }
+
+  /* Cell-state selectors beyond the shared print base */
+  .cell.band-even,
+  .cell.band-odd { fill: #fff; stroke: #999; stroke-width: 1; }
+  .cell-center { fill: #222; }
+}
+
+@media print and (orientation: landscape) {
+  .puzzle-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) min-content minmax(0, 1fr);
+    grid-template-areas: "left center right";
+    gap: 0 16px;
+  }
+}

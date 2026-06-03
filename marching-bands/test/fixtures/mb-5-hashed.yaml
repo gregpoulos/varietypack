@@ -1,0 +1,45 @@
+kind: marching-bands
+title: Marching Bands — N=5 (hashed)
+author: Fixtures
+date: "2026"
+size: 5
+hashed: true
+rows:
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: ABC
+      - clue: Ocean motion
+        answer: DE
+  - entries:
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: FGH
+      - clue: Tiny insect
+        answer: IJ
+  - entries:
+      - clue: A clue that overstays its welcome on purpose, just to see how a two-line entry sits beside its neighbours
+        answer: KL
+      - clue: Hearing organ
+        answer: NO
+  - entries:
+      - clue: A deliberately verbose clue included so the side clue column has to wrap it across at least two lines
+        answer: PQR
+      - clue: Distress call
+        answer: ST
+  - entries:
+      - clue: The sort of long-winded definition a setter writes when a short answer somehow demands a paragraph
+        answer: UVW
+      - clue: Marsh plant
+        answer: XY
+bands:
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: ABCDEJ
+      - clue: Zodiac ram
+        answer: OTYXW
+      - clue: Pub brew
+        answer: VUPKF
+  - entries:
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: GHIN
+      - clue: Morning moisture
+        answer: SRQL

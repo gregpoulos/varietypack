@@ -1,0 +1,40 @@
+/* Tool-agnostic broadsheet rules (body, #active-clue-bar, check/clear buttons,
+   #instructions p+p, .style-circle, .cell-letter.correct, #congrats card) live
+   in shared/themes/broadsheet-components.css. Rules that stay here are either
+   marching-bands-specific or must keep their source-order position to win the
+   cascade (e.g. .cell.active-entry / .cell.active-cell vs .band-even/.band-odd). */
+
+#instructions { color: var(--color-muted); }
+
+.toggle-opt { font-family: var(--font-serif); }
+
+#mode-toggle { border: 1px solid var(--color-btn2-border); }
+.toggle-opt  {
+  background: var(--color-btn2-bg); color: var(--color-btn2-text);
+  font-weight: normal; letter-spacing: 0.04em;
+}
+.toggle-opt:hover  { background: var(--color-btn2-hover); }
+.toggle-opt.active { background: var(--color-btn-bg); color: var(--color-btn-text); font-weight: bold; }
+.toggle-opt:first-child { border-right: 1px solid var(--color-btn2-border); }
+
+#done-wrong { background: var(--color-done-wrong-bg); border: 2px solid var(--color-done-wrong-border); }
+
+.clue-section h2  { color: var(--color-text); border-bottom: 1px solid var(--color-soft-border); }
+.clue-group:hover          { background: var(--color-clue-hover); }
+.clue-group.active-clue    { background: var(--color-active); }
+.clue-group.secondary-clue { background: var(--color-secondary-entry); }
+
+/* .active-entry / .active-cell stay here (after .band-even/.band-odd) so the
+   active highlight wins by source order over the equal-specificity band rules. */
+.cell           { fill: var(--color-cell-bg);    stroke: var(--color-cell-stroke); stroke-width: 0.5; }
+.cell.band-even { fill: #e8e8e8; }
+.cell.band-odd  { fill: var(--color-cell-bg); }
+.cell.active-entry            { fill: var(--color-highlight); }
+.cell.band-even.active-entry  { fill: var(--color-highlight-band-even); }
+.cell.active-cell  { fill: var(--color-active); stroke: var(--color-active-stroke); stroke-width: 1.5; }
+.cell.correct      { fill: var(--color-correct-bg); stroke: var(--color-correct-stroke); stroke-width: 0.5; }
+.cell-letter       { fill: var(--color-text);  font-family: var(--font-serif); }
+.band-label        { fill: var(--color-muted); font-family: var(--font-serif); }
+.cell-center       { fill: #222; }
+
+.row-label { color: var(--color-text); font-family: var(--font-serif); }

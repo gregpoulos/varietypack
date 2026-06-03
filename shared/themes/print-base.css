@@ -1,0 +1,29 @@
+/* Shared print resets — the final override layer for printing, applied to
+   every tool and theme. Forces plain ink on white regardless of solve state
+   or theme. Declarations are !important by design so this layer wins over any
+   theme rule regardless of its selector specificity or source order — a tool
+   theme that later adds a higher-specificity highlight rule can't silently
+   defeat the print reset. A tool's print.css that needs to override a reset
+   here must also use !important. */
+@media print {
+  /* Hide interaction chrome */
+  #active-clue-bar,
+  #controls,
+  #congrats-overlay,
+  #done-wrong { display: none !important; }
+
+  body { padding-top: 0 !important; }
+  h1.title { font-size: 1.4rem !important; }
+
+  /* Cell state → plain ink on white */
+  .cell,
+  .cell.active-entry,
+  .cell.active-cell,
+  .cell.correct { fill: #fff !important; stroke: #999 !important; stroke-width: 1 !important; }
+  .cell-letter.correct { fill: #111 !important; }
+
+  /* Clue highlight / strike-through reset */
+  .clue-item.active-clue,
+  .clue-item.secondary-entry { background: transparent !important; }
+  .clue-item.correct .clue-text { color: inherit !important; text-decoration: none !important; }
+}

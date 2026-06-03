@@ -1,0 +1,171 @@
+body { padding-top: 56px; }
+
+#active-clue-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 5px 16px 4px;
+}
+
+.active-clue-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+#active-clue-secondary {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.active-clue-num {
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.active-clue-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.puzzle-main {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 0 16px 20px;
+}
+
+
+#instructions {
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#grid-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+#spiral-svg {
+  max-width: min(100%, 500px);
+  height: auto;
+  display: block;
+}
+
+#controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+button {
+  padding: 7px 18px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+#clear-btn::after {
+  content: 'Sure?';
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+#direction-toggle {
+  display: flex;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#direction-toggle .toggle-opt {
+  border-radius: 0;
+  border: none;
+  flex: 1;
+  white-space: nowrap;
+}
+
+
+.puzzle-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(500px, 100%) minmax(0, 1fr);
+  grid-template-areas: "left center right";
+  gap: 0 32px;
+  align-items: start;
+}
+
+.puzzle-center        { grid-area: center; }
+.clue-section-inward  { grid-area: left; }
+.clue-section-outward { grid-area: right; }
+
+.puzzle-center {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (max-width: 880px) {
+  .puzzle-body {
+    display: block;
+  }
+  .clue-section-inward,
+  .clue-section-outward {
+    margin-top: 24px;
+  }
+}
+
+.clue-section h2 {
+  font-size: 1rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.clue-item {
+  display: flex;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.clue-range {
+  min-width: 5em;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.clue-item.correct .clue-text {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* SVG cell states */
+.cell         { stroke-width: 0.6; }
+.cell.active-entry { }
+.cell.active-cell  { }
+.cell.correct      { }
+
+.cell-num    { pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
+.cell-letter { text-anchor: middle; dominant-baseline: middle; font-weight: bold; }
+.style-circle { pointer-events: none; }
+
+#direction-chevron { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+
+#hidden-input {
+  position: fixed;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <style>{{CSS}}</style>
+</head>
+<body>
+  <div class="puzzle-main">
+    <div class="puzzle-header">
+      <h1 class="title"></h1>
+      <p class="byline"></p>
+    </div>
+    <div id="instructions" hidden></div>
+    <div class="puzzle-body">
+      <div class="puzzle-center">
+        <div id="grid-wrap">
+          <div id="row-labels" aria-hidden="true"></div>
+          <svg id="puzzle-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div id="controls">
+          <div id="mode-toggle" role="group" aria-label="Mode">
+            <button class="toggle-opt" data-mode="row">Row</button>
+            <button class="toggle-opt" data-mode="band">Band</button>
+          </div>
+          <button id="check-btn" type="button" disabled>Check Cell</button>
+          <button id="clear-btn" type="button">Clear</button>
+        </div>
+        <div id="congrats-overlay" hidden>
+          <div id="congrats" aria-live="polite">Puzzle solved!</div>
+        </div>
+        <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
+      </div>
+      <div class="clue-section clue-section-rows">
+        <h2>Rows</h2>
+        <ul id="rows-clues"></ul>
+      </div>
+      <div class="clue-section clue-section-bands">
+        <h2>Bands</h2>
+        <ul id="bands-clues"></ul>
+      </div>
+    </div>
+  </div>
+  <input id="hidden-input" type="text" autocomplete="off" autocorrect="off"
+         autocapitalize="off" spellcheck="false" aria-hidden="true">
+  <script>
+    {{PUZZLE_DATA}}
+  </script>
+  <script>{{JS}}</script>
+</body>
+</html>

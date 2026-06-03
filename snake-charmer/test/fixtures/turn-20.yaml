@@ -1,0 +1,16 @@
+kind: snake-charmer
+title: "Test N=20 (turn)"
+shape: turn
+entries:
+  - clue: "Rarely seen in the open"
+    answer: "AAAABBBBBBCC"
+  - clue: "All bark and no bite"
+    answer: "CCCC"
+  - clue: "Something of a rarity"
+    answer: "CDDDAAAABBBBB"
+  - clue: "Fair and square"
+    answer: "BCCC"
+  - clue: "Small island community known for its annual fishing and boat-building festival"
+    answer: "CCCC"
+  - clue: "Out of step"
+    answer: "DDD"

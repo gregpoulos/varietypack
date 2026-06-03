@@ -1,0 +1,22 @@
+kind: snake-charmer
+title: "Test N=36 (circle)"
+shape: circle
+entries:
+  - clue: "More common than you might first suppose"
+    answer: "AAAABBBBBB"
+  - clue: "Worth its weight in gold"
+    answer: "BBCCCCCDDDDD"
+  - clue: "Not quite what you might expect"
+    answer: "EEEE"
+  - clue: "High and dry"
+    answer: "EEEEFFFFFFAA"
+  - clue: "Far and wide"
+    answer: "AABBBBBBBBCCCC"
+  - clue: "Stretch of largely unspoiled coastline that has remained undeveloped thanks to the sustained and determined efforts of a small but deeply committed conservation group"
+    answer: "CDDD"
+  - clue: "Abandoned lighthouse whose last keeper reportedly departed many long decades ago"
+    answer: "DDEEEEEEE"
+  - clue: "Taken for granted often"
+    answer: "EFF"
+  - clue: "Fair trade"
+    answer: "FFFF"

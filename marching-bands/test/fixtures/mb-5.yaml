@@ -1,0 +1,44 @@
+kind: marching-bands
+title: Marching Bands — N=5 (smallest, odd)
+author: Fixtures
+date: "2026"
+size: 5
+rows:
+  - entries:
+      - clue: A deliberately verbose clue included so the side clue column has to wrap it across at least two lines
+        answer: ABC
+      - clue: Feline pet
+        answer: DE
+  - entries:
+      - clue: The sort of long-winded definition a setter writes when a short answer somehow demands a paragraph
+        answer: FGH
+      - clue: Frozen water
+        answer: IJ
+  - entries:
+      - clue: An extended clue here purely to confirm that multi-line wrapping in the narrow columns still looks tidy
+        answer: KL
+      - clue: Lyric poem
+        answer: NO
+  - entries:
+      - clue: Something wordy enough to push the layout, exercising line height and indentation in the clue list
+        answer: PQR
+      - clue: Sushi tuna
+        answer: ST
+  - entries:
+      - clue: A clue that overstays its welcome on purpose, just to see how a two-line entry sits beside its neighbours
+        answer: UVW
+      - clue: Curved letter
+        answer: XY
+bands:
+  - entries:
+      - clue: A deliberately verbose clue included so the side clue column has to wrap it across at least two lines
+        answer: ABCDEJ
+      - clue: Two, in Rome
+        answer: OTYXW
+      - clue: Soft mineral
+        answer: VUPKF
+  - entries:
+      - clue: The sort of long-winded definition a setter writes when a short answer somehow demands a paragraph
+        answer: GHIN
+      - clue: Big ape
+        answer: SRQL

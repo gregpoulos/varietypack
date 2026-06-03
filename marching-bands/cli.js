@@ -1,0 +1,69 @@
+#!/usr/bin/env node
+'use strict';
+
+const path = require('path');
+const fs = require('fs');
+const { buildPuzzle }  = require('./src/builder');
+const parseCliArgs     = require('../shared/build/parseCliArgs');
+const { defaultOutputPath } = require('../shared/build/builderUtils');
+const { GLOBAL_OPTIONS }    = require('../shared/build/globalHelp');
+
+const args = process.argv.slice(2);
+
+const HELP = `Build a Marching Bands puzzle HTML from a YAML definition.
+
+Usage: marching-bands <input.yaml> [options]
+
+Options:
+${GLOBAL_OPTIONS}
+
+Examples:
+  marching-bands puzzle.yaml
+  marching-bands puzzle.yaml --theme skeleton -o out/puzzle.html
+`;
+
+if (args[0] === '--help' || args[0] === '-h') {
+  process.stdout.write(HELP);
+  process.exit(0);
+}
+
+if (args.length < 1) {
+  process.stderr.write("Usage: marching-bands <input.yaml> [options]\nRun 'marching-bands --help' for options.\n");
+  process.exit(1);
+}
+
+let flags, positionals;
+try {
+  ({ flags, positionals } = parseCliArgs(args, [
+    { flag: '-o',              name: 'output' },
+    { flag: '--theme',         name: 'theme', values: ['broadsheet', 'skeleton'] },
+    { flag: ['-f', '--force'], name: 'force', boolean: true },
+    { flag: '--minify',        name: 'minify', boolean: true },
+  ]));
+} catch (err) {
+  process.stderr.write(`${err.message}\n`);
+  process.exit(1);
+}
+
+if (positionals.length < 1) {
+  process.stderr.write('Error: no input file specified.\n');
+  process.exit(1);
+}
+
+const resolvedInput  = path.resolve(positionals[0]);
+const resolvedOutput = flags.output
+  ? path.resolve(flags.output)
+  : path.resolve(defaultOutputPath(resolvedInput));
+
+if (!flags.force && fs.existsSync(resolvedOutput)) {
+  process.stderr.write(`Error: output file already exists: ${resolvedOutput}\nUse -f or --force to overwrite.\n`);
+  process.exit(1);
+}
+
+try {
+  const { title } = buildPuzzle(resolvedInput, resolvedOutput, { theme: flags.theme, minify: flags.minify });
+  process.stdout.write(`Built "${title}" → ${resolvedOutput}\n`);
+} catch (err) {
+  process.stderr.write(`${err.message}\n`);
+  process.exit(1);
+}

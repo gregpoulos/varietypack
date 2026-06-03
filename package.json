@@ -1,0 +1,21 @@
+{
+  "name": "varietypack",
+  "private": true,
+  "bin": {
+    "varietypack": "./cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js */test/*.test.js",
+    "test:e2e": "playwright test",
+    "watch:spiral-fixtures": "node spiral/watch-fixtures.js",
+    "watch:sc-fixtures": "node snake-charmer/watch-fixtures.js",
+    "watch:mb-fixtures": "node marching-bands/watch-fixtures.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "terser": "^5.48.0"
+  }
+}

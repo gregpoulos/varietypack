@@ -1,0 +1,14 @@
+kind: snake-charmer
+title: "Test N=8 (circle)"
+shape: circle
+entries:
+  - clue: "Cry of surprise"
+    answer: "AA"
+  - clue: "Battery size"
+    answer: "BBB"
+  - clue: "Ship's rank"
+    answer: "CCCA"
+  - clue: "Garden tool"
+    answer: "ABB"
+  - clue: "Dance move"
+    answer: "BCCC"

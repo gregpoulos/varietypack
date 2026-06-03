@@ -1,0 +1,31 @@
+/* Shared print resets live in shared/themes/print-base.css (concatenated just
+   before this file). Only spiral-specific print rules belong here. */
+@media print {
+  #direction-chevron { display: none; }
+
+  .puzzle-main   { padding: 8px 16px; }
+  .puzzle-header { margin-bottom: 8px; }
+  .byline        { font-size: 0.8rem; }
+  #instructions  { font-size: 0.8rem; margin-bottom: 8px; }
+  .clue-section h2 { margin-bottom: 4px; }
+  .clue-item     { padding: 1px 4px; }
+  .cell-num      { fill: #555; }
+
+  .puzzle-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "center center"
+      "left   right";
+  }
+  .clue-section { break-inside: avoid; }
+}
+
+@media print and (orientation: landscape) {
+  .puzzle-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) min(40%, 500px) minmax(0, 1fr);
+    grid-template-areas: "left center right";
+    gap: 0 16px;
+  }
+}

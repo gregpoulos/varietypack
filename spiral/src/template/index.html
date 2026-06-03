@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <style>{{CSS}}</style>
+</head>
+<body>
+  <div id="active-clue-bar">
+    <div class="active-clue-row" id="active-clue-primary">
+      <span class="active-clue-dir"></span>
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+    <div class="active-clue-row" id="active-clue-secondary">
+      <span class="active-clue-dir"></span>
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+  </div>
+  <div class="puzzle-main">
+    <div class="puzzle-header">
+      <h1 class="title"></h1>
+      <p class="byline"></p>
+    </div>
+    <div id="instructions" hidden></div>
+    <div class="puzzle-body">
+      <div class="puzzle-center">
+        <div id="grid-wrap">
+          <svg id="spiral-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div id="controls">
+          <div id="direction-toggle" role="group" aria-label="Direction">
+            <button class="toggle-opt" data-dir="inward">Inward</button>
+            <button class="toggle-opt" data-dir="outward">Outward</button>
+          </div>
+          <button id="check-btn" type="button" disabled>Check Cell</button>
+          <button id="clear-btn" type="button">Clear</button>
+        </div>
+        <div id="congrats-overlay" hidden>
+          <div id="congrats" aria-live="polite">Puzzle solved!</div>
+        </div>
+        <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
+      </div>
+      <div class="clue-section clue-section-inward">
+        <h2>Inward</h2>
+        <ul id="inward-clues"></ul>
+      </div>
+      <div class="clue-section clue-section-outward">
+        <h2>Outward</h2>
+        <ul id="outward-clues"></ul>
+      </div>
+    </div>
+  </div>
+  <input id="hidden-input" type="text" autocomplete="off" autocorrect="off"
+         autocapitalize="off" spellcheck="false" aria-hidden="true">
+  <script>
+    {{PUZZLE_DATA}}
+  </script>
+  <script>{{JS}}</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+kind: snake-charmer
+title: "Snake Charmer"
+author: "Greg Poulos"
+date: "2026"
+instructions: "Enter each answer in a clockwise direction starting at the correspondingly numbered cell in the grid. The chain of answers will snake its way around the loop twice."
+entries:
+  - clue: "Promenade"
+    answer: "MALL"
+    styles: { circle: [0] }
+  - clue: "Stage after metamorphosis"
+    answer: "IMAGO"
+    styles: { circle: [4] }
+  - clue: "Director Mann"
+    answer: "DELBERT"
+    styles: { circle: [3] }
+  - clue: "2016 winner for Pulitzer in Drama"
+    answer: "HAMILTON"
+  - clue: "Unpleasantly gooey"
+    answer: "ICKY"
+    styles: { circle: [0] }
+  - clue: "Mislead"
+    answer: "LIE TO"
+  - clue: "Mapo ___"
+    answer: "TOFU"
+    styles: { circle: [3] }
+  - clue: "Milton Bradley game with a 4.8 rating on BoardGameGeek"
+    answer: "GUESS WHO"
+    styles: { circle: [4] }
+  - clue: "Like economics, to some"
+    answer: "DISMAL"
+  - clue: "South American capital"
+    answer: "LIMA"
+  - clue: "Logician Kurt"
+    answer: "GODEL"
+  - clue: "Big ___ (howitzer)"
+    answer: "BERTHA"
+  - clue: "Magisterial in style"
+    answer: "MILTONIC"
+  - clue: "Album featuring “I Should Be So Lucky” and “The Loco-Motion”"
+    answer: "KYLIE"
+  - clue: "Washlet manufacturer"
+    answer: "TOTO"
+  - clue: "Japanese blowfish"
+    answer: "FUGU"
+  - clue: "Form of this puzzle"
+    answer: "ESS"
+  - clue: "“New phone, ___?”"
+    answer: "WHO DIS"

@@ -1,0 +1,18 @@
+kind: snake-charmer
+title: "Test N=24 (stadium)"
+shape: stadium
+entries:
+  - clue: "Once in a while"
+    answer: "AAAAAAAABBBB"
+  - clue: "Nothing if not persistent"
+    answer: "BBCCCCDDDDDDA"
+  - clue: "Ancient fortification still perched on the very edge of a coastal cliff top"
+    answer: "AAAA"
+  - clue: "Rarely seen in the open"
+    answer: "AAABB"
+  - clue: "Last of its kind perhaps"
+    answer: "BBBBC"
+  - clue: "Weekend market where local vendors sell fresh produce and handmade country goods"
+    answer: "CCC"
+  - clue: "Sheltered harbor where the old fishing boats still tie up each and every morning"
+    answer: "DDDDDD"
