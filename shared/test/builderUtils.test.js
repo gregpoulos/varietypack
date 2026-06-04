@@ -6,7 +6,7 @@ const fs       = require('fs');
 const os       = require('os');
 const path     = require('path');
 const vm       = require('vm');
-const { loadPuzzle, validatePuzzle, composeThemeCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader } = require('../build/builderUtils');
+const { loadPuzzle, validatePuzzle, composeThemeCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm } = require('../build/builderUtils');
 
 // ── getSharedBundle ───────────────────────────────────────────────────────────
 
@@ -37,30 +37,58 @@ const COMPOSE_FIXTURE = path.join(__dirname, 'fixtures', 'compose');
 // is a reliable position marker for the shared print layer.
 const PRINT_BASE_MARKER = 'color: inherit';
 
-test('composeThemeCss: broadsheet bundle stacks shared base, tokens, shared components, tool theme, shared print base, and tool print in cascade order', () => {
+// theme-base.css carries this sentinel comment so we can assert it loaded and
+// ordered correctly without depending on a specific neutral value (tokens
+// override the values, but never the comment).
+const THEME_BASE_MARKER = 'theme-base: neutral defaults';
+
+test('composeThemeCss: broadsheet bundle stacks base, tool base, theme-base, tokens, components, tool theme, print base, tool print in cascade order', () => {
   const css = composeThemeCss(COMPOSE_FIXTURE, 'broadsheet');
-  assert.ok(css.includes('box-sizing'),            'shared base missing');
-  assert.ok(css.includes('--color-bg'),            'broadsheet tokens missing');
-  assert.ok(css.includes('.style-circle'),         'shared broadsheet components missing');
-  assert.ok(css.includes('.tool-broadsheet'),      'tool theme missing');
-  assert.ok(css.includes(PRINT_BASE_MARKER),       'shared print base missing');
-  assert.ok(css.includes('.tool-print'),           'tool print missing');
-  // Shared broadsheet components precede the tool theme so a tool can override
-  // them; print rules come last so @media print wins at equal specificity.
-  assert.ok(css.indexOf('box-sizing')        < css.indexOf('.tool-base'));
-  assert.ok(css.indexOf('.tool-base')        < css.indexOf('.style-circle'));
-  assert.ok(css.indexOf('.style-circle')     < css.indexOf('.tool-broadsheet'));
-  assert.ok(css.indexOf('.tool-broadsheet')  < css.indexOf(PRINT_BASE_MARKER));
-  assert.ok(css.indexOf(PRINT_BASE_MARKER)   < css.indexOf('.tool-print'));
+  assert.ok(css.includes('box-sizing'),          'shared base missing');
+  assert.ok(css.includes('.tool-base'),          'tool base missing');
+  assert.ok(css.includes(THEME_BASE_MARKER),     'theme-base missing');
+  assert.ok(css.includes('#f9f7f1'),             'broadsheet token value missing');
+  assert.ok(css.includes('.cell.active-entry'),  'theme-components missing');
+  assert.ok(css.includes('.tool-theme'),         'tool theme missing');
+  assert.ok(css.includes(PRINT_BASE_MARKER),     'shared print base missing');
+  assert.ok(css.includes('.tool-print'),         'tool print missing');
+  // Order
+  assert.ok(css.indexOf('box-sizing')         < css.indexOf('.tool-base'));
+  assert.ok(css.indexOf('.tool-base')         < css.indexOf(THEME_BASE_MARKER));
+  assert.ok(css.indexOf(THEME_BASE_MARKER)    < css.indexOf('#f9f7f1'));
+  assert.ok(css.indexOf('#f9f7f1')            < css.indexOf('.cell.active-entry'));
+  assert.ok(css.indexOf('.cell.active-entry') < css.indexOf('.tool-theme'));
+  assert.ok(css.indexOf('.tool-theme')        < css.indexOf(PRINT_BASE_MARKER));
+  assert.ok(css.indexOf(PRINT_BASE_MARKER)    < css.indexOf('.tool-print'));
+  // Skeleton's palette must not bleed into broadsheet
+  assert.ok(!css.includes('#1a1520'),            'skeleton token value must be absent');
 });
 
-test('composeThemeCss: skeleton bundle omits broadsheet tokens and shared components but keeps shared base and print base', () => {
+test('composeThemeCss: skeleton bundle uses skeleton tokens + shared neutral layer; no broadsheet palette', () => {
   const css = composeThemeCss(COMPOSE_FIXTURE, 'skeleton');
-  assert.ok(!css.includes('--color-bg'),      'tokens should be absent for skeleton');
-  assert.ok(!css.includes('.style-circle'),   'shared broadsheet components should be absent for skeleton');
-  assert.ok(css.includes('.tool-skeleton'),   'tool skeleton theme missing');
-  assert.ok(css.includes('box-sizing'),       'shared base should always be present');
-  assert.ok(css.includes(PRINT_BASE_MARKER),  'shared print base should always be present');
+  assert.ok(css.includes(THEME_BASE_MARKER),    'theme-base missing');
+  assert.ok(css.includes('#1a1520'),            'skeleton token value missing');
+  assert.ok(css.includes('.cell.active-entry'), 'theme-components missing');
+  assert.ok(css.includes('.tool-theme'),        'tool theme missing');
+  assert.ok(css.includes(PRINT_BASE_MARKER),    'shared print base missing');
+  assert.ok(!css.includes('#f9f7f1'),           'broadsheet token value must be absent');
+});
+
+test('composeThemeCss: a token-only theme drops in with no per-tool CSS and no JS branch', () => {
+  const themesDir = path.join(__dirname, '..', 'themes');
+  const tokenPath = path.join(themesDir, 'dropintest-tokens.css');
+  fs.writeFileSync(tokenPath, ':root { --theme-color-bg: #abcdef; }\n');
+  try {
+    const css = composeThemeCss(COMPOSE_FIXTURE, 'dropintest');
+    assert.ok(css.includes('#abcdef'),            'drop-in token value missing');
+    assert.ok(css.includes(THEME_BASE_MARKER),    'theme-base missing');
+    assert.ok(css.includes('.cell.active-entry'), 'theme-components missing');
+    assert.ok(css.includes('.tool-theme'),        'shared tool.css missing');
+    assert.ok(!css.includes('#f9f7f1'),           'broadsheet palette must not bleed');
+    assert.ok(!css.includes('#1a1520'),           'skeleton palette must not bleed');
+  } finally {
+    fs.rmSync(tokenPath, { force: true });
+  }
 });
 
 // ── loadPuzzle ────────────────────────────────────────────────────────────────
@@ -319,10 +347,10 @@ test('validateCommonHeader: reports a missing or empty title', () => {
   assert.ok(runHeader({ kind: 'spiral' }).errors.some(e => e.includes('"title"')));
 });
 
-test('validateCommonHeader: rejects a non-boolean hashed but accepts true/false/absent', () => {
-  assert.ok(runHeader({ kind: 'spiral', title: 'Hi', hashed: 'yes' }).errors.some(e => e.includes('"hashed"')));
-  assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', hashed: true }).errors, []);
-  assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', hashed: false }).errors, []);
+test('validateCommonHeader: rejects hashed: in source puzzles (no boardHash), accepts it in muddled', () => {
+  assert.ok(runHeader({ kind: 'spiral', title: 'Hi', hashed: true }).errors.some(e => e.includes('"hashed:"')));
+  assert.ok(runHeader({ kind: 'spiral', title: 'Hi', hashed: false }).errors.some(e => e.includes('"hashed:"')));
+  assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', hashed: true, boardHash: 'abc' }).errors, []);
 });
 
 test('validateCommonHeader: rejects empty/whitespace/non-string instructions, accepts non-empty', () => {
@@ -330,4 +358,63 @@ test('validateCommonHeader: rejects empty/whitespace/non-string instructions, ac
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', instructions: '   ' }).errors.some(e => e.includes('"instructions"')));
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', instructions: 42 }).errors.some(e => e.includes('"instructions"')));
   assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', instructions: 'Go' }).errors, []);
+});
+
+// ── entryLength ───────────────────────────────────────────────────────────────
+
+test('entryLength: normalizes answer and returns its length for an answer entry', () => {
+  assert.equal(entryLength({ answer: 'WAH-WAH' }), 6);   // wahwah
+  assert.equal(entryLength({ answer: 'AA' }),        2);
+  assert.equal(entryLength({ answer: "DON'T" }),     4);
+});
+
+test('entryLength: returns entry.length directly for a hash+length entry', () => {
+  assert.equal(entryLength({ hash: 'abc123', length: 5 }), 5);
+  assert.equal(entryLength({ hash: 'xyz',    length: 1 }), 1);
+});
+
+test('entryLength: prefers answer over a stray length field (must agree with entryNorm)', () => {
+  // A malformed entry carrying both must derive length from the answer, like entryNorm,
+  // so the validator (answer-based) and hasher (entryLength-based) never disagree.
+  assert.equal(entryLength({ answer: 'ABC', length: 99 }), 3);
+});
+
+// ── entryNorm ─────────────────────────────────────────────────────────────────
+
+test('entryNorm: returns normalized answer for an answer entry', () => {
+  assert.equal(entryNorm({ answer: 'WAH-WAH' }), 'wahwah');
+  assert.equal(entryNorm({ answer: 'AA' }),       'aa');
+});
+
+test('entryNorm: returns null for a muddled entry (length only, no answer)', () => {
+  assert.strictEqual(entryNorm({ length: 5 }), null);
+});
+
+// ── processEntries (muddled length path) ──────────────────────────────────────
+
+test('processEntries: muddled entry — sets correct length, _norm is null, no hash', () => {
+  const out = processEntries([{ clue: 'Test', length: 5 }]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].clue,   'Test');
+  assert.equal(out[0].length, 5);
+  assert.strictEqual(out[0]._norm, null);
+  assert.ok(!('answer' in out[0]));
+  assert.ok(!('hash'   in out[0]));
+});
+
+test('processEntries: muddled entry — passes styles through when present', () => {
+  const out = processEntries([{ clue: 'c', length: 3, styles: { circle: [0] } }]);
+  assert.deepEqual(out[0].styles, { circle: [0] });
+});
+
+test('processEntries: muddled entry — omits styles key when absent', () => {
+  const out = processEntries([{ clue: 'c', length: 3 }]);
+  assert.ok(!('styles' in out[0]));
+});
+
+test('processEntries: source entry — no hash key in output', () => {
+  const out = processEntries([{ clue: 'Greeting', answer: 'WAH-WAH' }]);
+  assert.equal(out[0].length, 6);
+  assert.equal(out[0]._norm,  'wahwah');
+  assert.ok(!('hash' in out[0]));
 });

@@ -121,3 +121,31 @@ test('preparePuzzle: passes styles through to outward entry when present', () =>
   assert.deepEqual(r.outward[1].styles, { circle: [1, 3] });
   assert.equal(r.outward[0].styles, undefined);
 });
+
+// ── boardHash passthrough (muddled mode) ──────────────────────────────────────
+
+test('preparePuzzle: passthrough — uses puzzle.boardHash directly without recomputing', () => {
+  const puzzle = {
+    kind: 'spiral', title: 'T',
+    hashed: true,
+    boardHash: 'precomputed-spiral-hash',
+    inward:  [{ clue: 'a', hash: 'h1', length: 5 }, { clue: 'b', hash: 'h2', length: 5 }],
+    outward: [{ clue: 'c', hash: 'h3', length: 5 }, { clue: 'd', hash: 'h4', length: 5 }],
+  };
+  const result = preparePuzzle(puzzle);
+  assert.equal(result.boardHash, 'precomputed-spiral-hash');
+  assert.ok(!('letters' in result));
+});
+
+test('preparePuzzle: passthrough — no per-entry hash in PUZZLE_DATA', () => {
+  const puzzle = {
+    kind: 'spiral', title: 'T',
+    hashed: true,
+    boardHash: 'any-hash',
+    inward:  [{ clue: 'a', length: 5 }],
+    outward: [{ clue: 'b', length: 5 }],
+  };
+  const result = preparePuzzle(puzzle);
+  assert.ok(!('hash' in result.inward[0]));
+  assert.ok(!('hash' in result.outward[0]));
+});

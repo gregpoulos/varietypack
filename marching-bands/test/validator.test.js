@@ -49,10 +49,14 @@ test('validate: rejects missing title', () => {
   assert.ok(errors.some(e => e.includes('"title"')));
 });
 
-test('validate: rejects non-boolean hashed', () => {
-  const p = { ...minimalPuzzle(), hashed: 'yes' };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"hashed"')));
+test('validate: rejects hashed: in source puzzle', () => {
+  const { errors } = validate({ ...minimalPuzzle(), hashed: true });
+  assert.ok(errors.some(e => e.includes('"hashed:"')));
+});
+
+test('validate: hashed: in muddled puzzle does not produce a hashed: error', () => {
+  const { errors } = validate({ ...minimalPuzzle(), hashed: true, boardHash: 'any' });
+  assert.ok(!errors.some(e => e.includes('"hashed:"')));
 });
 
 test('validate: accepts optional fields — size, instructions, author, date', () => {
@@ -148,4 +152,71 @@ test('validate: accepts valid even-N puzzle (N=4)', () => {
   };
   const { errors } = validate(p);
   assert.deepEqual(errors, []);
+});
+
+// ── muddled mode ──────────────────────────────────────────────────────────────
+
+// Minimal valid N=3 muddled MB:
+//   rows[0]: 2+1=3,  rows[1]: 1+1=2=N-1,  rows[2]: 2+1=3
+//   bands[0]: 3+2+3=8 = 4*(3-1)
+function validMuddledMB() {
+  return {
+    kind: 'marching-bands', title: 'T',
+    hashed: true, boardHash: 'any-hash',
+    rows: [
+      { entries: [{ clue: 'a', length: 2 }, { clue: 'b', length: 1 }] },
+      { entries: [{ clue: 'c', length: 1 }, { clue: 'd', length: 1 }] },
+      { entries: [{ clue: 'e', length: 2 }, { clue: 'f', length: 1 }] },
+    ],
+    bands: [
+      { entries: [{ clue: 'g', length: 3 }, { clue: 'h', length: 2 }, { clue: 'i', length: 3 }] },
+    ],
+  };
+}
+
+test('validate: muddled MB passes with a skip warning', () => {
+  const { errors, warnings } = validate(validMuddledMB());
+  assert.deepEqual(errors, []);
+  assert.ok(warnings.some(w => w.includes('muddled')));
+});
+
+test('validate: muddled MB — row length-sum check still enforced', () => {
+  const p = validMuddledMB();
+  p.rows[1].entries[0].length = 99;  // rows[1] sum = 100, expected 2 (N-1=2) → error
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('rows[1]') && e.includes('sum')));
+});
+
+test('validate: muddled MB — band length-sum check still enforced', () => {
+  const p = validMuddledMB();
+  p.bands[0].entries[0].length = 99;  // band[0] sum != 8 → error
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('bands[0]') && e.includes('sum')));
+});
+
+test('validate: muddled MB — cross-check skipped (no letter comparison)', () => {
+  const p = validMuddledMB();
+  const { errors } = validate(p);
+  assert.deepEqual(errors, []);
+});
+
+test('validate: muddled — answer: in rows[0] rejected with a use-length-not-answer message', () => {
+  const p = validMuddledMB();
+  p.rows[0].entries[0] = { clue: 'a', answer: 'AB' };  // answer: in a muddled puzzle is not allowed
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('rows[0].entries[0]') && e.includes('length:, not answer:')));
+});
+
+test('validate: muddled — answer: in a band entry rejected with a use-length-not-answer message', () => {
+  const p = validMuddledMB();
+  p.bands[0].entries[0] = { clue: 'g', answer: 'ABCDEF' };  // answer: on the validateEntries path
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('bands[0].entries[0]') && e.includes('length:, not answer:')));
+});
+
+test('validate: muddled entries without boardHash rejected for marching-bands', () => {
+  const p = validMuddledMB();
+  delete p.boardHash;
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('boardHash')));
 });

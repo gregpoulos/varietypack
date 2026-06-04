@@ -104,7 +104,7 @@ N is derived from the first row (the sum of its answer lengths); the optional `s
 2. **Build step** validates the YAML (row and band cell counts, and that Row and Band words agree on every shared cell), derives all grid geometry from N, and injects everything into a self-contained HTML file
 3. **Solver** opens the HTML in any browser and fills in letters cell by cell — a two-segment Row/Band toggle (or clicking the active cell) controls whether typing marches across the row or clockwise around the band
 
-In hashed mode (`hashed: true`), plain-text answers never appear in the generated HTML — only a single SHA-256 hash of the whole board.
+Build with `--muddle` (or from a muddled YAML produced by `varietypack muddle`) to obscure answers: plain-text answers never appear in the generated HTML — only a single SHA-256 hash of the whole board.
 
 ## Printing
 

@@ -82,7 +82,7 @@ The total normalized cell count of all inward answers must equal the total of al
 2. **Build step** validates the YAML, computes an Archimedean spiral cell layout, and injects everything into a self-contained HTML file
 3. **Solver** opens the HTML in any browser and fills in letters cell by cell — a two-segment Inward/Outward toggle controls the active direction; pressing ArrowLeft/Shift+Tab while on Inward (or ArrowRight/Tab while on Outward) switches direction
 
-In hashed mode (`hashed: true`), plain-text answers never appear in the generated HTML — only SHA-256 hashes.
+Build with `--muddle` (or from a muddled YAML produced by `varietypack muddle`) to obscure answers: plain-text answers never appear in the generated HTML — only a single SHA-256 board hash.
 
 ## Printing
 

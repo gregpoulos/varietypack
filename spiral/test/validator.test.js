@@ -56,20 +56,20 @@ test('validate: error when title is empty string', () => {
 
 // ── hashed ────────────────────────────────────────────────────────────────────
 
-test('validate: hashed:true is accepted', () => {
+test('validate: hashed: in source puzzle is rejected', () => {
   const p = valid(); p.hashed = true;
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
+  assert.ok(validate(p).errors.some(e => e.includes('"hashed:"')));
 });
 
-test('validate: hashed:false is accepted', () => {
-  const p = valid(); p.hashed = false;
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
+test('validate: hashed: in muddled puzzle does not produce a hashed: error', () => {
+  const p = valid(); p.hashed = true; p.boardHash = 'any';
+  assert.ok(!validate(p).errors.some(e => e.includes('"hashed:"')));
 });
 
-test('validate: error when hashed is not a boolean', () => {
+test('validate: error when hashed is present in source puzzle (any value)', () => {
   const p = valid(); p.hashed = 'yes';
   const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"hashed"')));
+  assert.ok(errors.some(e => e.includes('"hashed:"')));
 });
 
 // ── instructions ─────────────────────────────────────────────────────────────
@@ -343,4 +343,79 @@ test('validate: valid position at last index of entry (boundary check)', () => {
   // inward[1].answer is 'TSRQPONMLKJIHGFEDCBA' → length 20; position 19 is valid
   p.inward[1].styles = { circle: [19] };
   assert.deepEqual(validate(p), { errors: [], warnings: [] });
+});
+
+// ── muddled mode ──────────────────────────────────────────────────────────────
+
+// 9 entries per direction × 5 letters each = 45 total >= 40 ✓
+function validMuddledSpiral() {
+  const makeEntries = (prefix) =>
+    Array.from({ length: 9 }, (_, i) => ({ clue: `${prefix}${i}`, length: 5 }));
+  return {
+    kind: 'spiral', title: 'Muddled Spiral',
+    hashed: true, boardHash: 'any-hash',
+    inward:  makeEntries('in'),
+    outward: makeEntries('out'),
+  };
+}
+
+test('validate: muddled spiral passes with a skip warning', () => {
+  const { errors, warnings } = validate(validMuddledSpiral());
+  assert.deepEqual(errors, []);
+  assert.ok(warnings.some(w => w.includes('muddled')));
+});
+
+test('validate: muddled spiral — inward/outward total mismatch still caught', () => {
+  const p = validMuddledSpiral();
+  p.inward[0].length = 6;  // inward=46, outward=45 → mismatch
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('equal')));
+});
+
+test('validate: muddled spiral — below-40 total still caught', () => {
+  const makeSmall = (prefix) =>
+    Array.from({ length: 2 }, (_, i) => ({ clue: `${prefix}${i}`, length: 5 }));
+  const p = {
+    kind: 'spiral', title: 'T',
+    hashed: true, boardHash: 'h',
+    inward:  makeSmall('in'),   // total=10
+    outward: makeSmall('out'),  // total=10 — both equal but <40
+  };
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('40')));
+});
+
+test('validate: muddled spiral — reversal check skipped', () => {
+  const p = validMuddledSpiral();
+  p.outward[0].length = 6;  // total mismatch would normally trigger reversal error in source mode
+  p.inward[0].length  = 6;  // keep totals equal; no letter strings to compare
+  const { errors } = validate(p);
+  assert.ok(!errors.some(e => e.includes('reverse')));
+});
+
+test('validate: muddled spiral — answer: entry rejected with a use-length-not-answer message', () => {
+  const p = validMuddledSpiral();
+  p.inward[0] = { clue: 'a', answer: 'HELLO' };  // answer: in a muddled puzzle is not allowed
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('length:, not answer:')));
+});
+
+test('validate: muddled entries without boardHash rejected for spiral', () => {
+  const p = validMuddledSpiral();
+  delete p.boardHash;
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('boardHash')));
+});
+
+test('validate: an invalid (non-object) entry does not trigger a spurious reversal error', () => {
+  const A40 = 'A'.repeat(40);
+  const A20 = 'A'.repeat(20);
+  const { errors } = validate({
+    kind: 'spiral', title: 'T',
+    inward:  ['not-an-object', { clue: 'x', answer: A40 }],          // inwardTotal = 0 + 40
+    outward: [{ clue: 'y', answer: A20 }, { clue: 'z', answer: A20 }], // outwardTotal = 40
+  });
+  assert.ok(errors.some(e => e.includes('must be an object')));
+  assert.ok(!errors.some(e => e.includes('reverse')),
+    'reversal check must be skipped when an entry is invalid, not run against a placeholder');
 });

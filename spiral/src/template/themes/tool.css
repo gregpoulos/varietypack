@@ -1,0 +1,53 @@
+/* Spiral tool-specific theme rules. */
+
+#instructions { font-size: 0.85rem; line-height: 1.5; margin-bottom: 20px; }
+
+/* No font-size here: the engine sizes letters and numbers per-puzzle as SVG
+   font-size attributes (letterSize/numSize ∝ 1/N_TURNS in engine.js). A CSS
+   font-size would override those presentation attributes and freeze the scaling. */
+.cell-num    { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
+
+/* Order matters: :hover, .active-clue, .secondary-entry — equal specificity. */
+.clue-item { padding: 2px 6px 2px 2px; }
+.clue-item:hover           { background: var(--theme-color-clue-hover); }
+.clue-item.active-clue     { background: var(--theme-color-active); }
+.clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
+.clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
+
+.clue-section h2 { color: var(--theme-color-text); border-bottom: 1px solid var(--theme-color-soft-border); padding-bottom: 4px; }
+
+#center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
+#direction-chevron { stroke: var(--theme-color-active-stroke); stroke-width: 0.9; opacity: 0.5; }
+
+.active-clue-dir {
+  font-size:      0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color:          var(--theme-color-muted);
+  opacity:        0.6;
+  flex-shrink:    0;
+}
+
+/* Direction toggle */
+#direction-toggle { border: 1px solid var(--theme-color-btn2-border); }
+.toggle-opt {
+  font-family:    var(--theme-font-button);
+  background:     var(--theme-color-btn2-bg);
+  color:          var(--theme-color-btn2-text);
+  letter-spacing: 0.04em;
+}
+.toggle-opt:hover       { background: var(--theme-color-btn2-hover); }
+.toggle-opt.active      { background: var(--theme-color-btn-bg); color: var(--theme-color-btn-text); font-weight: bold; }
+.toggle-opt:first-child { border-right: 1px solid var(--theme-color-btn2-border); }
+
+#done-wrong {
+  padding:        10px 16px;
+  border-radius:  4px;
+  background:     var(--theme-color-wrong-bg);
+  border:         2px solid var(--theme-color-wrong-border);
+  color:          var(--theme-color-wrong-text);
+  font-size:      1.05rem;
+  font-weight:    bold;
+  text-align:     center;
+  letter-spacing: 0.04em;
+}

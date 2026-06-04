@@ -13,7 +13,6 @@ For odd N, the center cell is a black square that belongs to no entry.
 | `author` | no | string | Displayed in the puzzle header |
 | `date` | no | string | Displayed in the puzzle header; also used as part of the auto-save key |
 | `size` | no | integer | Grid dimension N; validated against the row content when present |
-| `hashed` | no | boolean | If true, answers are checked by hash (solver never sees plaintext); default false |
 | `instructions` | no | string | Shown between the header and the grid; blank lines become separate `<p>` elements |
 | `rows` | yes | array | Exactly N row objects, each containing an `entries` array |
 | `bands` | yes | array | Exactly ⌊N/2⌋ band objects, each containing an `entries` array |
@@ -100,7 +99,7 @@ Band k's entry lengths must sum to `4 × (N−1−2k)`.
 
 ## Hashed mode
 
-When `hashed: true`, plain-text answers are never included in the generated HTML. Only a SHA-256 hash of the entire board (all cells in row-major order, center cell skipped for odd N, lowercase) is stored as `boardHash`. The solver cannot view-source to find answers. No partial correctness feedback is given until all cells are filled; the complete board is then hashed and compared to `boardHash`.
+Build with `varietypack build --muddle` (or from a pre-muddled YAML produced by `varietypack muddle`) to generate an answer-obscured HTML. Plain-text answers are never included; only a SHA-256 hash of the entire board (all cells in row-major order, center cell skipped for odd N, lowercase) is stored as `boardHash`. The solver cannot view-source to find answers. No partial correctness feedback is given until all cells are filled; the complete board is then hashed and compared to `boardHash`.
 
 ## CLI usage
 
@@ -172,5 +171,5 @@ bands:
 
 - **Multi-word and hyphenated answers**: Include spaces, hyphens, or other punctuation in `answer` for readability (`"WAH-WAH"`, `"LIE TO"`). The build step strips them when placing letters in cells and when hashing.
 - **Band direction**: All bands march clockwise — top edge left→right, right edge top→bottom, bottom edge right→left, left edge bottom→top.
-- **Answer security**: When `hashed: true`, plain-text answers are never included in the generated HTML. Only a single SHA-256 hash of the complete board is stored.
+- **Answer security**: Build with `--muddle` (or from a pre-muddled YAML) to produce an answer-obscured HTML; plain-text answers are never included and only a single SHA-256 board hash is stored.
 - **Entry boundaries hidden**: The dividing points between consecutive entries within a row or band are intentionally not revealed by the puzzle interface. Tab navigation and highlighting operate at the row/band level, not the entry level.

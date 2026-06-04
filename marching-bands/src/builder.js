@@ -5,11 +5,10 @@ const path = require('path');
 const { validate }      = require('./validator');
 const { preparePuzzle } = require('./hasher');
 const injectTemplate    = require('../../shared/build/injectTemplate');
-const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle } = require('../../shared/build/builderUtils');
+const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle, VALID_THEMES } = require('../../shared/build/builderUtils');
 const { minifyHtml }    = require('../../shared/build/minify');
 
 const TEMPLATE_DIR = path.join(__dirname, 'template');
-const VALID_THEMES = ['broadsheet', 'skeleton'];
 
 function validatePuzzle(puzzle, sourcePath) {
   return sharedValidatePuzzle(puzzle, sourcePath, validate);
@@ -47,7 +46,8 @@ function buildHtml(prepared, theme) {
 function buildPuzzle(inputPath, outputPath, options) {
   const rawPuzzle = loadPuzzle(inputPath);
   validatePuzzle(rawPuzzle, inputPath);
-  const prepared = preparePuzzle(rawPuzzle);
+  const hashed  = !!(options?.muddle || rawPuzzle.boardHash !== undefined);
+  const prepared = preparePuzzle({ ...rawPuzzle, hashed });
   const html = buildHtml(prepared, options?.theme);
   const output = options?.minify ? minifyHtml(html) : html;
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });

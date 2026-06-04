@@ -74,7 +74,7 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 **Applies to:** all tool `cli.js` files.
 
-**Theme semantics:** `broadsheet` uses CSS custom properties from `shared/themes/broadsheet-tokens.css`, the shared header styling in `shared/themes/broadsheet-header.css`, and the shared component styles in `shared/themes/broadsheet-components.css` (all three prepended by `composeThemeCss` before the tool's `broadsheet.css`); `skeleton` is standalone with hardcoded colors. Both themes must define the full selector vocabulary required by the engine — any class or ID added to the engine must be styled in both theme files (the shared broadsheet layer covers only the tool-agnostic subset; tool-specific and cascade-order-sensitive rules stay in the tool's `broadsheet.css`).
+**Theme semantics:** Themes are token files over a neutral shared layer. `shared/themes/theme-base.css` defines neutral `--theme-*` defaults; each theme is a `shared/themes/<name>-tokens.css` that overrides them. `shared/themes/theme-components.css` supplies all tool-agnostic, var-driven component styles (masthead, buttons, SVG cell states, congrats card) — shared across all tools. Each tool may contribute a `src/template/themes/tool.css` for tool-specific selectors (bands, chevrons, secondary cells) that reference `--theme-*`. Adding a new theme requires only `<name>-tokens.css` and its name in `VALID_THEMES` — no per-tool CSS, no branch in `composeThemeCss`. Both `broadsheet` and `skeleton` ship as `<name>-tokens.css` files under this model. All themes must cover the full selector vocabulary required by the engine — any class or ID added to the engine must be styled via `--theme-*` vars in `theme-components.css` or `themes/tool.css`.
 
 **Tool-specific optional flags** (e.g. `--shape` in Snake Charmer) are allowed and must not conflict with shared flag names. Tools document their own optional flags in their `CLAUDE.md` and `docs/SPEC.md`.
 
@@ -298,6 +298,8 @@ The period key mirrors the effect of clicking the already-active cell or clickin
 ## Congrats / done-wrong banners
 
 **Rule:** The congrats banner (`#congrats`) appears when and only when every cell path carries `.correct`. The done-wrong banner (`#done-wrong`) appears when all cells are filled but congrats is not showing. Both are driven exclusively by `syncUI()` — event handlers never set banner visibility directly.
+
+**`congratsDismissed` latch:** Each engine holds a `let congratsDismissed = false` flag. The congrats-dismiss overlay click sets it to `true`, hiding the banner and revealing the board. This flag is intentionally a one-way latch: once the solver dismisses the banner it never reappears, even if they subsequently erase a correct cell and re-solve. Resetting `congratsDismissed` on every board-state change would cause the banner to flash back unexpectedly during casual post-solve browsing.
 
 ---
 

@@ -6,12 +6,10 @@ const { validate }      = require('./validator');
 const { preparePuzzle } = require('./hasher');
 const { computeCells }  = require('./layout');
 const injectTemplate    = require('../../shared/build/injectTemplate');
-const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle } = require('../../shared/build/builderUtils');
+const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle, VALID_THEMES } = require('../../shared/build/builderUtils');
 const { minifyHtml }    = require('../../shared/build/minify');
 
 const TEMPLATE_DIR = path.join(__dirname, 'template');
-
-const VALID_THEMES = ['broadsheet', 'skeleton'];
 // R_HOLE: smaller center hole leaves more room for cells; R_MAX: larger outer radius keeps
 // cells from crowding at high cell counts (122-cell puzzles were visibly tight at R_MAX:242).
 const LAYOUT_BASE = { R_HOLE: 25, R_MAX: 265 };
@@ -54,7 +52,8 @@ function buildHtml(prepared, cells, layoutOpts, theme) {
 function buildPuzzle(inputPath, outputPath, options) {
   const rawPuzzle = loadPuzzle(inputPath);
   validatePuzzle(rawPuzzle, inputPath);
-  const prepared  = preparePuzzle(rawPuzzle);
+  const hashed   = !!(options?.muddle || rawPuzzle.boardHash !== undefined);
+  const prepared  = preparePuzzle({ ...rawPuzzle, hashed });
 
   const totalCells = prepared.inward.reduce((s, e) => s + e.length, 0);
   const layoutOpts = { ...LAYOUT_BASE, N_TURNS: nTurnsFor(totalCells) };

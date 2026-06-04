@@ -19,7 +19,9 @@ function preparePuzzle(puzzle) {
     ...(puzzle.instructions !== undefined ? { instructions: puzzle.instructions } : {}),
   };
 
-  if (hashed) {
+  if (puzzle.boardHash !== undefined) {
+    prepared.boardHash = puzzle.boardHash;
+  } else if (hashed) {
     prepared.boardHash = sha256hex(inward.map(e => e._norm).join(''));
   } else {
     prepared.letters = inward.flatMap(e => e._norm.split(''));

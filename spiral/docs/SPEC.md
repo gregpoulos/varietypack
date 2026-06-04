@@ -12,7 +12,6 @@ A Spiral puzzle file is a YAML file describing a circular spiral grid filled by 
 | `date` | no | string | Displayed in the puzzle header |
 | `inward` | yes | array | Entries that read from cell 1 (outer edge) toward the center, in order |
 | `outward` | yes | array | Entries that read from the center outward, in order (first entry is innermost) |
-| `hashed` | no | boolean | If true, answers are checked by hash (solver never sees plaintext); default false |
 | `instructions` | no | string | Puzzle instructions shown between the header and the grid; supports multiple paragraphs separated by blank lines |
 
 ## Entry fields
@@ -97,5 +96,5 @@ outward:
 
 - **Multi-word and hyphenated answers**: Include spaces or hyphens in the `answer` field for readability (`"WAH-WAH"`, `"TRACEY EMIN"`). The build step strips them when placing letters in cells and when hashing.
 - **Outward entry order**: List outward entries from center outward — `outward[0]` is the innermost entry (closest to the center), and the last outward entry ends at the outermost cell.
-- **Answer security**: When `hashed: true`, plain-text answers are never included in the generated HTML. Only SHA-256 hashes are stored; solvers cannot view-source to find answers.
+- **Answer security**: Build with `varietypack build --muddle` (or from a pre-muddled YAML) to produce an answer-obscured HTML. Plain-text answers are never included; only a single SHA-256 hash of the complete board is stored. Individual answers cannot be recovered by viewing source.
 - **The reversal constraint**: The concatenated inward string (outside → center) must be the exact reverse of the concatenated outward string (center → outside). This is what makes every cell satisfy both the inward entry it belongs to and the outward entry it belongs to.

@@ -2,6 +2,7 @@
 
 // Help text for options that every tool CLI supports.
 const GLOBAL_OPTIONS = `\
+  --muddle          Build a hashed (answer-obscured) HTML without needing hashed: in the YAML
   --theme <name>    Visual theme: broadsheet (default), skeleton
   --minify          Minify the output HTML (terser-minifies scripts; strips comments + trailing whitespace)
   -o <output.html>  Output path (default: <input-basename>.html next to input)

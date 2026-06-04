@@ -1,53 +1,64 @@
+/* Broadsheet theme — newspaper palette. Overrides theme-base defaults. */
 :root {
-  --font-serif: Georgia, 'Times New Roman', serif;
+  --theme-font-body:    Georgia, 'Times New Roman', serif;
+  --theme-font-display: Georgia, 'Times New Roman', serif;
+  --theme-font-button:  Georgia, 'Times New Roman', serif;
+  --theme-font-cell:    Georgia, 'Times New Roman', serif;
 
-  /* Page */
-  --color-bg:   #f9f7f1;
-  --color-text: #111;
-  --color-muted: #555;
+  --theme-color-header-rule: #222222;
+  --theme-title-tracking:    0.08em;
+  --theme-title-transform:   uppercase;
+  --theme-byline-style:      italic;
 
-  /* Borders / headings */
-  --color-strong-border: #222;
-  --color-soft-border:   #bbb;
+  --theme-color-bg:    #f9f7f1;
+  --theme-color-text:  #111111;
+  --theme-color-muted: #555555;
 
-  /* Buttons (primary) */
-  --color-btn-bg:       #222;
-  --color-btn-text:     #fff;
-  --color-btn-hover:    #444;
-  --color-btn-disabled: #999;
+  --theme-color-bar-border:  #bbbbbb;
+  --theme-color-soft-border: #bbbbbb;
 
-  /* Secondary / toggle buttons */
-  --color-btn2-bg:     #f0ece0;
-  --color-btn2-text:   #333;
-  --color-btn2-border: #aaa;
-  --color-btn2-hover:  #e4e0d4;
+  --theme-color-btn-bg:       #222222;
+  --theme-color-btn-hover:    #444444;
+  --theme-color-btn-disabled: #999999;
+  --theme-button-tracking:    0.05em;
 
-  /* Grid cells */
-  --color-cell-bg:     #fff;
-  --color-cell-stroke: #999;
+  --theme-color-btn2-bg:     #f0ece0;
+  --theme-color-btn2-text:   #333333;
+  --theme-color-btn2-border: #aaaaaa;
+  --theme-color-btn2-hover:  #e4e0d4;
 
-  /* Cell / clue states */
-  --color-highlight:            #deeeff;
-  --color-highlight-band-even:  #cee2f8;
-  --color-active:               #b8d4f5;
-  --color-active-stroke:    #1e5799;
-  --color-clue-hover:       #ede8d2;
-  --color-secondary-entry:  #f5f0e0;
+  --theme-color-clear-fg:       #999999;
+  --theme-color-clear-hover-fg: #333333;
 
-  /* Correct state */
-  --color-correct-bg:     #c8e6c9;
-  --color-correct-stroke: #4caf50;
-  --color-correct-text:   #1a6e22;
+  --theme-color-cell-bg:     #ffffff;
+  --theme-color-cell-stroke: #999999;
+  --theme-color-cell-text:   #111111;
 
-  /* Congrats banner */
-  --color-congrats-bg:     #2e7d32;
-  --color-congrats-border: #1b5e20;
-  --color-congrats-text:   #ffffff;
+  --theme-color-highlight:           #deeeff;
+  --theme-color-band-even:           #e8e8e8;
+  --theme-color-highlight-band-even: #cee2f8;
+  --theme-color-active:              #b8d4f5;
+  --theme-color-active-stroke:       #1e5799;
+  --theme-color-clue-hover:          #ede8d2;
+  --theme-color-secondary-entry:     #f5f0e0;
 
-  /* Done-wrong banner */
-  --color-done-wrong-bg:     #fff3e0;
-  --color-done-wrong-border: #e65100;
+  --theme-color-secondary-active:        #7aaed8;
+  --theme-color-secondary-active-stroke: #3a72a8;
 
-  /* Danger (destructive actions) */
-  --color-danger: #b91c1c;
+  --theme-color-correct-bg:     #c8e6c9;
+  --theme-color-correct-stroke: #4caf50;
+  --theme-color-correct-text:   #1a6e22;
+
+  --theme-color-circle:      #bbbbbb;
+  --theme-color-curl:        #aaaaaa;
+  --theme-color-cell-center: #222222;
+
+  --theme-color-congrats-bg:     #2e7d32;
+  --theme-color-congrats-border: #1b5e20;
+  --theme-color-congrats-text:   #ffffff;
+
+  --theme-color-wrong-bg:     #fff3e0;
+  --theme-color-wrong-border: #e65100;
+
+  --theme-color-danger: #b91c1c;
 }

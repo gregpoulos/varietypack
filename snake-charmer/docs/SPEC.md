@@ -11,9 +11,8 @@ A Snake Charmer puzzle file is a YAML file with the following fields.
 | `author` | no | string | Displayed in the puzzle header |
 | `date` | no | string | Displayed in the puzzle header |
 | `entries` | yes | array | Ordered list of puzzle entries (index 0 = entry #1) |
-| `loops`        | no  | integer | Number of times the ring is traversed (default: 2, minimum: 2) |
+| `loops`        | no  | integer | Number of times the ring is traversed. Must be `2` (the default); any other value is rejected. Multi-loop (>2) puzzles are a planned future feature. |
 | `shape`        | no  | string  | Ring shape: `circle`, `stadium`, `turn`, or `double-turn`; see Notes for constraints. When omitted, auto-selects `double-turn` if the ring size supports it, otherwise `stadium`. The `--shape` CLI flag overrides this field. |
-| `hashed`       | no  | boolean | If true, answers are checked by hash (solver never sees plaintext); default false |
 | `instructions` | no  | string  | Puzzle instructions shown between the header and the ring; supports multiple paragraphs separated by blank lines |
 
 ## Entry fields
@@ -55,8 +54,9 @@ Unrecognized style names produce a build warning but are not an error — they a
 - `instructions`, if present, must be a non-empty string
 - `entries` must have at least 3 items
 - Every entry must have a non-empty `clue` and non-empty `answer`
-- Total cell count must be divisible by `loops`
-- Ring size (total cells ÷ loops) must be at least 8 — this is the binding minimum; with the default loops=2 it means at least 16 total cells
+- `loops`, if present, must be `2` — multi-loop (>2) puzzles are not yet supported
+- Total cell count must be divisible by `loops` (i.e. must be even)
+- Ring size (total cells ÷ loops) must be at least 8 — this is the binding minimum; with loops=2 it means at least 16 total cells
 - Ring size must be even (required for the loop to close)
 - All loops must contain identical letter sequences — the full answer string, when divided into `loops` equal segments of `ringSize` characters, must have every segment identical to the first. This is the Snake Charmer period constraint: it ensures the path visits the same letters on every traversal of the ring
 - `shape`, if present, must be one of: `circle`, `stadium`, `turn`, `double-turn`
@@ -82,7 +82,7 @@ entries:
 ## Notes
 
 - **Multi-word and hyphenated answers**: Include spaces, hyphens, apostrophes, or other punctuation in the `answer` field for readability (`"LIE TO"`, `"SELF-SERVE"`, `"DON'T"`). The build step strips all non-alphabetic characters when placing letters in grid cells and when hashing — only A–Z count toward cell length.
-- **Answer security**: In hashed mode (`hashed: true`), plain-text answers are never included in the generated HTML — only SHA-256 hashes are stored; solvers cannot view-source to find answers. In plain mode, individual letters are present in the page data.
+- **Answer security**: Build with `varietypack build --muddle` (or from a pre-muddled YAML) to produce an answer-obscured HTML. Plain-text answers are never included; only a single SHA-256 hash of the complete board is stored. Individual answers cannot be recovered by viewing source. In plain mode, individual letters are present in the page data.
 - **Grid layout**: The ring layout is computed automatically from entry lengths. You do not specify grid coordinates. Use the `shape` field (or the `--shape` CLI flag, which takes precedence) to choose the ring shape. When neither is set, the tool auto-selects `double-turn` if the ring size supports it, otherwise `stadium`:
   - `stadium` — horizontal discorectangle: two semicircles connected by straight sections on top and bottom
   - `circle` — pure circle with no straight sections

@@ -4,6 +4,7 @@
 const { buildCommand }    = require('./shared/build/buildCommand');
 const { watchCommand }    = require('./shared/build/watchCommand');
 const { validateCommand } = require('./shared/build/validateCommand');
+const { muddleCommand }   = require('./shared/build/muddleCommand');
 
 const HELP = `Usage: varietypack <subcommand> [args] [options]
 
@@ -11,6 +12,7 @@ Subcommands:
   build     Build one or more puzzle files
   watch     Watch a directory and rebuild on changes
   validate  Check puzzle files for errors without building
+  muddle    Strip answers from a puzzle file, replacing them with hashes
 
 Run 'varietypack <subcommand> --help' for subcommand-specific help.
 `;
@@ -28,6 +30,7 @@ switch (subcommand) {
   case 'build':    buildCommand(rest);    break;
   case 'watch':    watchCommand(rest);    break;
   case 'validate': validateCommand(rest); break;
+  case 'muddle':   muddleCommand(rest);   break;
   default:
     process.stderr.write(`Unknown subcommand: "${subcommand}"\n`);
     process.stderr.write("Run 'varietypack --help' for usage.\n");

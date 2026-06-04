@@ -75,12 +75,12 @@ test('buildPuzzle: non-hashed HTML contains letters array', () => {
   });
 });
 
-test('buildPuzzle: hashed HTML contains boardHash, no letters, no plaintext answers', () => {
-  const tmpY = path.join(os.tmpdir(), `mb-hashed-${Date.now()}.yaml`);
+test('buildPuzzle: --muddle HTML contains boardHash, no letters, no plaintext answers', () => {
+  const tmpY = path.join(os.tmpdir(), `mb-muddle-${Date.now()}.yaml`);
   const tmpH = tmpY.replace('.yaml', '.html');
   try {
     fs.writeFileSync(tmpY, yaml.dump({
-      kind: 'marching-bands', title: 'Hashed Test', hashed: true,
+      kind: 'marching-bands', title: 'Muddle Test',
       rows: [
         { entries: [{ clue: 'A', answer: 'AB'  }, { clue: 'B', answer: 'CDE' }] },
         { entries: [{ clue: 'C', answer: 'FG'  }, { clue: 'D', answer: 'HIJ' }] },
@@ -99,11 +99,11 @@ test('buildPuzzle: hashed HTML contains boardHash, no letters, no plaintext answ
         ] },
       ],
     }));
-    buildPuzzle(tmpY, tmpH);
+    buildPuzzle(tmpY, tmpH, { muddle: true });
     const html = fs.readFileSync(tmpH, 'utf8');
-    assert.ok(html.includes('"boardHash"'), 'boardHash missing in hashed HTML');
-    assert.ok(!html.includes('"letters"'), 'letters should be absent in hashed HTML');
-    assert.ok(!html.includes('"ab"'), 'plaintext answer found in hashed HTML');
+    assert.ok(html.includes('"boardHash"'), 'boardHash missing in muddled HTML');
+    assert.ok(!html.includes('"letters"'), 'letters should be absent in muddled HTML');
+    assert.ok(!html.includes('"ab"'), 'plaintext answer found in muddled HTML');
   } finally {
     fs.rmSync(tmpY, { force: true });
     fs.rmSync(tmpH, { force: true });

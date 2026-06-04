@@ -172,3 +172,49 @@ test('preparePuzzle: omits styles key when entry has no styles', () => {
     assert.equal(e.styles, undefined);
   }
 });
+
+// ── boardHash passthrough (muddled mode) ──────────────────────────────────────
+
+test('preparePuzzle: passthrough — when puzzle.boardHash present, uses it directly without recomputing', () => {
+  const puzzle = {
+    kind: 'snake-charmer', title: 'T', loops: 2,
+    hashed: true,
+    boardHash: 'precomputed-hash-abc',
+    entries: [
+      { clue: 'One',   hash: 'h1', length: 6 },
+      { clue: 'Two',   hash: 'h2', length: 6 },
+    ],
+  };
+  const result = preparePuzzle(puzzle);
+  assert.equal(result.boardHash, 'precomputed-hash-abc');
+  assert.ok(!('letters' in result));
+});
+
+test('preparePuzzle: passthrough — no per-entry hash in PUZZLE_DATA entries', () => {
+  const puzzle = {
+    kind: 'snake-charmer', title: 'T', loops: 2,
+    hashed: true,
+    boardHash: 'precomputed-hash',
+    entries: [
+      { clue: 'One', length: 3 },
+      { clue: 'Two', length: 3 },
+    ],
+  };
+  const result = preparePuzzle(puzzle);
+  assert.ok(!('hash' in result.entries[0]));
+  assert.ok(!('hash' in result.entries[1]));
+});
+
+test('preparePuzzle: non-hashed mode unchanged — still computes letters array', () => {
+  const puzzle = {
+    kind: 'snake-charmer', title: 'T', loops: 2,
+    entries: [
+      { clue: 'One',   answer: 'ABC' },
+      { clue: 'Two',   answer: 'DEF' },
+      { clue: 'Three', answer: 'ABCDEF' },
+    ],
+  };
+  const result = preparePuzzle(puzzle);
+  assert.deepEqual(result.letters, ['a','b','c','d','e','f']);
+  assert.ok(!('boardHash' in result));
+});

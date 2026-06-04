@@ -33,12 +33,12 @@ test('buildPuzzle: output contains correct cell count in PUZZLE_DATA', () => {
   }
 });
 
-test('buildPuzzle: hashed mode — no plaintext answers in HTML', () => {
+test('buildPuzzle: --muddle — no plaintext answers in HTML', () => {
   const yaml = require('js-yaml');
-  const tmpYaml = path.join(os.tmpdir(), `spiral-hashed-${Date.now()}.yaml`);
+  const tmpYaml = path.join(os.tmpdir(), `spiral-muddle-${Date.now()}.yaml`);
   const tmpHtml = tmpYaml.replace('.yaml', '.html');
   const puzzle = {
-    kind: 'spiral', title: 'Hashed Test', hashed: true,
+    kind: 'spiral', title: 'Muddle Test',
     inward:  [
       { clue: 'A', answer: 'ABCDEFGHIJKLMNOPQRST' },
       { clue: 'B', answer: 'TSRQPONMLKJIHGFEDCBA' },
@@ -50,11 +50,11 @@ test('buildPuzzle: hashed mode — no plaintext answers in HTML', () => {
   };
   try {
     fs.writeFileSync(tmpYaml, yaml.dump(puzzle), 'utf8');
-    buildPuzzle(tmpYaml, tmpHtml);
+    buildPuzzle(tmpYaml, tmpHtml, { muddle: true });
     const html = fs.readFileSync(tmpHtml, 'utf8');
-    assert.ok(!html.includes('abcdefghijklmnopqrst'), 'plaintext answer found in hashed HTML');
-    assert.ok(html.includes('"boardHash"'), 'boardHash field not found in hashed HTML');
-    assert.ok(!html.includes('"letters"'), 'letters array found in hashed HTML');
+    assert.ok(!html.includes('abcdefghijklmnopqrst'), 'plaintext answer found in muddled HTML');
+    assert.ok(html.includes('"boardHash"'), 'boardHash field not found in muddled HTML');
+    assert.ok(!html.includes('"letters"'), 'letters array found in muddled HTML');
   } finally {
     fs.rmSync(tmpYaml, { force: true });
     fs.rmSync(tmpHtml, { force: true });
@@ -79,8 +79,8 @@ test('buildPuzzle: broadsheet theme includes broadsheet-tokens CSS', () => {
   try {
     buildPuzzle(SAMPLE, out, { theme: 'broadsheet' });
     const html = fs.readFileSync(out, 'utf8');
-    assert.ok(html.includes('--color-bg'), 'broadsheet tokens not found');
-    assert.ok(!html.includes('#1a1520'),   'skeleton colors found in broadsheet output');
+    assert.ok(html.includes('#f9f7f1'),  'broadsheet token value missing');
+    assert.ok(!html.includes('#1a1520'), 'skeleton colors found in broadsheet output');
   } finally {
     fs.rmSync(out, { force: true });
   }
@@ -91,8 +91,8 @@ test('buildPuzzle: skeleton theme excludes broadsheet tokens and includes skelet
   try {
     buildPuzzle(SAMPLE, out, { theme: 'skeleton' });
     const html = fs.readFileSync(out, 'utf8');
-    assert.ok(!html.includes('--color-bg'), 'broadsheet tokens found in skeleton output');
-    assert.ok(html.includes('#1a1520'),     'skeleton background color not found');
+    assert.ok(!html.includes('#f9f7f1'), 'broadsheet token value found in skeleton output');
+    assert.ok(html.includes('#1a1520'),  'skeleton background color not found');
   } finally {
     fs.rmSync(out, { force: true });
   }

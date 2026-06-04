@@ -22,9 +22,29 @@ varietypack watch examples/
 
 # Validate one or more puzzle files without building
 varietypack validate puzzle.yaml
+
+# Produce a muddled YAML (answers replaced by hashes) for distribution
+varietypack muddle puzzle.yaml
 ```
 
 The `varietypack` dispatcher reads the `kind` field from each YAML and routes to the correct tool automatically. In directory mode, all YAML files are built; files without a recognised `kind` are skipped with a warning.
+
+### Muddling puzzles
+
+`varietypack muddle <file.yaml>` produces a **muddled YAML** — a distributable version of a puzzle where each entry's `answer:` is replaced by `hash:` + `length:`. The muddled file can be shared with collaborators or test-solvers who need to build the HTML themselves without seeing the answers. The built HTML is always answer-obscured (equivalent to `hashed: true`).
+
+```fish
+# Produce puzzle.muddled.yaml next to the source
+varietypack muddle puzzle.yaml
+
+# Write to a specific path
+varietypack muddle puzzle.yaml -o dist/puzzle.yaml
+
+# Overwrite an existing muddled file
+varietypack muddle puzzle.yaml -f
+```
+
+The puzzle must be valid before it can be muddled. `varietypack validate` runs automatically as part of the muddle step.
 
 ### Global options
 
@@ -32,6 +52,7 @@ These are supported by every tool:
 
 | Option | Default | Description |
 |---|---|---|
+| `--muddle` | off | Build a hashed (answer-obscured) HTML from a source YAML — no `hashed:` field needed. Muddled YAMLs (which carry `boardHash:`) build hashed automatically without this flag. |
 | `--theme <name>` | `broadsheet` | Visual theme. All tools ship `broadsheet` and `skeleton`; the exact list may vary per tool. |
 | `--minify` | off | Minify the generated HTML: terser-minifies each `<script>`, strips comments, and trims trailing whitespace. |
 | `-o <output.html>` | `<input-basename>.html` | Output path. Defaults to writing next to the input file. |

@@ -99,4 +99,4 @@ entries:
 2. **Build step** validates the YAML, computes the ring layout (stadium, circle, turn, or double-turn), and injects everything into a self-contained HTML file
 3. **Solver** opens the HTML in any browser, fills in letters cell by cell — correct entries are revealed automatically (hashed mode) or via the Check Cell button (plain mode)
 
-In hashed mode (`hashed: true`), plain-text answers never appear in the generated HTML — only SHA-256 hashes.
+Build with `--muddle` (or from a muddled YAML produced by `varietypack muddle`) to obscure answers: plain-text answers never appear in the generated HTML — only a single SHA-256 board hash.

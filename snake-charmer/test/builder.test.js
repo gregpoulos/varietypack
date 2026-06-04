@@ -73,14 +73,14 @@ test('buildHtml: non-hashed no hash fields in entries', () => {
 
 test('buildHtml: hashed output has boardHash, no letters, no per-entry hashes', () => {
   const puzzle = {
-    kind: 'snake-charmer', title: 'T', loops: 2, hashed: true,
+    kind: 'snake-charmer', title: 'T', loops: 2,
     entries: [
       { clue: 'One', answer: 'ABC' },
       { clue: 'Two', answer: 'DEF' },
       { clue: 'Three', answer: 'ABCDEF' },
     ],
   };
-  const prepared = preparePuzzle(puzzle);
+  const prepared = preparePuzzle({ ...puzzle, hashed: true });
   const { ring } = computeLayout(prepared.entries, prepared.loops);
   const html = buildHtml(prepared, ring);
   const match = html.match(/window\.PUZZLE_DATA\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
@@ -253,24 +253,24 @@ test('buildPuzzle: returns title from built puzzle', () => {
   require('fs').unlinkSync(outPath);
 });
 
-test('buildPuzzle: hashed puzzle omits letters and includes boardHash', () => {
+test('buildPuzzle: --muddle omits letters and includes boardHash', () => {
   const os = require('os');
   const fs = require('fs');
   const yaml = require('js-yaml');
   // 3 entries, ringSize=8: concat='abcdefghabcdefgh', loop0=loop1 ✓
   const puzzle = {
-    kind: 'snake-charmer', title: 'T', hashed: true,
+    kind: 'snake-charmer', title: 'T',
     entries: [
       { clue: 'One', answer: 'ABCD' },
       { clue: 'Two', answer: 'EFGH' },
       { clue: 'Three', answer: 'ABCDEFGH' },
     ],
   };
-  const inPath  = path.join(os.tmpdir(), 'sc-test-hashed-in.yaml');
-  const outPath = path.join(os.tmpdir(), 'sc-test-hashed-out.html');
+  const inPath  = path.join(os.tmpdir(), 'sc-test-muddle-in.yaml');
+  const outPath = path.join(os.tmpdir(), 'sc-test-muddle-out.html');
   fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
   try {
-    buildPuzzle(inPath, outPath);
+    buildPuzzle(inPath, outPath, { muddle: true });
     const content = fs.readFileSync(outPath, 'utf8');
     const match = content.match(/window\.PUZZLE_DATA\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
     const data = JSON.parse(match[1]);

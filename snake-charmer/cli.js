@@ -42,6 +42,7 @@ try {
     { flag: '--theme',              name: 'theme', values: ['broadsheet', 'skeleton'] },
     { flag: ['-f', '--force'],      name: 'force', boolean: true },
     { flag: '--minify',             name: 'minify', boolean: true },
+    { flag: '--muddle',             name: 'muddle', boolean: true },
   ]));
 } catch (err) {
   process.stderr.write(`${err.message}\n`);
@@ -64,7 +65,7 @@ if (!flags.force && fs.existsSync(output)) {
 }
 
 try {
-  const { title } = buildPuzzle(input, output, { shape: flags.shape, theme: flags.theme, minify: flags.minify });
+  const { title } = buildPuzzle(input, output, { shape: flags.shape, theme: flags.theme, minify: flags.minify, muddle: flags.muddle });
   process.stdout.write(`Built "${title}" → ${output}\n`);
 } catch (err) {
   process.stderr.write(`${err.message}\n`);

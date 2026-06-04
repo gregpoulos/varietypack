@@ -515,14 +515,12 @@
       }
       if (e.key === 'ArrowRight') {
         e.preventDefault();
-        if (direction === 'outward') direction = 'inward';
-        focusCell(nextInDir(activeCell, 'inward'));
+        focusCell(nextInDir(activeCell, direction));
         return;
       }
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        if (direction === 'inward') direction = 'outward';
-        focusCell(nextInDir(activeCell, 'outward'));
+        focusCell(prevInDir(activeCell, direction));
         return;
       }
       if (e.key === 'Backspace') {

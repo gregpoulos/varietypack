@@ -6,7 +6,7 @@ const { validate } = require('./validator');
 const { preparePuzzle } = require('./hasher');
 const { computeLayout } = require('./layout');
 const injectTemplate = require('../../shared/build/injectTemplate');
-const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle } = require('../../shared/build/builderUtils');
+const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle, VALID_THEMES } = require('../../shared/build/builderUtils');
 const { minifyHtml } = require('../../shared/build/minify');
 
 const TEMPLATE_DIR = path.join(__dirname, 'template');
@@ -14,8 +14,6 @@ const TEMPLATE_DIR = path.join(__dirname, 'template');
 function validatePuzzle(puzzle, sourcePath) {
   return sharedValidatePuzzle(puzzle, sourcePath, validate);
 }
-
-const VALID_THEMES = ['broadsheet', 'skeleton'];
 
 function buildHtml(prepared, ring, shape, theme) {
   shape = shape ?? 'stadium';
@@ -61,7 +59,8 @@ function findCoincidentStarts(entries, loops) {
 function buildPuzzle(inputPath, outputPath, options) {
   const rawPuzzle = loadPuzzle(inputPath);
   validatePuzzle(rawPuzzle, inputPath);
-  const prepared = preparePuzzle(rawPuzzle);
+  const hashed  = !!(options?.muddle || rawPuzzle.boardHash !== undefined);
+  const prepared = preparePuzzle({ ...rawPuzzle, hashed });
 
   // Priority: explicit --shape flag > shape field in YAML > auto-select.
   // Auto-select tries double-turn first and falls back to stadium.

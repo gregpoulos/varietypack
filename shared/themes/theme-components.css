@@ -1,0 +1,101 @@
+/* theme-components: every tool-agnostic selector, driven entirely by --theme-*.
+   Prepended before each tool's themes/tool.css, which may override any rule here.
+
+   SVG cell states (.cell.active-entry / .cell.active-cell) live here safely:
+   marching-bands' band rules use :where() (specificity 0,1,0) so these 0,2,0
+   rules always win regardless of source order. */
+
+body {
+  background:   var(--theme-color-bg);
+  color:        var(--theme-color-text);
+  font-family:  var(--theme-font-body);
+}
+
+/* Masthead */
+.puzzle-header {
+  text-align:     center;
+  border-bottom:  2px solid var(--theme-color-header-rule);
+  padding-bottom: 12px;
+  margin-bottom:  24px;
+}
+h1.title {
+  font-family:     var(--theme-font-display);
+  font-size:       2rem;
+  letter-spacing:  var(--theme-title-tracking);
+  text-transform:  var(--theme-title-transform);
+  color:           var(--theme-color-title);
+}
+.byline {
+  font-style: var(--theme-byline-style);
+  color:      var(--theme-color-muted);
+  font-size:  var(--theme-byline-size);
+  margin-top: 6px;
+}
+
+#active-clue-bar {
+  background:    var(--theme-color-bg);
+  border-bottom: 1px solid var(--theme-color-bar-border);
+}
+
+#instructions       { color: var(--theme-color-instructions); }
+#instructions p + p { margin-top: 0.6em; }
+
+.clue-item { border-radius: var(--theme-clue-radius); }
+
+/* Primary button */
+#check-btn {
+  font-family:    var(--theme-font-button);
+  font-size:      0.95rem;
+  padding:        8px 22px;
+  background:     var(--theme-color-btn-bg);
+  color:          var(--theme-color-btn-text);
+  border:         none;
+  letter-spacing: var(--theme-button-tracking);
+}
+#check-btn:hover:not(:disabled) { background: var(--theme-color-btn-hover); }
+#check-btn:disabled { background: var(--theme-color-btn-disabled); cursor: default; }
+
+/* Clear button */
+#clear-btn {
+  font-family:    var(--theme-font-button);
+  font-size:      0.8rem;
+  padding:        5px 12px;
+  background:     transparent;
+  color:          var(--theme-color-clear-fg);
+  border-color:   var(--theme-color-clear-fg);
+  letter-spacing: var(--theme-button-tracking);
+}
+#clear-btn:hover { color: var(--theme-color-clear-hover-fg); border-color: var(--theme-color-clear-hover-fg); }
+#clear-btn.armed { color: var(--theme-color-danger);         border-color: var(--theme-color-danger); }
+
+/* SVG cell states */
+.cell              { fill: var(--theme-color-cell-bg); stroke: var(--theme-color-cell-stroke); stroke-width: 0.5; }
+.cell.active-entry { fill: var(--theme-color-highlight); }
+.cell.active-cell  { fill: var(--theme-color-active); stroke: var(--theme-color-active-stroke); stroke-width: 1.5; }
+.cell.correct      { fill: var(--theme-color-correct-bg); stroke: var(--theme-color-correct-stroke); stroke-width: 0.5; }
+.cell.correct.active-cell { stroke: var(--theme-color-active-stroke); stroke-width: 1.5; }
+
+.style-circle { fill: none; stroke: var(--theme-color-circle); stroke-width: 1; }
+
+.cell-letter         { font-family: var(--theme-font-cell); fill: var(--theme-color-cell-text); }
+.cell-letter.correct { fill: var(--theme-color-correct-text); }
+
+/* Congrats modal (centered in the shared #congrats-overlay from base.css) */
+#congrats-overlay { background: var(--theme-color-overlay); }
+
+@keyframes congrats-pop {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+#congrats {
+  background:     var(--theme-color-congrats-bg);
+  color:          var(--theme-color-congrats-text);
+  border:         2px solid var(--theme-color-congrats-border);
+  border-radius:  var(--theme-card-radius);
+  padding:        28px 36px;
+  font-size:      1.2rem;
+  font-weight:    bold;
+  text-align:     center;
+  letter-spacing: 0.04em;
+  animation:      congrats-pop 200ms ease-out;
+}

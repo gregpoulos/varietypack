@@ -1,6 +1,6 @@
 'use strict';
 
-const sha256hex  = require('../../shared/sha256hex');
+const sha256hex      = require('../../shared/sha256hex');
 const { processEntries } = require('../../shared/build/builderUtils');
 
 function preparePuzzle(puzzle) {
@@ -8,11 +8,7 @@ function preparePuzzle(puzzle) {
   const hashed = puzzle.hashed ?? false;
 
   const processed = processEntries(puzzle.entries);
-  const concat    = processed.map(e => e._norm).join('');
-  const ringSize  = concat.length / loops;
-  const ring      = concat.slice(0, ringSize);
-
-  const entries = processed.map(({ _norm, ...e }) => e);
+  const entries   = processed.map(({ _norm, ...e }) => e);
 
   const result = {
     title: puzzle.title, kind: puzzle.kind, author: puzzle.author, date: puzzle.date,
@@ -20,10 +16,17 @@ function preparePuzzle(puzzle) {
     ...(puzzle.instructions !== undefined ? { instructions: puzzle.instructions } : {}),
   };
 
-  if (hashed) {
-    result.boardHash = sha256hex(ring);
+  if (puzzle.boardHash !== undefined) {
+    result.boardHash = puzzle.boardHash;
   } else {
-    result.letters = ring.split('');
+    const concat   = processed.map(e => e._norm).join('');
+    const ringSize = concat.length / loops;
+    const ring     = concat.slice(0, ringSize);
+    if (hashed) {
+      result.boardHash = sha256hex(ring);
+    } else {
+      result.letters = ring.split('');
+    }
   }
 
   return result;

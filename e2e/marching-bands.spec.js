@@ -1,9 +1,9 @@
 'use strict';
 
 // Browser engine behavior for Marching Bands — the part node:test cannot cover.
-// Focuses on the cross-tool contract this change fixed: banners are derived from
-// board state in syncUI() (no flag/timeout), and a full-but-wrong board reveals no
-// partial correctness.
+// Covers: state-derived banners + hidden partial correctness; Tab navigation by
+// row/band; Backspace's filled-vs-empty semantics; the hashed-mode per-keystroke
+// cursor-advance invariant; and the print-media reset of .correct cell fills.
 
 const { test, expect } = require('@playwright/test');
 const path = require('path');
@@ -11,17 +11,40 @@ const os   = require('os');
 const fs   = require('fs');
 const { buildPuzzle } = require('../marching-bands/src/builder');
 
-let htmlPath;
+const FIX = path.join(__dirname, '..', 'marching-bands', 'test', 'fixtures');
+
+let htmlPath;       // non-hashed mb-5 → PUZZLE_DATA.letters present
+let hashedPath;     // hashed mb-5     → no letters; correctness via boardHash
 
 test.beforeAll(() => {
-  const yamlPath = path.join(__dirname, '..', 'marching-bands', 'test', 'fixtures', 'mb-5.yaml');
-  htmlPath = path.join(os.tmpdir(), `mb-e2e-${Date.now()}.html`);
-  buildPuzzle(yamlPath, htmlPath); // non-hashed → PUZZLE_DATA.letters is present
+  const stamp = Date.now();
+  htmlPath   = path.join(os.tmpdir(), `mb-e2e-${stamp}.html`);
+  hashedPath = path.join(os.tmpdir(), `mb-e2e-hashed-${stamp}.html`);
+  buildPuzzle(path.join(FIX, 'mb-5.yaml'),         htmlPath);
+  buildPuzzle(path.join(FIX, 'mb-5.muddled.yaml'), hashedPath);
 });
 
 test.afterAll(() => {
-  if (htmlPath) fs.rmSync(htmlPath, { force: true });
+  for (const p of [htmlPath, hashedPath]) if (p) fs.rmSync(p, { force: true });
 });
+
+// Geometry helpers mirroring the engine's derivation from N. Expressing expected
+// navigation targets as formulas (not hardcoded cell numbers) keeps these tests
+// fixture-size-agnostic and tied to the contract rather than a snapshot.
+const rowOf  = (n, N) => Math.ceil(n / N);
+const colOf  = (n, N) => ((n - 1) % N) + 1;
+const bandOf = (n, N) => Math.min(rowOf(n, N) - 1, colOf(n, N) - 1, N - rowOf(n, N), N - colOf(n, N));
+const cellId = (r, c, N) => (r - 1) * N + c;
+
+async function activeCellNum(page) {
+  const id = await page.locator('#puzzle-svg .cell.active-cell').getAttribute('id');
+  return Number(id.slice('cell-'.length));
+}
+
+async function ready(page) {
+  await expect(page.locator('#puzzle-svg .cell').first()).toBeVisible();
+  await page.evaluate(() => document.getElementById('hidden-input').focus());
+}
 
 test('banners are state-derived and partial correctness stays hidden', async ({ page }) => {
   await page.goto('file://' + htmlPath);
@@ -57,4 +80,113 @@ test('banners are state-derived and partial correctness stays hidden', async ({ 
   await page.keyboard.type(correct[0]);
   await expect(page.locator('#congrats')).toBeVisible();
   await expect(page.locator('#done-wrong')).toBeHidden();
+});
+
+test('Tab in row mode advances to the first cell of the next row, wrapping; Shift+Tab reverses', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  const N = await page.evaluate(() => window.PUZZLE_DATA.size);
+
+  // Default mode is row; the cursor starts at the first cell of row 1.
+  expect(rowOf(await activeCellNum(page), N)).toBe(1);
+
+  // Tab visits each subsequent row's first cell (always column 1), then wraps to row 1.
+  const seq = [];
+  for (let r = 2; r <= N; r++) seq.push(r);
+  seq.push(1);
+  for (const expectedRow of seq) {
+    await page.keyboard.press('Tab');
+    const n = await activeCellNum(page);
+    expect(rowOf(n, N)).toBe(expectedRow);
+    expect(colOf(n, N)).toBe(1);
+  }
+
+  // Shift+Tab steps back from row 1 to the last row.
+  await page.keyboard.press('Shift+Tab');
+  expect(rowOf(await activeCellNum(page), N)).toBe(N);
+});
+
+test('Tab in band mode advances to the first (top-left) cell of the next band, wrapping', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  const N = await page.evaluate(() => window.PUZZLE_DATA.size);
+  const numBands = Math.floor(N / 2);
+
+  // Period key switches to band mode; the cursor stays on the row-1 start cell (band 0).
+  await page.keyboard.press('.');
+  expect(bandOf(await activeCellNum(page), N)).toBe(0);
+
+  // Each Tab lands on the next band's first cell — its top-left corner, cellId(k+1, k+1).
+  for (let step = 1; step <= numBands; step++) {
+    await page.keyboard.press('Tab');
+    const n = await activeCellNum(page);
+    const expectedBand = step % numBands; // wraps to 0 on the final step
+    expect(bandOf(n, N)).toBe(expectedBand);
+    expect(n).toBe(cellId(expectedBand + 1, expectedBand + 1, N));
+  }
+});
+
+test('Backspace clears a filled cell in place, then retreats and clears the previous cell when empty', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  const N = await page.evaluate(() => window.PUZZLE_DATA.size);
+
+  // Fill the first three cells of row 1; the cursor auto-advances past them.
+  await page.keyboard.type('ABC');
+
+  // Step back onto the filled cell holding 'B' (row 1, column 2).
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  expect(await activeCellNum(page)).toBe(cellId(1, 2, N));
+  await expect(page.locator(`#letter-${cellId(1, 2, N)}`)).toHaveText('B');
+
+  // Backspace on a filled cell clears it; the cursor stays put.
+  await page.keyboard.press('Backspace');
+  await expect(page.locator(`#letter-${cellId(1, 2, N)}`)).toHaveText('');
+  expect(await activeCellNum(page)).toBe(cellId(1, 2, N));
+
+  // Backspace again on the now-empty cell retreats to the previous cell and clears it.
+  await page.keyboard.press('Backspace');
+  expect(await activeCellNum(page)).toBe(cellId(1, 1, N));
+  await expect(page.locator(`#letter-${cellId(1, 1, N)}`)).toHaveText('');
+});
+
+test('hashed mode advances the cursor on every keystroke, independent of the board-complete check', async ({ page }) => {
+  await page.goto('file://' + hashedPath);
+  await ready(page);
+  const N = await page.evaluate(() => window.PUZZLE_DATA.size);
+
+  expect(await activeCellNum(page)).toBe(cellId(1, 1, N));
+
+  // A single, non-final keystroke must move the cursor immediately: the engine advances
+  // via focusCell()/syncUI() before (and regardless of) the hash check. No correctness is
+  // revealed until the whole board is filled — guards against coalescing the two syncUI()s.
+  await page.keyboard.type('Z');
+  expect(await activeCellNum(page)).toBe(cellId(1, 2, N));
+  await expect(page.locator('#puzzle-svg .cell.correct')).toHaveCount(0);
+  await expect(page.locator('#congrats')).toBeHidden();
+  await expect(page.locator('#done-wrong')).toBeHidden();
+
+  // Hashed mode never shows the Check Cell button.
+  await expect(page.locator('#check-btn')).toBeHidden();
+});
+
+test('.correct cells render with white fill under print media', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+
+  // Solve the board correctly so every active cell carries .correct.
+  const correct = await page.evaluate(() => window.PUZZLE_DATA.letters.filter(l => l !== null));
+  for (const ch of correct) await page.keyboard.type(ch);
+  await expect(page.locator('#congrats')).toBeVisible();
+  await expect(page.locator('#cell-1')).toHaveClass(/correct/);
+
+  // On screen a correct cell is filled with the highlight colour (not white).
+  const screenFill = await page.evaluate(() => getComputedStyle(document.getElementById('cell-1')).fill);
+  expect(screenFill).not.toBe('rgb(255, 255, 255)');
+
+  // Under print the correct-state fill must reset to white (shared/themes/print-base.css).
+  await page.emulateMedia({ media: 'print' });
+  const printFill = await page.evaluate(() => getComputedStyle(document.getElementById('cell-1')).fill);
+  expect(printFill).toBe('rgb(255, 255, 255)');
 });

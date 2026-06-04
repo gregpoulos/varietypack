@@ -113,3 +113,40 @@ test('preparePuzzle: boardHash is sha256 of row-major letters skipping center, l
   const expected = sha256hex('abcdefghijklmnopqrstuvwx');
   assert.equal(r.boardHash, expected);
 });
+
+// ── boardHash passthrough (muddled mode) ──────────────────────────────────────
+
+// Minimal valid N=3 muddled MB puzzle:
+//   rows[0]: 2+1=3=N,  rows[1]: 1+1=2=N-1 (center),  rows[2]: 2+1=3=N
+//   bands[0]: 3+2+3=8 = 4*(3-1)
+function muddledMB3() {
+  return {
+    kind: 'marching-bands', title: 'T', hashed: true,
+    boardHash: 'precomputed-mb-hash',
+    rows: [
+      { entries: [{ clue: 'a', length: 2 }, { clue: 'b', length: 1 }] },
+      { entries: [{ clue: 'c', length: 1 }, { clue: 'd', length: 1 }] },
+      { entries: [{ clue: 'e', length: 2 }, { clue: 'f', length: 1 }] },
+    ],
+    bands: [
+      { entries: [{ clue: 'g', length: 3 }, { clue: 'h', length: 2 }, { clue: 'i', length: 3 }] },
+    ],
+  };
+}
+
+test('preparePuzzle: passthrough — uses puzzle.boardHash directly, skips letters construction', () => {
+  const result = preparePuzzle(muddledMB3());
+  assert.equal(result.boardHash, 'precomputed-mb-hash');
+  assert.ok(!('letters' in result));
+});
+
+test('preparePuzzle: passthrough — no per-entry hash in PUZZLE_DATA rows and bands', () => {
+  const result = preparePuzzle(muddledMB3());
+  assert.ok(!('hash' in result.rows[0].entries[0]));
+  assert.ok(!('hash' in result.bands[0].entries[1]));
+});
+
+test('preparePuzzle: passthrough — derives N from entry.length when boardHash present', () => {
+  const result = preparePuzzle(muddledMB3());
+  assert.equal(result.size, 3);  // N=3 from rows[0]: 2+1
+});

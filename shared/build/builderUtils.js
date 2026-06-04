@@ -46,26 +46,25 @@ const SHARED_DIR = path.join(__dirname, '..');
 
 // Assembles the full inlined stylesheet for a tool build, in cascade order:
 //   shared base → shared header → tool base
-//   → (broadsheet only: tokens → header → shared components)
-//   → tool theme → shared print resets → tool print.
-// The shared broadsheet layer (tokens/header/components) precedes the tool's
-// own broadsheet.css so a tool can still override any shared component rule.
-// Print rules come last so their @media print overrides are not defeated by
-// equal-specificity theme rules.
+//   → theme-base (neutral --theme-* defaults) → <theme>-tokens (overrides)
+//   → theme-components (tool-agnostic, var-driven)
+//   → tool themes/tool.css (optional, tool-specific) → shared print → tool print.
+// Adding a theme = drop a <theme>-tokens.css here and list it in VALID_THEMES;
+// no branch in this function.
 function composeThemeCss(templateDir, theme) {
   const shared = (rel) => fs.readFileSync(path.join(SHARED_DIR, rel), 'utf8');
   const tool   = (rel) => fs.readFileSync(path.join(templateDir, rel), 'utf8');
-
-  const broadsheetShared = theme === 'broadsheet'
-    ? shared('themes/broadsheet-tokens.css') + '\n'
-      + shared('themes/broadsheet-header.css') + '\n'
-      + shared('themes/broadsheet-components.css') + '\n'
-    : '';
+  const toolOptional = (rel) => {
+    const p = path.join(templateDir, rel);
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') + '\n' : '';
+  };
 
   return shared('base.css') + '\n' + shared('base-header.css') + '\n'
     + tool('base.css') + '\n'
-    + broadsheetShared
-    + tool(`themes/${theme}.css`) + '\n'
+    + shared('themes/theme-base.css') + '\n'
+    + shared(`themes/${theme}-tokens.css`) + '\n'
+    + shared('themes/theme-components.css') + '\n'
+    + toolOptional('themes/tool.css')
     + shared('themes/print-base.css') + '\n'
     + tool('print.css');
 }
@@ -114,11 +113,13 @@ function validateEntryStyles(entry, entryLabel, normLength, errors, warnings) {
 }
 
 // Validates the header fields common to every puzzle kind: the object itself,
-// `kind`, `title`, optional `hashed`, and optional `instructions`. Pushes
-// user-readable messages to `errors`. Returns false when the puzzle is not a
-// usable object (the caller should bail), true otherwise. Tool-specific fields
-// (e.g. snake-charmer's `loops`/`shape`) are validated separately by each tool.
-function validateCommonHeader(puzzle, kind, errors) {
+// `kind`, `title`, and optional `instructions`. Pushes user-readable messages
+// to `errors`. Returns false when the puzzle is not a usable object (the
+// caller should bail), true otherwise. Tool-specific fields (e.g.
+// snake-charmer's `loops`/`shape`) are validated separately by each tool.
+// `hashed:` is only valid in muddled format (requires top-level `boardHash:`);
+// in source puzzles, use `varietypack build --muddle` instead.
+function validateCommonHeader(puzzle, kind, errors, warnings) {
   if (!puzzle || typeof puzzle !== 'object') {
     errors.push('Puzzle must be a YAML object');
     return false;
@@ -129,14 +130,35 @@ function validateCommonHeader(puzzle, kind, errors) {
   if (!puzzle.title || typeof puzzle.title !== 'string' || !puzzle.title.trim()) {
     errors.push('"title" must be a non-empty string');
   }
-  if (puzzle.hashed !== undefined && typeof puzzle.hashed !== 'boolean') {
-    errors.push(`"hashed" must be a boolean, got: ${JSON.stringify(puzzle.hashed)}`);
+  if (puzzle.hashed !== undefined && puzzle.boardHash === undefined) {
+    errors.push('"hashed:" is not valid in source puzzles; use \'varietypack build --muddle\' to produce a hashed build');
   }
   if (puzzle.instructions !== undefined &&
       (typeof puzzle.instructions !== 'string' || !puzzle.instructions.trim())) {
     errors.push('"instructions" must be a non-empty string');
   }
+  // js-yaml parses unquoted ISO dates (e.g. date: 2026-05-01) as Date objects.
+  // Coerce to YYYY-MM-DD so the storage key and byline are consistent regardless
+  // of quoting. The warning tells the author how to avoid the ambiguity.
+  if (puzzle.date instanceof Date) {
+    if (warnings) warnings.push('"date" was parsed as a Date object — wrap it in quotes (e.g., date: "2026-05-01") to avoid ambiguity');
+    puzzle.date = puzzle.date.toISOString().slice(0, 10);
+  }
   return true;
+}
+
+// Routes reading an entry's length: source entries (which have `answer:`) compute from
+// it, muddled entries fall back to the `length:` field. Keyed on `answer` presence — not
+// `length` presence — so it stays consistent with entryNorm and with the validator when a
+// stray `length` accompanies an `answer`.
+function entryLength(entry) {
+  return entry.answer !== undefined ? normalize(entry.answer).length : entry.length;
+}
+
+// Routes reading an entry's normalized answer to either null for muddled entries
+// (which have no plaintext) or returns the normalized form for source entries.
+function entryNorm(entry) {
+  return entry.answer !== undefined ? normalize(entry.answer) : null;
 }
 
 // Normalizes a list of YAML entries into the shape every hasher needs:
@@ -146,11 +168,13 @@ function validateCommonHeader(puzzle, kind, errors) {
 // styles is included on presence (`!== undefined`), never by truthiness.
 function processEntries(entries) {
   return entries.map(entry => {
-    const norm = normalize(entry.answer);
-    const out = { clue: entry.clue, length: norm.length, _norm: norm };
+    const norm = entryNorm(entry);
+    const out  = { clue: entry.clue, length: entryLength(entry), _norm: norm };
     if (entry.styles !== undefined) out.styles = entry.styles;
     return out;
   });
 }
 
-module.exports = { loadPuzzle, validatePuzzle, composeThemeCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader };
+const VALID_THEMES = ['broadsheet', 'skeleton'];
+
+module.exports = { loadPuzzle, validatePuzzle, composeThemeCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm, VALID_THEMES };

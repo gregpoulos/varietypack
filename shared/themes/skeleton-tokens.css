@@ -1,0 +1,71 @@
+/* Skeleton theme — dark purple, strong personality. Overrides theme-base. */
+:root {
+  --theme-font-body:    'Courier New', Courier, monospace;
+  --theme-font-display: Impact, 'Arial Black', sans-serif;
+  --theme-font-button:  Impact, 'Arial Black', sans-serif;
+  --theme-font-cell:    'Courier New', Courier, monospace;
+
+  --theme-color-header-rule: #7c3aed;
+  --theme-title-tracking:    0.06em;
+  --theme-title-transform:   uppercase;
+  --theme-color-title:       #f0e6ff;
+  --theme-byline-style:      normal;
+  --theme-byline-size:       0.9rem;
+
+  --theme-color-bg:    #1a1520;
+  --theme-color-text:  #ede9fe;
+  --theme-color-muted: #a78bfa;
+
+  --theme-color-bar-border:  #7c3aed;
+  --theme-color-soft-border: #4c3a6e;
+
+  --theme-color-btn-bg:       #7c3aed;
+  --theme-color-btn-hover:    #6d28d9;
+  --theme-color-btn-disabled: #4c3a6e;
+  --theme-button-tracking:    0.08em;
+
+  --theme-color-btn2-bg:     #1e1728;
+  --theme-color-btn2-text:   #ede9fe;
+  --theme-color-btn2-border: #7c3aed;
+  --theme-color-btn2-hover:  #2d1f5e;
+
+  --theme-color-clear-fg:       #7c5aad;
+  --theme-color-clear-hover-fg: #a78bfa;
+
+  --theme-color-cell-bg:     #1e1728;
+  --theme-color-cell-stroke: #4c3a6e;
+  --theme-color-cell-text:   #ffffff;
+
+  --theme-color-highlight:       #2d1f5e;
+  --theme-color-band-even:       #221b2e;
+  /* skeleton keeps no distinct even-band active shade: leave
+     --theme-color-highlight-band-even at its default (= --theme-color-highlight). */
+  --theme-color-active:          #3b1f6e;
+  --theme-color-active-stroke:   #9333ea;
+  --theme-color-clue-hover:      #2d1f5e;
+  --theme-color-secondary-entry: #261840;
+
+  --theme-color-secondary-active:        #2a1060;
+  --theme-color-secondary-active-stroke: #7c3aed;
+
+  --theme-color-correct-bg:     #14532d;
+  --theme-color-correct-stroke: #16a34a;
+  --theme-color-correct-text:   #4ade80;
+
+  --theme-color-circle:      #6d28d9;
+  --theme-color-curl:        #6d28d9;
+  --theme-color-cell-center: #0d0b12;
+
+  --theme-color-instructions: var(--theme-color-text);
+
+  --theme-color-overlay:         transparent;
+  --theme-color-congrats-bg:     #14532d;
+  --theme-color-congrats-border: #16a34a;
+  --theme-color-congrats-text:   #4ade80;
+
+  --theme-color-wrong-bg:     #3d1515;
+  --theme-color-wrong-border: #dc2626;
+  --theme-color-wrong-text:   #fca5a5;
+
+  --theme-color-danger: #ef4444;
+}

@@ -1,0 +1,16 @@
+kind: snake-charmer
+title: Test N=8 (circle)
+shape: circle
+entries:
+  - clue: Cry of surprise
+    length: 2
+  - clue: Battery size
+    length: 3
+  - clue: Ship's rank
+    length: 4
+  - clue: Garden tool
+    length: 3
+  - clue: Dance move
+    length: 4
+hashed: true
+boardHash: 55b4bc63c48a895b18e0041a2ddf67cade138aed18f6fc23db797747b49a3b8b

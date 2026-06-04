@@ -1,0 +1,81 @@
+kind: spiral
+title: Spiral
+author: Greg Poulos
+date: '2026'
+instructions: 'Answers from the "Inward" clue list should be entered starting at the outermost cell of the puzzle (cell #1) spiraling toward the center of the grid; answers from the "Outward" clue list should be likewise entered starting from the innermost cell and spiralling outward.'
+inward:
+  - clue: Indian flatbread
+    styles:
+      circle:
+        - 0
+    length: 4
+  - clue: Jeter or Jacobi
+    length: 5
+  - clue: Guitar pedal that generates a spectral glide
+    length: 6
+  - clue: Sylvester's nemesis, south of the border
+    length: 6
+  - clue: Major snowboard manufacturer
+    styles:
+      circle:
+        - 4
+    length: 6
+  - clue: Tetragrammaton
+    length: 4
+  - clue: Jo March or Scout Finch, notably
+    styles:
+      circle:
+        - 0
+    length: 6
+  - clue: Steak sauce with shallot, black pepper, and tarragon
+    styles:
+      circle:
+        - 5
+    length: 9
+  - clue: Creator of "Everyone I Have Ever Slept With 1963–1995"
+    styles:
+      circle:
+        - 0
+    length: 10
+  - clue: Father of the Princes in the Tower
+    styles:
+      circle:
+        - 0
+    length: 8
+  - clue: Isabelle who starred in "The Story of Adele H."
+    length: 6
+  - clue: Camera mode typically symbolized with a flower icon
+    length: 5
+  - clue: Phish hook?
+    length: 3
+outward:
+  - clue: Largest of the Balearic Islands
+    length: 7
+  - clue: Featured artist on Grande's "Side to Side"
+    length: 5
+  - clue: Painter of "The Death of Marat"
+    length: 5
+  - clue: Unwashed jeans fabric
+    length: 8
+  - clue: Moment of respite, so to speak
+    length: 3
+  - clue: Adjective for a coordinate plane or a dualist
+    length: 9
+  - clue: Addison who first gained fame on TikTok
+    length: 3
+  - clue: What the extra "B" is supposed to stand for in Homer's "BBBQ"
+    length: 4
+  - clue: Silkworm imago
+    length: 4
+  - clue: Something I can't see, often
+    length: 6
+  - clue: Actress, activist, and longtime partner of Ossie Davis
+    length: 7
+  - clue: '"Oh, hell!"'
+    length: 5
+  - clue: Street vendor
+    length: 6
+  - clue: Emacs or vi, for example
+    length: 6
+hashed: true
+boardHash: fe6d78f4e1901af8a8f9d373090f815dd2edd887147b0becdc37a0d484bdbc03

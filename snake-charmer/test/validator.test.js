@@ -108,16 +108,15 @@ test('validate: error when ring size is less than 8', () => {
 test('validate: error when total cells not divisible by loops', () => {
   const p = {
     kind: 'snake-charmer', title: 'T',
-    loops: 3,
     entries: [
       { clue: 'A', answer: 'ABCDE' },
-      { clue: 'B', answer: 'ABCDE' },
-      { clue: 'C', answer: 'ABCD' },
+      { clue: 'B', answer: 'FGHIJ' },
+      { clue: 'C', answer: 'KLM' },
     ],
   };
-  // 5+5+4=14, loops=3 → 14%3 !== 0
+  // 5+5+3=13, default loops=2 → 13%2 !== 0
   const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('divisible') || e.includes('loops')));
+  assert.ok(errors.some(e => e.includes('divisible')));
 });
 
 test('validate: error when answers fail period constraint', () => {
@@ -140,8 +139,9 @@ test('validate: explicit loops:2 is accepted', () => {
   assert.deepEqual(validate(p), { errors: [], warnings: [] });
 });
 
-test('validate: loops:3 accepted when puzzle satisfies period-3 constraint', () => {
-  // concat must have period 8: 'abcdefghabcdefghabcdefgh' (24 cells, loops=3, ringSize=8)
+test('validate: loops:3 is rejected — multi-loop (>2) is not yet supported', () => {
+  // Even a puzzle that satisfies the period-3 constraint is rejected: the browser
+  // engine only handles loops=2. Multi-loop is a planned future feature (see TODOS.md).
   const p = {
     kind: 'snake-charmer', title: 'T',
     loops: 3,
@@ -151,7 +151,8 @@ test('validate: loops:3 accepted when puzzle satisfies period-3 constraint', () 
       { clue: 'C', answer: 'ABCDEFGH' },
     ],
   };
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('loops')));
 });
 
 test('validate: shape omitted is accepted', () => {
@@ -171,19 +172,20 @@ test('validate: error when shape is an unrecognized value', () => {
   assert.ok(errors.some(e => e.includes('"shape"')));
 });
 
-test('validate: hashed:true is accepted', () => {
+test('validate: hashed: in source puzzle is rejected', () => {
   const p = valid();
   p.hashed = true;
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
+  assert.ok(validate(p).errors.some(e => e.includes('"hashed:"')));
 });
 
-test('validate: hashed:false is accepted (default)', () => {
+test('validate: hashed: in muddled puzzle does not produce a hashed: error', () => {
   const p = valid();
-  p.hashed = false;
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
+  p.hashed = true;
+  p.boardHash = 'any';
+  assert.ok(!validate(p).errors.some(e => e.includes('"hashed:"')));
 });
 
-test('validate: error when loops is not a positive integer >= 2', () => {
+test('validate: error when loops is less than 2', () => {
   const p = valid();
   p.loops = 1;
   const { errors } = validate(p);
@@ -339,4 +341,71 @@ test('validate: error when instructions is whitespace only', () => {
   p.instructions = '   ';
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('"instructions"')));
+});
+
+// ── muddled mode ──────────────────────────────────────────────────────────────
+
+// Minimal valid muddled snake-charmer: 4 entries, total=16 cells, ringSize=8
+function validMuddled() {
+  return {
+    kind: 'snake-charmer', title: 'Muddled Puzzle',
+    hashed: true, boardHash: 'any-hash',
+    entries: [
+      { clue: 'One',   length: 2 },
+      { clue: 'Two',   length: 6 },
+      { clue: 'Three', length: 2 },
+      { clue: 'Four',  length: 6 },
+    ],
+  };
+}
+
+test('validate: muddled puzzle passes with a skip warning', () => {
+  const { errors, warnings } = validate(validMuddled());
+  assert.deepEqual(errors, []);
+  assert.ok(warnings.some(w => w.includes('muddled')));
+});
+
+test('validate: muddled — length-based structural checks still enforced (total not divisible by loops)', () => {
+  const p = validMuddled();
+  p.entries[0].length = 3;  // total=17, not divisible by 2
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('divisible')));
+});
+
+test('validate: muddled — error when entry missing length', () => {
+  const p = validMuddled();
+  delete p.entries[0].length;
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('entries[0]')));
+});
+
+test('validate: muddled — answer: entry rejected with a use-length-not-answer message', () => {
+  const p = validMuddled();
+  p.entries[0] = { clue: 'One', answer: 'AB' };  // answer: in a muddled puzzle is not allowed
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('length:, not answer:')));
+});
+
+test('validate: muddled entries without boardHash rejected', () => {
+  const p = validMuddled();
+  delete p.boardHash;
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.includes('boardHash')));
+});
+
+test('validate: ring-equality check skipped in muddled mode', () => {
+  // Entries with only length: — if letters were known they might fail ring-equality;
+  // validator must not attempt the check and must return no errors.
+  // (3 entries required by structural minimum; total=24, ringSize=8, all even/>=8.)
+  const p = {
+    kind: 'snake-charmer', title: 'T',
+    hashed: true, boardHash: 'h',
+    entries: [
+      { clue: 'a', length: 8 },
+      { clue: 'b', length: 8 },
+      { clue: 'c', length: 8 },
+    ],
+  };
+  const { errors } = validate(p);
+  assert.deepEqual(errors, []);
 });
