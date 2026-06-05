@@ -42,14 +42,13 @@ const PRINT_BASE_MARKER = 'color: inherit';
 // override the values, but never the comment).
 const THEME_BASE_MARKER = 'theme-base: neutral defaults';
 
-test('composeThemeCss: broadsheet bundle stacks base, tool base, theme-base, tokens, components, tool theme, print base, tool print in cascade order', () => {
+test('composeThemeCss: broadsheet bundle stacks base, tool base, theme-base, tokens, components, print base, tool print in cascade order', () => {
   const css = composeThemeCss(COMPOSE_FIXTURE, 'broadsheet');
   assert.ok(css.includes('box-sizing'),          'shared base missing');
   assert.ok(css.includes('.tool-base'),          'tool base missing');
   assert.ok(css.includes(THEME_BASE_MARKER),     'theme-base missing');
   assert.ok(css.includes('#f9f7f1'),             'broadsheet token value missing');
   assert.ok(css.includes('.cell.active-entry'),  'theme-components missing');
-  assert.ok(css.includes('.tool-theme'),         'tool theme missing');
   assert.ok(css.includes(PRINT_BASE_MARKER),     'shared print base missing');
   assert.ok(css.includes('.tool-print'),         'tool print missing');
   // Order
@@ -57,8 +56,7 @@ test('composeThemeCss: broadsheet bundle stacks base, tool base, theme-base, tok
   assert.ok(css.indexOf('.tool-base')         < css.indexOf(THEME_BASE_MARKER));
   assert.ok(css.indexOf(THEME_BASE_MARKER)    < css.indexOf('#f9f7f1'));
   assert.ok(css.indexOf('#f9f7f1')            < css.indexOf('.cell.active-entry'));
-  assert.ok(css.indexOf('.cell.active-entry') < css.indexOf('.tool-theme'));
-  assert.ok(css.indexOf('.tool-theme')        < css.indexOf(PRINT_BASE_MARKER));
+  assert.ok(css.indexOf('.cell.active-entry') < css.indexOf(PRINT_BASE_MARKER));
   assert.ok(css.indexOf(PRINT_BASE_MARKER)    < css.indexOf('.tool-print'));
   // Skeleton's palette must not bleed into broadsheet
   assert.ok(!css.includes('#1a1520'),            'skeleton token value must be absent');
@@ -69,7 +67,6 @@ test('composeThemeCss: skeleton bundle uses skeleton tokens + shared neutral lay
   assert.ok(css.includes(THEME_BASE_MARKER),    'theme-base missing');
   assert.ok(css.includes('#1a1520'),            'skeleton token value missing');
   assert.ok(css.includes('.cell.active-entry'), 'theme-components missing');
-  assert.ok(css.includes('.tool-theme'),        'tool theme missing');
   assert.ok(css.includes(PRINT_BASE_MARKER),    'shared print base missing');
   assert.ok(!css.includes('#f9f7f1'),           'broadsheet token value must be absent');
 });
@@ -83,7 +80,6 @@ test('composeThemeCss: a token-only theme drops in with no per-tool CSS and no J
     assert.ok(css.includes('#abcdef'),            'drop-in token value missing');
     assert.ok(css.includes(THEME_BASE_MARKER),    'theme-base missing');
     assert.ok(css.includes('.cell.active-entry'), 'theme-components missing');
-    assert.ok(css.includes('.tool-theme'),        'shared tool.css missing');
     assert.ok(!css.includes('#f9f7f1'),           'broadsheet palette must not bleed');
     assert.ok(!css.includes('#1a1520'),           'skeleton palette must not bleed');
   } finally {

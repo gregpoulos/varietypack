@@ -320,12 +320,7 @@ function prevRingPos(pos, total) {
     })();
 
     // Navigation keys work even when focus has left the hidden input (e.g. after
-    // clicking outside the puzzle). Skip when a button has focus so loop-toggle
-    // clicks don't interfere, and skip when the document itself isn't focused
-    // (e.g. browser URL bar) so we don't swallow system shortcuts.
-    document.addEventListener('keydown', e => {
-      if (!document.hasFocus()) return;
-      if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+    setupKeydown(e => {
       const ringPos = activeRingPos;
       if (e.key === 'Backspace') {
         e.preventDefault();
@@ -417,20 +412,9 @@ function prevRingPos(pos, total) {
       () => hiddenInput.focus({ preventScroll: true })
     );
 
-    congratsOverlay.addEventListener('click', e => {
-      if (e.target === congratsOverlay) {
-        congratsDismissed = true;
-        congratsOverlay.hidden = true;
-        hiddenInput.focus({ preventScroll: true });
-      }
-    });
-
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && !congratsOverlay.hidden) {
-        congratsDismissed = true;
-        congratsOverlay.hidden = true;
-        hiddenInput.focus({ preventScroll: true });
-      }
+    setupCongratsOverlay(congratsOverlay, () => {
+      congratsDismissed = true;
+      hiddenInput.focus({ preventScroll: true });
     });
 
     // ── Restore & focus ─────────────────────────────────────────────────────────

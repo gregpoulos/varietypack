@@ -3,7 +3,7 @@
   --theme-font-body:    'Courier New', Courier, monospace;
   --theme-font-display: Impact, 'Arial Black', sans-serif;
   --theme-font-button:  Impact, 'Arial Black', sans-serif;
-  --theme-font-cell:    'Courier New', Courier, monospace;
+  --theme-font-cell:    system-ui, -apple-system, sans-serif;
 
   --theme-color-header-rule: #7c3aed;
   --theme-title-tracking:    0.06em;
@@ -25,7 +25,6 @@
   --theme-button-tracking:    0.08em;
 
   --theme-color-btn2-bg:     #1e1728;
-  --theme-color-btn2-text:   #ede9fe;
   --theme-color-btn2-border: #7c3aed;
   --theme-color-btn2-hover:  #2d1f5e;
 

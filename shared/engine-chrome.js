@@ -1,11 +1,12 @@
 // Shared browser-engine "chrome": the UI-surround logic that is identical across
 // every puzzle tool's engine.js — byline, instructions, the two-click Clear
-// button, scroll-key forwarding, and the localStorage save/restore/clear
-// scaffolding. Each engine calls these from inside its own init(); the
-// tool-specific cores (SVG rendering, navigation, syncUI, answer checking) stay
-// in the engine. Injected into the HTML bundle as browser globals by
-// getSharedBundle(); the dual-mode guard at the bottom keeps the pattern
-// consistent with the other shared/ files even though no Node code requires it.
+// button, scroll-key forwarding, the localStorage save/restore/clear scaffolding,
+// the shared keydown guard wrapper, and the congrats-overlay dismiss handlers.
+// Each engine calls these from inside its own init(); the tool-specific cores
+// (SVG rendering, navigation, syncUI, answer checking) stay in the engine.
+// Injected into the HTML bundle as browser globals by getSharedBundle(); the
+// dual-mode guard at the bottom keeps the pattern consistent with the other
+// shared/ files even though no Node code requires it.
 
 // author + date → `.byline`. Missing pieces are simply omitted; an empty result
 // leaves the element blank.
@@ -127,9 +128,41 @@ function setupStorage(key, { cellCount, getState, applyState }) {
   return { saveState, restoreState, clearState };
 }
 
+// Wraps a tool's keydown handler with the guards shared by every engine: hasFocus,
+// Cmd/Ctrl+Arrow history navigation, generic Cmd/Ctrl passthrough, and BUTTON
+// focus skip. The tool-specific handler receives the event only when all guards
+// pass.
+function setupKeydown(handler) {
+  document.addEventListener('keydown', e => {
+    if (!document.hasFocus()) return;
+    if (e.metaKey && e.key === 'ArrowLeft') { history.back(); return; }
+    if (e.metaKey && e.key === 'ArrowRight') { history.forward(); return; }
+    if (e.metaKey || e.ctrlKey) return;
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+    handler(e);
+  });
+}
+
+// Wires the two congrats-overlay dismiss paths: backdrop click and Escape key.
+// Calls `onDismiss` on either; the engine sets its congratsDismissed flag and
+// restores focus there.
+function setupCongratsOverlay(overlay, onDismiss) {
+  function dismiss() {
+    overlay.hidden = true;
+    onDismiss();
+  }
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) dismiss();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !overlay.hidden) dismiss();
+  });
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     renderByline, renderInstructions, setupClearButton,
     scrollByKey, storageKey, setupStorage, flashWrong,
+    setupKeydown, setupCongratsOverlay,
   };
 }

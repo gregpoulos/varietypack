@@ -1,5 +1,5 @@
 /* theme-components: every tool-agnostic selector, driven entirely by --theme-*.
-   Prepended before each tool's themes/tool.css, which may override any rule here.
+   Per-tool namespaced sections live at the bottom (body class hook: .tool-<name>).
 
    SVG cell states (.cell.active-entry / .cell.active-cell) live here safely:
    marching-bands' band rules use :where() (specificity 0,1,0) so these 0,2,0
@@ -37,10 +37,21 @@ h1.title {
   border-bottom: 1px solid var(--theme-color-bar-border);
 }
 
-#instructions       { color: var(--theme-color-instructions); }
+#instructions {
+  color:         var(--theme-color-instructions);
+  font-size:     var(--theme-instructions-size);
+  line-height:   1.5;
+  margin-bottom: 20px;
+}
 #instructions p + p { margin-top: 0.6em; }
 
 .clue-item { border-radius: var(--theme-clue-radius); }
+
+.clue-section h2 {
+  color:          var(--theme-color-text);
+  border-bottom:  1px solid var(--theme-color-soft-border);
+  padding-bottom: 4px;
+}
 
 /* Primary button */
 #check-btn {
@@ -68,6 +79,21 @@ h1.title {
 #clear-btn:hover { color: var(--theme-color-clear-hover-fg); border-color: var(--theme-color-clear-hover-fg); }
 #clear-btn.armed { color: var(--theme-color-danger);         border-color: var(--theme-color-danger); }
 
+/* Puzzle toggle (direction / mode / loop) */
+.puzzle-toggle { border: 1px solid var(--theme-color-btn2-border); }
+.toggle-opt {
+  font-family:    var(--theme-font-button);
+  font-size:      0.9rem;
+  font-weight:    bold;
+  padding:        6px 16px;
+  background:     var(--theme-color-btn2-bg);
+  color:          var(--theme-color-muted);
+  letter-spacing: 0.04em;
+}
+.toggle-opt:not(:last-child)   { border-right: 1px solid var(--theme-color-btn2-border); }
+.toggle-opt.active             { background: var(--theme-color-btn-bg); color: var(--theme-color-btn-text); cursor: default; }
+.toggle-opt:not(.active):hover { background: var(--theme-color-btn2-hover); }
+
 /* SVG cell states */
 .cell              { fill: var(--theme-color-cell-bg); stroke: var(--theme-color-cell-stroke); stroke-width: 0.5; }
 .cell.active-entry { fill: var(--theme-color-highlight); }
@@ -77,8 +103,12 @@ h1.title {
 
 .style-circle { fill: none; stroke: var(--theme-color-circle); stroke-width: 1; }
 
+/* No font-size on .cell-letter or .cell-num: Spiral sizes these dynamically as SVG
+   presentation attributes; a CSS font-size overrides them silently. Per-tool sizes
+   live in the namespaced sections below. */
 .cell-letter         { font-family: var(--theme-font-cell); fill: var(--theme-color-cell-text); }
 .cell-letter.correct { fill: var(--theme-color-correct-text); }
+.cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 
 /* Congrats modal (centered in the shared #congrats-overlay from base.css) */
 #congrats-overlay { background: var(--theme-color-overlay); }
@@ -98,4 +128,67 @@ h1.title {
   text-align:     center;
   letter-spacing: 0.04em;
   animation:      congrats-pop 200ms ease-out;
+}
+
+#done-wrong {
+  margin-top:     20px;
+  padding:        16px 24px;
+  border-radius:  var(--theme-card-radius);
+  background:     var(--theme-color-wrong-bg);
+  border:         2px solid var(--theme-color-wrong-border);
+  color:          var(--theme-color-wrong-text);
+  font-size:      1.05rem;
+  font-weight:    bold;
+  text-align:     center;
+  letter-spacing: 0.04em;
+}
+
+/* ── Per-tool selectors (body class hook: .tool-<name>) ─────────────────────
+   Each tool's <body> carries a class like .tool-snake-charmer so these rules
+   scope to the right tool without a separate per-tool CSS file. */
+
+/* Snake Charmer */
+.tool-snake-charmer .cell-num    { font-size: 9px; }
+.tool-snake-charmer .cell-letter { font-size: 14px; }
+.tool-snake-charmer .cell.secondary-entry { fill: var(--theme-color-secondary-entry); }
+.tool-snake-charmer .cell.active-cell.secondary-entry {
+  fill:         var(--theme-color-secondary-active);
+  stroke:       var(--theme-color-secondary-active-stroke);
+  stroke-width: 1.5;
+}
+/* Hover first so active/secondary overrides it at equal or higher specificity. */
+.tool-snake-charmer .clue-item { margin-bottom: 5px; font-size: 0.88rem; line-height: 1.4; padding: 2px 6px 2px 2px; }
+.tool-snake-charmer .clue-item:hover           { background: var(--theme-color-clue-hover); }
+.tool-snake-charmer .clue-item.active-clue     { background: var(--theme-color-active); }
+.tool-snake-charmer .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
+.tool-snake-charmer .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
+
+/* Marching Bands — band fills are unnamespaced to keep :where() specificity
+   below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive. */
+.cell:where(.band-even) { fill: var(--theme-color-band-even); }
+.cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
+.cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
+.tool-marching-bands .cell-letter { font-size: 14px; }
+.tool-marching-bands .band-label  { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
+.tool-marching-bands .row-label   { font-family: var(--theme-font-cell); color: var(--theme-color-text); }
+.tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
+.tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
+.tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
+.tool-marching-bands .clue-group.secondary-clue { background: var(--theme-color-secondary-entry); }
+
+/* Spiral — no .cell-letter font-size (see comment above). */
+.tool-spiral .clue-item { padding: 2px 6px 2px 2px; }
+.tool-spiral .clue-item:hover           { background: var(--theme-color-clue-hover); }
+.tool-spiral .clue-item.active-clue     { background: var(--theme-color-active); }
+.tool-spiral .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
+.tool-spiral .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
+.tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
+.tool-spiral #direction-chevron { stroke: var(--theme-color-active-stroke); stroke-width: 0.9; opacity: 0.5; }
+.tool-spiral .active-clue-dir {
+  font-size:      0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color:          var(--theme-color-muted);
+  opacity:        0.6;
+  flex-shrink:    0;
 }

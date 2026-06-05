@@ -47,24 +47,19 @@ const SHARED_DIR = path.join(__dirname, '..');
 // Assembles the full inlined stylesheet for a tool build, in cascade order:
 //   shared base → shared header → tool base
 //   → theme-base (neutral --theme-* defaults) → <theme>-tokens (overrides)
-//   → theme-components (tool-agnostic, var-driven)
-//   → tool themes/tool.css (optional, tool-specific) → shared print → tool print.
+//   → theme-components (tool-agnostic + per-tool namespaced rules)
+//   → shared print → tool print.
 // Adding a theme = drop a <theme>-tokens.css here and list it in VALID_THEMES;
 // no branch in this function.
 function composeThemeCss(templateDir, theme) {
   const shared = (rel) => fs.readFileSync(path.join(SHARED_DIR, rel), 'utf8');
   const tool   = (rel) => fs.readFileSync(path.join(templateDir, rel), 'utf8');
-  const toolOptional = (rel) => {
-    const p = path.join(templateDir, rel);
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') + '\n' : '';
-  };
 
   return shared('base.css') + '\n' + shared('base-header.css') + '\n'
     + tool('base.css') + '\n'
     + shared('themes/theme-base.css') + '\n'
     + shared(`themes/${theme}-tokens.css`) + '\n'
     + shared('themes/theme-components.css') + '\n'
-    + toolOptional('themes/tool.css')
     + shared('themes/print-base.css') + '\n'
     + tool('print.css');
 }

@@ -1,0 +1,2423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spiral</title>
+  <style>*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.4; }
+
+.clue-item {
+  font-size: 0.875rem;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.cell        { cursor: pointer; }
+.cell-letter { pointer-events: none; text-anchor: middle; dominant-baseline: middle; font-weight: bold; }
+.cell-num    { pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
+.style-circle { pointer-events: none; }
+
+#controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+button:disabled { opacity: 0.4; cursor: default; }
+
+#clear-btn::after {
+  content: 'Sure?';
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+#hidden-input {
+  position: fixed;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.puzzle-toggle { display: flex; border-radius: 4px; overflow: hidden; }
+.puzzle-toggle .toggle-opt { border-radius: 0; border: none; flex: 1; white-space: nowrap; }
+.toggle-opt { user-select: none; cursor: pointer; }
+
+#congrats-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+/* The `hidden` attribute is UA-origin `display: none`, which the author
+   `display: flex` above overrides — restate the hide at higher specificity. */
+#congrats-overlay[hidden] { display: none; }
+
+@keyframes flash-wrong {
+  0%   { opacity: 1; }
+  20%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+.flash-wrong-overlay {
+  fill: #ef9a9a;
+  pointer-events: none;
+  animation: flash-wrong 600ms ease-out forwards;
+}
+
+.puzzle-header { margin-bottom: 16px; }
+h1.title { font-size: 1.5rem; font-weight: bold; line-height: 1; }
+.byline  { font-size: 0.875rem; margin-top: 4px; }
+
+body { padding-top: 56px; }
+
+#active-clue-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 5px 16px 4px;
+}
+
+.active-clue-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+#active-clue-secondary {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.active-clue-num {
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.active-clue-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.puzzle-main {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 0 16px 20px;
+}
+
+
+#instructions {
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#grid-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+#spiral-svg {
+  max-width: min(100%, 500px);
+  height: auto;
+  display: block;
+}
+
+button {
+  padding: 7px 18px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+
+.puzzle-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(500px, 100%) minmax(0, 1fr);
+  grid-template-areas: "left center right";
+  gap: 0 32px;
+  align-items: start;
+}
+
+.puzzle-center        { grid-area: center; }
+.clue-section-inward  { grid-area: left; }
+.clue-section-outward { grid-area: right; }
+
+.puzzle-center {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (max-width: 880px) {
+  .puzzle-body {
+    display: block;
+  }
+  .clue-section-inward,
+  .clue-section-outward {
+    margin-top: 24px;
+  }
+}
+
+.clue-section h2 {
+  font-size: 1rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.clue-item {
+  display: flex;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.clue-range {
+  min-width: 5em;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.clue-item.correct .clue-text {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+#direction-chevron { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+
+/* theme-base: neutral defaults — every --theme-* var a theme can override.
+   A theme's <name>-tokens.css need only override what differs from these. */
+:root {
+  /* Fonts */
+  --theme-font-body:    system-ui, -apple-system, sans-serif;
+  --theme-font-display: var(--theme-font-body);
+  --theme-font-button:  var(--theme-font-body);
+  --theme-font-cell:    var(--theme-font-body);
+
+  /* Masthead / title / byline */
+  --theme-color-header-rule: #cccccc;
+  --theme-title-tracking:    normal;
+  --theme-title-transform:   none;
+  --theme-color-title:       var(--theme-color-text);
+  --theme-byline-style:      normal;
+  --theme-byline-size:       0.875rem;
+
+  /* Page */
+  --theme-color-bg:    #ffffff;
+  --theme-color-text:  #111111;
+  --theme-color-muted: #555555;
+
+  /* Bars / borders */
+  --theme-color-bar-border:  #cccccc;
+  --theme-color-soft-border: #cccccc;
+
+  /* Primary button */
+  --theme-color-btn-bg:       #333333;
+  --theme-color-btn-text:     #ffffff;
+  --theme-color-btn-hover:    #555555;
+  --theme-color-btn-disabled: #999999;
+  --theme-button-tracking:    0.05em;
+
+  /* Secondary / toggle button colors */
+  --theme-color-btn2-bg:     #eeeeee;
+  --theme-color-btn2-border: #aaaaaa;
+  --theme-color-btn2-hover:  #e0e0e0;
+
+  /* Clear button */
+  --theme-color-clear-fg:       #999999;
+  --theme-color-clear-hover-fg: #333333;
+
+  /* Grid cells */
+  --theme-color-cell-bg:     #ffffff;
+  --theme-color-cell-stroke: #999999;
+  --theme-color-cell-text:   #111111;
+
+  /* Cell / clue states */
+  --theme-color-highlight:            #deeeff;
+  --theme-color-band-even:            var(--theme-color-cell-bg);
+  --theme-color-highlight-band-even:  var(--theme-color-highlight);
+  --theme-color-active:               #b8d4f5;
+  --theme-color-active-stroke:        #1e5799;
+  --theme-color-clue-hover:           #eeeeee;
+  --theme-color-secondary-entry:      #f0f0f0;
+  --theme-clue-radius:                2px;
+
+  /* Snake-charmer-specific secondary-active cell */
+  --theme-color-secondary-active:        #7aaed8;
+  --theme-color-secondary-active-stroke: #3a72a8;
+
+  /* Correct */
+  --theme-color-correct-bg:     #c8e6c9;
+  --theme-color-correct-stroke: #4caf50;
+  --theme-color-correct-text:   #1a6e22;
+
+  /* Decorations */
+  --theme-color-circle:      #cccccc;
+  --theme-color-curl:        #aaaaaa;
+  --theme-color-cell-center: #222222;
+
+  /* Instructions */
+  --theme-color-instructions: var(--theme-color-muted);
+  --theme-instructions-size:  0.85rem;
+
+  /* Congrats / overlay */
+  --theme-color-overlay:         rgba(0, 0, 0, 0.45);
+  --theme-color-congrats-bg:     #2e7d32;
+  --theme-color-congrats-border: #1b5e20;
+  --theme-color-congrats-text:   #ffffff;
+  --theme-card-radius:           10px;
+
+  /* Done-wrong */
+  --theme-color-wrong-bg:     #fff3e0;
+  --theme-color-wrong-border: #e65100;
+  --theme-color-wrong-text:   var(--theme-color-text);
+
+  /* Danger */
+  --theme-color-danger: #b91c1c;
+}
+
+/* Broadsheet theme — newspaper palette. Overrides theme-base defaults. */
+:root {
+  --theme-font-body:    Georgia, 'Times New Roman', serif;
+  --theme-font-display: Georgia, 'Times New Roman', serif;
+  --theme-font-button:  Georgia, 'Times New Roman', serif;
+  --theme-font-cell:    Georgia, 'Times New Roman', serif;
+
+  --theme-color-header-rule: #222222;
+  --theme-title-tracking:    0.08em;
+  --theme-title-transform:   uppercase;
+  --theme-byline-style:      italic;
+
+  --theme-color-bg:    #f9f7f1;
+  --theme-color-text:  #111111;
+  --theme-color-muted: #555555;
+
+  --theme-color-bar-border:  #bbbbbb;
+  --theme-color-soft-border: #bbbbbb;
+
+  --theme-color-btn-bg:       #222222;
+  --theme-color-btn-hover:    #444444;
+  --theme-color-btn-disabled: #999999;
+  --theme-button-tracking:    0.05em;
+
+  --theme-color-btn2-bg:     #f0ece0;
+  --theme-color-btn2-border: #aaaaaa;
+  --theme-color-btn2-hover:  #e4e0d4;
+
+  --theme-color-clear-fg:       #999999;
+  --theme-color-clear-hover-fg: #333333;
+
+  --theme-color-cell-bg:     #ffffff;
+  --theme-color-cell-stroke: #999999;
+  --theme-color-cell-text:   #111111;
+
+  --theme-color-highlight:           #deeeff;
+  --theme-color-band-even:           #e8e8e8;
+  --theme-color-highlight-band-even: #cee2f8;
+  --theme-color-active:              #b8d4f5;
+  --theme-color-active-stroke:       #1e5799;
+  --theme-color-clue-hover:          #ede8d2;
+  --theme-color-secondary-entry:     #f5f0e0;
+
+  --theme-color-secondary-active:        #7aaed8;
+  --theme-color-secondary-active-stroke: #3a72a8;
+
+  --theme-color-correct-bg:     #c8e6c9;
+  --theme-color-correct-stroke: #4caf50;
+  --theme-color-correct-text:   #1a6e22;
+
+  --theme-color-circle:      #bbbbbb;
+  --theme-color-curl:        #aaaaaa;
+  --theme-color-cell-center: #222222;
+
+  --theme-color-congrats-bg:     #2e7d32;
+  --theme-color-congrats-border: #1b5e20;
+  --theme-color-congrats-text:   #ffffff;
+
+  --theme-color-wrong-bg:     #fff3e0;
+  --theme-color-wrong-border: #e65100;
+
+  --theme-color-danger: #b91c1c;
+}
+
+/* theme-components: every tool-agnostic selector, driven entirely by --theme-*.
+   Per-tool namespaced sections live at the bottom (body class hook: .tool-<name>).
+
+   SVG cell states (.cell.active-entry / .cell.active-cell) live here safely:
+   marching-bands' band rules use :where() (specificity 0,1,0) so these 0,2,0
+   rules always win regardless of source order. */
+
+body {
+  background:   var(--theme-color-bg);
+  color:        var(--theme-color-text);
+  font-family:  var(--theme-font-body);
+}
+
+/* Masthead */
+.puzzle-header {
+  text-align:     center;
+  border-bottom:  2px solid var(--theme-color-header-rule);
+  padding-bottom: 12px;
+  margin-bottom:  24px;
+}
+h1.title {
+  font-family:     var(--theme-font-display);
+  font-size:       2rem;
+  letter-spacing:  var(--theme-title-tracking);
+  text-transform:  var(--theme-title-transform);
+  color:           var(--theme-color-title);
+}
+.byline {
+  font-style: var(--theme-byline-style);
+  color:      var(--theme-color-muted);
+  font-size:  var(--theme-byline-size);
+  margin-top: 6px;
+}
+
+#active-clue-bar {
+  background:    var(--theme-color-bg);
+  border-bottom: 1px solid var(--theme-color-bar-border);
+}
+
+#instructions {
+  color:         var(--theme-color-instructions);
+  font-size:     var(--theme-instructions-size);
+  line-height:   1.5;
+  margin-bottom: 20px;
+}
+#instructions p + p { margin-top: 0.6em; }
+
+.clue-item { border-radius: var(--theme-clue-radius); }
+
+.clue-section h2 {
+  color:          var(--theme-color-text);
+  border-bottom:  1px solid var(--theme-color-soft-border);
+  padding-bottom: 4px;
+}
+
+/* Primary button */
+#check-btn {
+  font-family:    var(--theme-font-button);
+  font-size:      0.95rem;
+  padding:        8px 22px;
+  background:     var(--theme-color-btn-bg);
+  color:          var(--theme-color-btn-text);
+  border:         none;
+  letter-spacing: var(--theme-button-tracking);
+}
+#check-btn:hover:not(:disabled) { background: var(--theme-color-btn-hover); }
+#check-btn:disabled { background: var(--theme-color-btn-disabled); cursor: default; }
+
+/* Clear button */
+#clear-btn {
+  font-family:    var(--theme-font-button);
+  font-size:      0.8rem;
+  padding:        5px 12px;
+  background:     transparent;
+  color:          var(--theme-color-clear-fg);
+  border-color:   var(--theme-color-clear-fg);
+  letter-spacing: var(--theme-button-tracking);
+}
+#clear-btn:hover { color: var(--theme-color-clear-hover-fg); border-color: var(--theme-color-clear-hover-fg); }
+#clear-btn.armed { color: var(--theme-color-danger);         border-color: var(--theme-color-danger); }
+
+/* Puzzle toggle (direction / mode / loop) */
+.puzzle-toggle { border: 1px solid var(--theme-color-btn2-border); }
+.toggle-opt {
+  font-family:    var(--theme-font-button);
+  font-size:      0.9rem;
+  font-weight:    bold;
+  padding:        6px 16px;
+  background:     var(--theme-color-btn2-bg);
+  color:          var(--theme-color-muted);
+  letter-spacing: 0.04em;
+}
+.toggle-opt:not(:last-child)   { border-right: 1px solid var(--theme-color-btn2-border); }
+.toggle-opt.active             { background: var(--theme-color-btn-bg); color: var(--theme-color-btn-text); cursor: default; }
+.toggle-opt:not(.active):hover { background: var(--theme-color-btn2-hover); }
+
+/* SVG cell states */
+.cell              { fill: var(--theme-color-cell-bg); stroke: var(--theme-color-cell-stroke); stroke-width: 0.5; }
+.cell.active-entry { fill: var(--theme-color-highlight); }
+.cell.active-cell  { fill: var(--theme-color-active); stroke: var(--theme-color-active-stroke); stroke-width: 1.5; }
+.cell.correct      { fill: var(--theme-color-correct-bg); stroke: var(--theme-color-correct-stroke); stroke-width: 0.5; }
+.cell.correct.active-cell { stroke: var(--theme-color-active-stroke); stroke-width: 1.5; }
+
+.style-circle { fill: none; stroke: var(--theme-color-circle); stroke-width: 1; }
+
+/* No font-size on .cell-letter or .cell-num: Spiral sizes these dynamically as SVG
+   presentation attributes; a CSS font-size overrides them silently. Per-tool sizes
+   live in the namespaced sections below. */
+.cell-letter         { font-family: var(--theme-font-cell); fill: var(--theme-color-cell-text); }
+.cell-letter.correct { fill: var(--theme-color-correct-text); }
+.cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
+
+/* Congrats modal (centered in the shared #congrats-overlay from base.css) */
+#congrats-overlay { background: var(--theme-color-overlay); }
+
+@keyframes congrats-pop {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+#congrats {
+  background:     var(--theme-color-congrats-bg);
+  color:          var(--theme-color-congrats-text);
+  border:         2px solid var(--theme-color-congrats-border);
+  border-radius:  var(--theme-card-radius);
+  padding:        28px 36px;
+  font-size:      1.2rem;
+  font-weight:    bold;
+  text-align:     center;
+  letter-spacing: 0.04em;
+  animation:      congrats-pop 200ms ease-out;
+}
+
+#done-wrong {
+  margin-top:     20px;
+  padding:        16px 24px;
+  border-radius:  var(--theme-card-radius);
+  background:     var(--theme-color-wrong-bg);
+  border:         2px solid var(--theme-color-wrong-border);
+  color:          var(--theme-color-wrong-text);
+  font-size:      1.05rem;
+  font-weight:    bold;
+  text-align:     center;
+  letter-spacing: 0.04em;
+}
+
+/* ── Per-tool selectors (body class hook: .tool-<name>) ─────────────────────
+   Each tool's <body> carries a class like .tool-snake-charmer so these rules
+   scope to the right tool without a separate per-tool CSS file. */
+
+/* Snake Charmer */
+.tool-snake-charmer .cell-num    { font-size: 9px; }
+.tool-snake-charmer .cell-letter { font-size: 14px; }
+.tool-snake-charmer .cell.secondary-entry { fill: var(--theme-color-secondary-entry); }
+.tool-snake-charmer .cell.active-cell.secondary-entry {
+  fill:         var(--theme-color-secondary-active);
+  stroke:       var(--theme-color-secondary-active-stroke);
+  stroke-width: 1.5;
+}
+/* Hover first so active/secondary overrides it at equal or higher specificity. */
+.tool-snake-charmer .clue-item { margin-bottom: 5px; font-size: 0.88rem; line-height: 1.4; padding: 2px 6px 2px 2px; }
+.tool-snake-charmer .clue-item:hover           { background: var(--theme-color-clue-hover); }
+.tool-snake-charmer .clue-item.active-clue     { background: var(--theme-color-active); }
+.tool-snake-charmer .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
+.tool-snake-charmer .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
+
+/* Marching Bands — band fills are unnamespaced to keep :where() specificity
+   below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive. */
+.cell:where(.band-even) { fill: var(--theme-color-band-even); }
+.cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
+.cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
+.tool-marching-bands .cell-letter { font-size: 14px; }
+.tool-marching-bands .band-label  { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
+.tool-marching-bands .row-label   { font-family: var(--theme-font-cell); color: var(--theme-color-text); }
+.tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
+.tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
+.tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
+.tool-marching-bands .clue-group.secondary-clue { background: var(--theme-color-secondary-entry); }
+
+/* Spiral — no .cell-letter font-size (see comment above). */
+.tool-spiral .clue-item { padding: 2px 6px 2px 2px; }
+.tool-spiral .clue-item:hover           { background: var(--theme-color-clue-hover); }
+.tool-spiral .clue-item.active-clue     { background: var(--theme-color-active); }
+.tool-spiral .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
+.tool-spiral .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
+.tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
+.tool-spiral #direction-chevron { stroke: var(--theme-color-active-stroke); stroke-width: 0.9; opacity: 0.5; }
+.tool-spiral .active-clue-dir {
+  font-size:      0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color:          var(--theme-color-muted);
+  opacity:        0.6;
+  flex-shrink:    0;
+}
+
+/* Shared print resets — the final override layer for printing, applied to
+   every tool and theme. Forces plain ink on white regardless of solve state
+   or theme. Declarations are !important by design so this layer wins over any
+   theme rule regardless of its selector specificity or source order — a tool
+   theme that later adds a higher-specificity highlight rule can't silently
+   defeat the print reset. A tool's print.css that needs to override a reset
+   here must also use !important. */
+@media print {
+  /* Hide interaction chrome */
+  #active-clue-bar,
+  #controls,
+  #congrats-overlay,
+  #done-wrong { display: none !important; }
+
+  body { padding-top: 0 !important; }
+  h1.title { font-size: 1.4rem !important; }
+
+  /* Cell state → plain ink on white */
+  .cell,
+  .cell.active-entry,
+  .cell.active-cell,
+  .cell.correct { fill: #fff !important; stroke: #999 !important; stroke-width: 1 !important; }
+  .cell-letter.correct { fill: #111 !important; }
+
+  /* Clue highlight / strike-through reset */
+  .clue-item.active-clue,
+  .clue-item.secondary-entry { background: transparent !important; }
+  .clue-item.correct .clue-text { color: inherit !important; text-decoration: none !important; }
+}
+
+/* Shared print resets live in shared/themes/print-base.css (concatenated just
+   before this file). Only spiral-specific print rules belong here. */
+@media print {
+  #direction-chevron { display: none; }
+
+  .puzzle-main   { padding: 8px 16px; }
+  .puzzle-header { margin-bottom: 8px; }
+  .byline        { font-size: 0.8rem; }
+  #instructions  { font-size: 0.8rem; margin-bottom: 8px; }
+  .clue-section h2 { margin-bottom: 4px; }
+  .clue-item     { padding: 1px 4px; }
+  .cell-num      { fill: #555; }
+
+  .puzzle-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "center center"
+      "left   right";
+  }
+  .clue-section { break-inside: avoid; }
+}
+
+@media print and (orientation: landscape) {
+  .puzzle-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) min(40%, 500px) minmax(0, 1fr);
+    grid-template-areas: "left center right";
+    gap: 0 16px;
+  }
+}
+</style>
+</head>
+<body class="tool-spiral">
+  <div id="active-clue-bar">
+    <div class="active-clue-row" id="active-clue-primary">
+      <span class="active-clue-dir"></span>
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+    <div class="active-clue-row" id="active-clue-secondary">
+      <span class="active-clue-dir"></span>
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+  </div>
+  <div class="puzzle-main">
+    <div class="puzzle-header">
+      <h1 class="title"></h1>
+      <p class="byline"></p>
+    </div>
+    <div id="instructions" hidden></div>
+    <div class="puzzle-body">
+      <div class="puzzle-center">
+        <div id="grid-wrap">
+          <svg id="spiral-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div id="controls">
+          <div id="direction-toggle" class="puzzle-toggle" role="group" aria-label="Direction">
+            <button class="toggle-opt" data-dir="inward">Inward</button>
+            <button class="toggle-opt" data-dir="outward">Outward</button>
+          </div>
+          <button id="check-btn" type="button" disabled>Check Cell</button>
+          <button id="clear-btn" type="button">Clear</button>
+        </div>
+        <div id="congrats-overlay" hidden>
+          <div id="congrats" aria-live="polite">Puzzle solved!</div>
+        </div>
+        <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
+      </div>
+      <div class="clue-section clue-section-inward">
+        <h2>Inward</h2>
+        <ul id="inward-clues"></ul>
+      </div>
+      <div class="clue-section clue-section-outward">
+        <h2>Outward</h2>
+        <ul id="outward-clues"></ul>
+      </div>
+    </div>
+  </div>
+  <input id="hidden-input" type="text" autocomplete="off" autocorrect="off"
+         autocapitalize="off" spellcheck="false" aria-hidden="true">
+  <script>
+    window.PUZZLE_DATA = {
+  "title": "Spiral",
+  "author": "Greg Poulos",
+  "date": "2026",
+  "hashed": false,
+  "inward": [
+    {
+      "clue": "Indian flatbread",
+      "length": 4,
+      "styles": {
+        "circle": [
+          0
+        ]
+      }
+    },
+    {
+      "clue": "Jeter or Jacobi",
+      "length": 5
+    },
+    {
+      "clue": "Guitar pedal that generates a spectral glide",
+      "length": 6
+    },
+    {
+      "clue": "Sylvester’s nemesis south of the border",
+      "length": 6
+    },
+    {
+      "clue": "Major snowboard manufacturer",
+      "length": 6,
+      "styles": {
+        "circle": [
+          4
+        ]
+      }
+    },
+    {
+      "clue": "Tetragrammaton",
+      "length": 4
+    },
+    {
+      "clue": "Jo March or Scout Finch, notably",
+      "length": 6,
+      "styles": {
+        "circle": [
+          0
+        ]
+      }
+    },
+    {
+      "clue": "Steak sauce with shallot, black pepper, and tarragon",
+      "length": 9,
+      "styles": {
+        "circle": [
+          5
+        ]
+      }
+    },
+    {
+      "clue": "Creator of “Everyone I Have Ever Slept With 1963–1995”",
+      "length": 10,
+      "styles": {
+        "circle": [
+          0
+        ]
+      }
+    },
+    {
+      "clue": "Father of the Princes in the Tower",
+      "length": 8,
+      "styles": {
+        "circle": [
+          0
+        ]
+      }
+    },
+    {
+      "clue": "Isabelle who starred in “The Story of Adele H.”",
+      "length": 6
+    },
+    {
+      "clue": "Camera mode typically symbolized with a flower icon",
+      "length": 5
+    },
+    {
+      "clue": "Phish hook?",
+      "length": 3
+    }
+  ],
+  "outward": [
+    {
+      "clue": "Largest of the Balearic Islands",
+      "length": 7
+    },
+    {
+      "clue": "Featured artist on Grande’s “Side to Side”",
+      "length": 5
+    },
+    {
+      "clue": "Painter of “The Death of Marat”",
+      "length": 5
+    },
+    {
+      "clue": "Unwashed jeans fabric",
+      "length": 8
+    },
+    {
+      "clue": "Moment of respite, so to speak",
+      "length": 3
+    },
+    {
+      "clue": "Adjective for a coordinate plane or a dualist",
+      "length": 9
+    },
+    {
+      "clue": "Addison who first gained fame on TikTok",
+      "length": 3
+    },
+    {
+      "clue": "What the extra “B” is supposed to stand for in Homer’s “BBBQ”",
+      "length": 4
+    },
+    {
+      "clue": "Silkworm imago",
+      "length": 4
+    },
+    {
+      "clue": "Something I can’t see, often",
+      "length": 6
+    },
+    {
+      "clue": "Actress, activist, and longtime partner of Ossie Davis",
+      "length": 7
+    },
+    {
+      "clue": "“Oh, hell!”",
+      "length": 5
+    },
+    {
+      "clue": "Street vendor",
+      "length": 6
+    },
+    {
+      "clue": "Emacs or vi, for example",
+      "length": 6
+    }
+  ],
+  "cells": [
+    {
+      "cell_number": 1,
+      "theta_start": -1.5707963267948966,
+      "theta_end": -1.3769327520441699,
+      "r_inner_start": 217,
+      "r_outer_start": 265,
+      "r_inner_end": 215.51899138206193,
+      "r_outer_end": 263.5189913820619
+    },
+    {
+      "cell_number": 2,
+      "theta_start": -1.3769327520441699,
+      "theta_end": -1.1818704680668661,
+      "r_inner_start": 215.51899138206193,
+      "r_outer_start": 263.5189913820619,
+      "r_inner_end": 214.02882530018434,
+      "r_outer_end": 262.02882530018434
+    },
+    {
+      "cell_number": 3,
+      "theta_start": -1.1818704680668661,
+      "theta_end": -0.9855870076246113,
+      "r_inner_start": 214.02882530018434,
+      "r_outer_start": 262.02882530018434,
+      "r_inner_end": 212.52933011730912,
+      "r_outer_end": 260.5293301173091
+    },
+    {
+      "cell_number": 4,
+      "theta_start": -0.9855870076246113,
+      "theta_end": -0.7880591936670216,
+      "r_inner_start": 212.52933011730912,
+      "r_outer_start": 260.5293301173091,
+      "r_inner_end": 211.02032877381376,
+      "r_outer_end": 259.02032877381373
+    },
+    {
+      "cell_number": 5,
+      "theta_start": -0.7880591936670216,
+      "theta_end": -0.589263107563806,
+      "r_inner_start": 211.02032877381376,
+      "r_outer_start": 259.02032877381373,
+      "r_inner_end": 209.5016385448226,
+      "r_outer_end": 257.50163854482264
+    },
+    {
+      "cell_number": 6,
+      "theta_start": -0.589263107563806,
+      "theta_end": -0.3891740554865264,
+      "r_inner_start": 209.5016385448226,
+      "r_outer_start": 257.50163854482264,
+      "r_inner_end": 207.9730707833824,
+      "r_outer_end": 255.9730707833824
+    },
+    {
+      "cell_number": 7,
+      "theta_start": -0.3891740554865264,
+      "theta_end": -0.187766532806648,
+      "r_inner_start": 207.9730707833824,
+      "r_outer_start": 255.9730707833824,
+      "r_inner_end": 206.4344306484834,
+      "r_outer_end": 254.4344306484834
+    },
+    {
+      "cell_number": 8,
+      "theta_start": -0.187766532806648,
+      "theta_end": 0.014985813634999623,
+      "r_inner_start": 206.4344306484834,
+      "r_outer_start": 254.4344306484834,
+      "r_inner_end": 204.88551681681932,
+      "r_outer_end": 252.88551681681932
+    },
+    {
+      "cell_number": 9,
+      "theta_start": 0.014985813634999623,
+      "theta_end": 0.21911022554489246,
+      "r_inner_start": 204.88551681681932,
+      "r_outer_start": 252.88551681681932,
+      "r_inner_end": 203.32612117708243,
+      "r_outer_end": 251.32612117708243
+    },
+    {
+      "cell_number": 10,
+      "theta_start": 0.21911022554489246,
+      "theta_end": 0.42463487565111735,
+      "r_inner_start": 203.32612117708243,
+      "r_outer_start": 251.32612117708243,
+      "r_inner_end": 201.75602850548378,
+      "r_outer_end": 249.75602850548378
+    },
+    {
+      "cell_number": 11,
+      "theta_start": 0.42463487565111735,
+      "theta_end": 0.6315889128222234,
+      "r_inner_start": 201.75602850548378,
+      "r_outer_start": 249.75602850548378,
+      "r_inner_end": 200.17501612107074,
+      "r_outer_end": 248.17501612107074
+    },
+    {
+      "cell_number": 12,
+      "theta_start": 0.6315889128222234,
+      "theta_end": 0.8400025100345565,
+      "r_inner_start": 200.17501612107074,
+      "r_outer_start": 248.17501612107074,
+      "r_inner_end": 198.58285351928325,
+      "r_outer_end": 246.58285351928325
+    },
+    {
+      "cell_number": 13,
+      "theta_start": 0.8400025100345565,
+      "theta_end": 1.049906915410856,
+      "r_inner_start": 198.58285351928325,
+      "r_outer_start": 246.58285351928325,
+      "r_inner_end": 196.9793019820479,
+      "r_outer_end": 244.9793019820479
+    },
+    {
+      "cell_number": 14,
+      "theta_start": 1.049906915410856,
+      "theta_end": 1.2613345065737636,
+      "r_inner_start": 196.9793019820479,
+      "r_outer_start": 244.9793019820479,
+      "r_inner_end": 195.36411416254762,
+      "r_outer_end": 243.36411416254762
+    },
+    {
+      "cell_number": 15,
+      "theta_start": 1.2613345065737636,
+      "theta_end": 1.4743188485810665,
+      "r_inner_start": 195.36411416254762,
+      "r_outer_start": 243.36411416254762,
+      "r_inner_end": 193.73703364262906,
+      "r_outer_end": 241.73703364262906
+    },
+    {
+      "cell_number": 16,
+      "theta_start": 1.4743188485810665,
+      "theta_end": 1.6888947557352365,
+      "r_inner_start": 193.73703364262906,
+      "r_outer_start": 241.73703364262906,
+      "r_inner_end": 192.0977944606124,
+      "r_outer_end": 240.0977944606124
+    },
+    {
+      "cell_number": 17,
+      "theta_start": 1.6888947557352365,
+      "theta_end": 1.9050983575884746,
+      "r_inner_start": 192.0977944606124,
+      "r_outer_start": 240.0977944606124,
+      "r_inner_end": 190.44612060705006,
+      "r_outer_end": 238.44612060705006
+    },
+    {
+      "cell_number": 18,
+      "theta_start": 1.9050983575884746,
+      "theta_end": 2.122967169496416,
+      "r_inner_start": 190.44612060705006,
+      "r_outer_start": 238.44612060705006,
+      "r_inner_end": 188.7817254857361,
+      "r_outer_end": 236.7817254857361
+    },
+    {
+      "cell_number": 19,
+      "theta_start": 2.122967169496416,
+      "theta_end": 2.342540168109293,
+      "r_inner_start": 188.7817254857361,
+      "r_outer_start": 236.7817254857361,
+      "r_inner_end": 187.10431133699615,
+      "r_outer_end": 235.10431133699615
+    },
+    {
+      "cell_number": 20,
+      "theta_start": 2.342540168109293,
+      "theta_end": 2.5638578722292342,
+      "r_inner_start": 187.10431133699615,
+      "r_outer_start": 235.10431133699615,
+      "r_inner_end": 185.41356861998312,
+      "r_outer_end": 233.41356861998312
+    },
+    {
+      "cell_number": 21,
+      "theta_start": 2.5638578722292342,
+      "theta_end": 2.7869624295070325,
+      "r_inner_start": 185.41356861998312,
+      "r_outer_start": 233.41356861998312,
+      "r_inner_end": 183.70917535036278,
+      "r_outer_end": 231.70917535036278
+    },
+    {
+      "cell_number": 22,
+      "theta_start": 2.7869624295070325,
+      "theta_end": 3.0118977095018433,
+      "r_inner_start": 183.70917535036278,
+      "r_outer_start": 231.70917535036278,
+      "r_inner_end": 181.99079638938997,
+      "r_outer_end": 229.99079638938997
+    },
+    {
+      "cell_number": 23,
+      "theta_start": 3.0118977095018433,
+      "theta_end": 3.2387094036835915,
+      "r_inner_start": 181.99079638938997,
+      "r_outer_start": 229.99079638938997,
+      "r_inner_end": 180.25808267994648,
+      "r_outer_end": 228.25808267994648
+    },
+    {
+      "cell_number": 24,
+      "theta_start": 3.2387094036835915,
+      "theta_end": 3.467445133021328,
+      "r_inner_start": 180.25808267994648,
+      "r_outer_start": 228.25808267994648,
+      "r_inner_end": 178.5106704246266,
+      "r_outer_end": 226.5106704246266
+    },
+    {
+      "cell_number": 25,
+      "theta_start": 3.467445133021328,
+      "theta_end": 3.698154563872353,
+      "r_inner_start": 178.5106704246266,
+      "r_outer_start": 226.5106704246266,
+      "r_inner_end": 176.74818020040942,
+      "r_outer_end": 224.74818020040942
+    },
+    {
+      "cell_number": 26,
+      "theta_start": 3.698154563872353,
+      "theta_end": 3.9308895329678775,
+      "r_inner_start": 176.74818020040942,
+      "r_outer_start": 224.74818020040942,
+      "r_inner_end": 174.97021600383857,
+      "r_outer_end": 222.97021600383857
+    },
+    {
+      "cell_number": 27,
+      "theta_start": 3.9308895329678775,
+      "theta_end": 4.165704182382661,
+      "r_inner_start": 174.97021600383857,
+      "r_outer_start": 222.97021600383857,
+      "r_inner_end": 173.17636421993043,
+      "r_outer_end": 221.17636421993043
+    },
+    {
+      "cell_number": 28,
+      "theta_start": 4.165704182382661,
+      "theta_end": 4.4026551054801795,
+      "r_inner_start": 173.17636421993043,
+      "r_outer_start": 221.17636421993043,
+      "r_inner_end": 171.36619250723487,
+      "r_outer_end": 219.36619250723487
+    },
+    {
+      "cell_number": 29,
+      "theta_start": 4.4026551054801795,
+      "theta_end": 4.641801504943305,
+      "r_inner_start": 171.36619250723487,
+      "r_outer_start": 219.36619250723487,
+      "r_inner_end": 169.53924859056997,
+      "r_outer_end": 217.53924859056997
+    },
+    {
+      "cell_number": 30,
+      "theta_start": 4.641801504943305,
+      "theta_end": 4.88320536413552,
+      "r_inner_start": 169.53924859056997,
+      "r_outer_start": 217.53924859056997,
+      "r_inner_end": 167.69505895191872,
+      "r_outer_end": 215.69505895191872
+    },
+    {
+      "cell_number": 31,
+      "theta_start": 4.88320536413552,
+      "theta_end": 5.126931633192063,
+      "r_inner_start": 167.69505895191872,
+      "r_outer_start": 215.69505895191872,
+      "r_inner_end": 165.8331274087974,
+      "r_outer_end": 213.8331274087974
+    },
+    {
+      "cell_number": 32,
+      "theta_start": 5.126931633192063,
+      "theta_end": 5.3730484314172395,
+      "r_inner_start": 165.8331274087974,
+      "r_outer_start": 213.8331274087974,
+      "r_inner_end": 163.952933568054,
+      "r_outer_end": 211.952933568054
+    },
+    {
+      "cell_number": 33,
+      "theta_start": 5.3730484314172395,
+      "theta_end": 5.621627267767289,
+      "r_inner_start": 163.952933568054,
+      "r_outer_start": 211.952933568054,
+      "r_inner_end": 162.0539311415032,
+      "r_outer_end": 210.0539311415032
+    },
+    {
+      "cell_number": 34,
+      "theta_start": 5.621627267767289,
+      "theta_end": 5.87274328143212,
+      "r_inner_start": 162.0539311415032,
+      "r_outer_start": 210.0539311415032,
+      "r_inner_end": 160.1355461080173,
+      "r_outer_end": 208.1355461080173
+    },
+    {
+      "cell_number": 35,
+      "theta_start": 5.87274328143212,
+      "theta_end": 6.126475504799344,
+      "r_inner_start": 160.1355461080173,
+      "r_outer_start": 208.1355461080173,
+      "r_inner_end": 158.19717470462894,
+      "r_outer_end": 206.19717470462894
+    },
+    {
+      "cell_number": 36,
+      "theta_start": 6.126475504799344,
+      "theta_end": 6.38290715139687,
+      "r_inner_start": 158.19717470462894,
+      "r_outer_start": 206.19717470462894,
+      "r_inner_end": 156.2381812268118,
+      "r_outer_end": 204.2381812268118
+    },
+    {
+      "cell_number": 37,
+      "theta_start": 6.38290715139687,
+      "theta_end": 6.642125931773549,
+      "r_inner_start": 156.2381812268118,
+      "r_outer_start": 204.2381812268118,
+      "r_inner_end": 154.25789561533017,
+      "r_outer_end": 202.25789561533017
+    },
+    {
+      "cell_number": 38,
+      "theta_start": 6.642125931773549,
+      "theta_end": 6.904224400700539,
+      "r_inner_start": 154.25789561533017,
+      "r_outer_start": 202.25789561533017,
+      "r_inner_end": 152.25561080381587,
+      "r_outer_end": 200.25561080381587
+    },
+    {
+      "cell_number": 39,
+      "theta_start": 6.904224400700539,
+      "theta_end": 7.16930033957053,
+      "r_inner_start": 152.25561080381587,
+      "r_outer_start": 200.25561080381587,
+      "r_inner_end": 150.23057979745343,
+      "r_outer_end": 198.23057979745343
+    },
+    {
+      "cell_number": 40,
+      "theta_start": 7.16930033957053,
+      "theta_end": 7.437457178451737,
+      "r_inner_start": 150.23057979745343,
+      "r_outer_start": 198.23057979745343,
+      "r_inner_end": 148.18201244872506,
+      "r_outer_end": 196.18201244872506
+    },
+    {
+      "cell_number": 41,
+      "theta_start": 7.437457178451737,
+      "theta_end": 7.708804462935582,
+      "r_inner_start": 148.18201244872506,
+      "r_outer_start": 196.18201244872506,
+      "r_inner_end": 146.10907189095707,
+      "r_outer_end": 194.10907189095707
+    },
+    {
+      "cell_number": 42,
+      "theta_start": 7.708804462935582,
+      "theta_end": 7.983458371722259,
+      "r_inner_start": 146.10907189095707,
+      "r_outer_start": 194.10907189095707,
+      "r_inner_end": 144.01087058425736,
+      "r_outer_end": 192.01087058425736
+    },
+    {
+      "cell_number": 43,
+      "theta_start": 7.983458371722259,
+      "theta_end": 8.26154229184274,
+      "r_inner_start": 144.01087058425736,
+      "r_outer_start": 192.01087058425736,
+      "r_inner_end": 141.88646592114316,
+      "r_outer_end": 189.88646592114316
+    },
+    {
+      "cell_number": 44,
+      "theta_start": 8.26154229184274,
+      "theta_end": 8.543187459551207,
+      "r_inner_start": 141.88646592114316,
+      "r_outer_start": 189.88646592114316,
+      "r_inner_end": 139.7348553304832,
+      "r_outer_end": 187.7348553304832
+    },
+    {
+      "cell_number": 45,
+      "theta_start": 8.543187459551207,
+      "theta_end": 8.828533676278385,
+      "r_inner_start": 139.7348553304832,
+      "r_outer_start": 187.7348553304832,
+      "r_inner_end": 137.55497080801754,
+      "r_outer_end": 185.55497080801754
+    },
+    {
+      "cell_number": 46,
+      "theta_start": 8.828533676278385,
+      "theta_end": 9.11773011066384,
+      "r_inner_start": 137.55497080801754,
+      "r_outer_start": 185.55497080801754,
+      "r_inner_end": 135.3456727892817,
+      "r_outer_end": 183.3456727892817
+    },
+    {
+      "cell_number": 47,
+      "theta_start": 9.11773011066384,
+      "theta_end": 9.410936199646935,
+      "r_inner_start": 135.3456727892817,
+      "r_outer_start": 183.3456727892817,
+      "r_inner_end": 133.10574326577927,
+      "r_outer_end": 181.10574326577927
+    },
+    {
+      "cell_number": 48,
+      "theta_start": 9.410936199646935,
+      "theta_end": 9.708322663971705,
+      "r_inner_start": 133.10574326577927,
+      "r_outer_start": 181.10574326577927,
+      "r_inner_end": 130.83387802709564,
+      "r_outer_end": 178.83387802709564
+    },
+    {
+      "cell_number": 49,
+      "theta_start": 9.708322663971705,
+      "theta_end": 10.010072656352243,
+      "r_inner_start": 130.83387802709564,
+      "r_outer_start": 178.83387802709564,
+      "r_inner_end": 128.52867788956104,
+      "r_outer_end": 176.52867788956104
+    },
+    {
+      "cell_number": 50,
+      "theta_start": 10.010072656352243,
+      "theta_end": 10.31638306408261,
+      "r_inner_start": 128.52867788956104,
+      "r_outer_start": 176.52867788956104,
+      "r_inner_end": 126.18863874504348,
+      "r_outer_end": 174.18863874504348
+    },
+    {
+      "cell_number": 51,
+      "theta_start": 10.31638306408261,
+      "theta_end": 10.627465992227645,
+      "r_inner_start": 126.18863874504348,
+      "r_outer_start": 174.18863874504348,
+      "r_inner_end": 123.8121402302059,
+      "r_outer_end": 171.8121402302059
+    },
+    {
+      "cell_number": 52,
+      "theta_start": 10.627465992227645,
+      "theta_end": 10.943550458917327,
+      "r_inner_start": 123.8121402302059,
+      "r_outer_start": 171.8121402302059,
+      "r_inner_end": 121.39743277541095,
+      "r_outer_end": 169.39743277541095
+    },
+    {
+      "cell_number": 53,
+      "theta_start": 10.943550458917327,
+      "theta_end": 11.264884340974882,
+      "r_inner_start": 121.39743277541095,
+      "r_outer_start": 169.39743277541095,
+      "r_inner_end": 118.94262274121726,
+      "r_outer_end": 166.94262274121726
+    },
+    {
+      "cell_number": 54,
+      "theta_start": 11.264884340974882,
+      "theta_end": 11.591736616516998,
+      "r_inner_start": 118.94262274121726,
+      "r_outer_start": 166.94262274121726,
+      "r_inner_end": 116.4456552861759,
+      "r_outer_end": 164.4456552861759
+    },
+    {
+      "cell_number": 55,
+      "theta_start": 11.591736616516998,
+      "theta_end": 11.924399961778374,
+      "r_inner_start": 116.4456552861759,
+      "r_outer_start": 164.4456552861759,
+      "r_inner_end": 113.90429452855187,
+      "r_outer_end": 161.90429452855187
+    },
+    {
+      "cell_number": 56,
+      "theta_start": 11.924399961778374,
+      "theta_end": 12.263193772911297,
+      "r_inner_start": 113.90429452855187,
+      "r_outer_start": 161.90429452855187,
+      "r_inner_end": 111.31610046147603,
+      "r_outer_end": 159.31610046147603
+    },
+    {
+      "cell_number": 57,
+      "theta_start": 12.263193772911297,
+      "theta_end": 12.608467700814847,
+      "r_inner_start": 111.31610046147603,
+      "r_outer_start": 159.31610046147603,
+      "r_inner_end": 108.678401948839,
+      "r_outer_end": 156.678401948839
+    },
+    {
+      "cell_number": 58,
+      "theta_start": 12.608467700814847,
+      "theta_end": 12.960605809419297,
+      "r_inner_start": 108.678401948839,
+      "r_outer_start": 156.678401948839,
+      "r_inner_end": 105.98826495833842,
+      "r_outer_end": 153.98826495833842
+    },
+    {
+      "cell_number": 59,
+      "theta_start": 12.960605809419297,
+      "theta_end": 13.320031497037325,
+      "r_inner_start": 105.98826495833842,
+      "r_outer_start": 153.98826495833842,
+      "r_inner_end": 103.242454965125,
+      "r_outer_end": 151.242454965125
+    },
+    {
+      "cell_number": 60,
+      "theta_start": 13.320031497037325,
+      "theta_end": 13.687213358843831,
+      "r_inner_start": 103.242454965125,
+      "r_outer_start": 151.242454965125,
+      "r_inner_end": 100.43739216575587,
+      "r_outer_end": 148.43739216575585
+    },
+    {
+      "cell_number": 61,
+      "theta_start": 13.687213358843831,
+      "theta_end": 14.062672219735825,
+      "r_inner_start": 100.43739216575587,
+      "r_outer_start": 148.43739216575585,
+      "r_inner_end": 97.56909775110243,
+      "r_outer_end": 145.56909775110245
+    },
+    {
+      "cell_number": 62,
+      "theta_start": 14.062672219735825,
+      "theta_end": 14.446989635750386,
+      "r_inner_start": 97.56909775110243,
+      "r_outer_start": 145.56909775110245,
+      "r_inner_end": 94.63312896030139,
+      "r_outer_end": 142.6331289603014
+    },
+    {
+      "cell_number": 63,
+      "theta_start": 14.446989635750386,
+      "theta_end": 14.840818256173604,
+      "r_inner_start": 94.63312896030139,
+      "r_outer_start": 142.6331289603014,
+      "r_inner_end": 91.62449992007338,
+      "r_outer_end": 139.6244999200734
+    },
+    {
+      "cell_number": 64,
+      "theta_start": 14.840818256173604,
+      "theta_end": 15.244894568263357,
+      "r_inner_start": 91.62449992007338,
+      "r_outer_start": 139.6244999200734,
+      "r_inner_end": 88.53758428221286,
+      "r_outer_end": 136.53758428221286
+    },
+    {
+      "cell_number": 65,
+      "theta_start": 15.244894568263357,
+      "theta_end": 15.660054728426042,
+      "r_inner_start": 88.53758428221286,
+      "r_outer_start": 136.53758428221286,
+      "r_inner_end": 85.36599428230656,
+      "r_outer_end": 133.36599428230656
+    },
+    {
+      "cell_number": 66,
+      "theta_start": 15.660054728426042,
+      "theta_end": 16.087254442757022,
+      "r_inner_start": 85.36599428230656,
+      "r_outer_start": 133.36599428230656,
+      "r_inner_end": 82.10242886359194,
+      "r_outer_end": 130.10242886359194
+    },
+    {
+      "cell_number": 67,
+      "theta_start": 16.087254442757022,
+      "theta_end": 16.527594235307774,
+      "r_inner_start": 82.10242886359194,
+      "r_outer_start": 130.10242886359194,
+      "r_inner_end": 78.73848064161538,
+      "r_outer_end": 126.73848064161538
+    },
+    {
+      "cell_number": 68,
+      "theta_start": 16.527594235307774,
+      "theta_end": 16.98235199718186,
+      "r_inner_start": 78.73848064161538,
+      "r_outer_start": 126.73848064161538,
+      "r_inner_end": 75.26438724745532,
+      "r_outer_end": 123.26438724745532
+    },
+    {
+      "cell_number": 69,
+      "theta_start": 16.98235199718186,
+      "theta_end": 17.453025546986325,
+      "r_inner_start": 75.26438724745532,
+      "r_outer_start": 123.26438724745532,
+      "r_inner_end": 71.66870618982378,
+      "r_outer_end": 119.66870618982378
+    },
+    {
+      "cell_number": 70,
+      "theta_start": 17.453025546986325,
+      "theta_end": 17.94138922802349,
+      "r_inner_start": 71.66870618982378,
+      "r_outer_start": 119.66870618982378,
+      "r_inner_end": 67.9378824843701,
+      "r_outer_end": 115.9378824843701
+    },
+    {
+      "cell_number": 71,
+      "theta_start": 17.94138922802349,
+      "theta_end": 18.449570624553566,
+      "r_inner_start": 67.9378824843701,
+      "r_outer_start": 115.9378824843701,
+      "r_inner_end": 64.0556625846051,
+      "r_outer_end": 112.0556625846051
+    },
+    {
+      "cell_number": 72,
+      "theta_start": 18.449570624553566,
+      "theta_end": 18.980156848580158,
+      "r_inner_start": 64.0556625846051,
+      "r_outer_start": 112.0556625846051,
+      "r_inner_end": 60.002282410670915,
+      "r_outer_end": 108.00228241067092
+    },
+    {
+      "cell_number": 73,
+      "theta_start": 18.980156848580158,
+      "theta_end": 19.536345563626192,
+      "r_inner_start": 60.002282410670915,
+      "r_outer_start": 108.00228241067092,
+      "r_inner_end": 55.75331361267865,
+      "r_outer_end": 103.75331361267865
+    },
+    {
+      "cell_number": 74,
+      "theta_start": 19.536345563626192,
+      "theta_end": 20.122166006671677,
+      "r_inner_start": 55.75331361267865,
+      "r_outer_start": 103.75331361267865,
+      "r_inner_end": 51.277975087479916,
+      "r_outer_end": 99.27797508747992
+    },
+    {
+      "cell_number": 75,
+      "theta_start": 20.122166006671677,
+      "theta_end": 20.742813964598696,
+      "r_inner_start": 51.277975087479916,
+      "r_outer_start": 99.27797508747992,
+      "r_inner_end": 46.53657394712911,
+      "r_outer_end": 94.53657394712911
+    },
+    {
+      "cell_number": 76,
+      "theta_start": 20.742813964598696,
+      "theta_end": 21.40518128555683,
+      "r_inner_start": 46.53657394712911,
+      "r_outer_start": 94.53657394712911,
+      "r_inner_end": 41.47646035002401,
+      "r_outer_end": 89.47646035002401
+    },
+    {
+      "cell_number": 77,
+      "theta_start": 21.40518128555683,
+      "theta_end": 22.11873729125969,
+      "r_inner_start": 41.47646035002401,
+      "r_outer_start": 89.47646035002401,
+      "r_inner_end": 36.02529400695906,
+      "r_outer_end": 84.02529400695906
+    },
+    {
+      "cell_number": 78,
+      "theta_start": 22.11873729125969,
+      "theta_end": 22.89709452028898,
+      "r_inner_start": 36.02529400695906,
+      "r_outer_start": 84.02529400695906,
+      "r_inner_end": 30.07908278337561,
+      "r_outer_end": 78.07908278337561
+    }
+  ],
+  "geometry": {
+    "R_HOLE": 25,
+    "R_MAX": 265,
+    "N_TURNS": 4
+  },
+  "letters": [
+    "r",
+    "o",
+    "t",
+    "i",
+    "d",
+    "e",
+    "r",
+    "e",
+    "k",
+    "w",
+    "a",
+    "h",
+    "w",
+    "a",
+    "h",
+    "s",
+    "p",
+    "e",
+    "e",
+    "d",
+    "y",
+    "b",
+    "u",
+    "r",
+    "t",
+    "o",
+    "n",
+    "y",
+    "h",
+    "w",
+    "h",
+    "t",
+    "o",
+    "m",
+    "b",
+    "o",
+    "y",
+    "b",
+    "e",
+    "a",
+    "r",
+    "n",
+    "a",
+    "i",
+    "s",
+    "e",
+    "t",
+    "r",
+    "a",
+    "c",
+    "e",
+    "y",
+    "e",
+    "m",
+    "i",
+    "n",
+    "e",
+    "d",
+    "w",
+    "a",
+    "r",
+    "d",
+    "i",
+    "v",
+    "a",
+    "d",
+    "j",
+    "a",
+    "n",
+    "i",
+    "m",
+    "a",
+    "c",
+    "r",
+    "o",
+    "j",
+    "a",
+    "m"
+  ],
+  "instructions": "Answers from the “Inward” clue list should be entered starting at the outermost cell of the puzzle (cell #1) spiraling toward the center of the grid; answers from the “Outward” clue list should be likewise entered starting from the innermost cell and spiralling outward."
+};
+  </script>
+  <script>function normalize(str) {
+  return str.toLowerCase().replace(/[^a-z]/g, '');
+}
+if (typeof module !== 'undefined') module.exports = normalize;
+
+function sha256hex(str) {
+  const K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ];
+
+  let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+  let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+
+  // UTF-8 encode
+  const bytes = [];
+  for (let i = 0; i < str.length; i++) {
+    let c = str.charCodeAt(i);
+    if (c < 0x80) {
+      bytes.push(c);
+    } else if (c < 0x800) {
+      bytes.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+    } else if (c < 0xd800 || c >= 0xe000) {
+      bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    } else {
+      c = 0x10000 + ((c & 0x3ff) << 10 | (str.charCodeAt(++i) & 0x3ff));
+      bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    }
+  }
+
+  // Pre-processing: padding
+  const bitLen = bytes.length * 8;
+  bytes.push(0x80);
+  while (bytes.length % 64 !== 56) bytes.push(0x00);
+  // Append original length as 64-bit big-endian (high 32 bits always zero for practical inputs)
+  bytes.push(0, 0, 0, 0, (bitLen >>> 24) & 0xff, (bitLen >>> 16) & 0xff, (bitLen >>> 8) & 0xff, bitLen & 0xff);
+
+  // Process 512-bit (64-byte) blocks
+  for (let offset = 0; offset < bytes.length; offset += 64) {
+    const w = new Array(64);
+    for (let i = 0; i < 16; i++) {
+      w[i] = (bytes[offset + i * 4] << 24) | (bytes[offset + i * 4 + 1] << 16) |
+              (bytes[offset + i * 4 + 2] << 8) | bytes[offset + i * 4 + 3];
+    }
+    for (let i = 16; i < 64; i++) {
+      const s0 = (w[i-15] >>> 7 | w[i-15] << 25) ^ (w[i-15] >>> 18 | w[i-15] << 14) ^ (w[i-15] >>> 3);
+      const s1 = (w[i-2] >>> 17 | w[i-2] << 15) ^ (w[i-2] >>> 19 | w[i-2] << 13) ^ (w[i-2] >>> 10);
+      w[i] = (w[i-16] + s0 + w[i-7] + s1) | 0;
+    }
+
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+
+    for (let i = 0; i < 64; i++) {
+      const S1  = (e >>> 6 | e << 26) ^ (e >>> 11 | e << 21) ^ (e >>> 25 | e << 7);
+      const ch  = (e & f) ^ (~e & g);
+      const t1  = (h + S1 + ch + K[i] + w[i]) | 0;
+      const S0  = (a >>> 2 | a << 30) ^ (a >>> 13 | a << 19) ^ (a >>> 22 | a << 10);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2  = (S0 + maj) | 0;
+
+      h = g; g = f; f = e; e = (d + t1) | 0;
+      d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+
+    h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0;
+    h4 = (h4 + e) | 0; h5 = (h5 + f) | 0; h6 = (h6 + g) | 0; h7 = (h7 + h) | 0;
+  }
+
+  return [h0, h1, h2, h3, h4, h5, h6, h7]
+    .map(n => (n >>> 0).toString(16).padStart(8, '0'))
+    .join('');
+}
+if (typeof module !== 'undefined') module.exports = sha256hex;
+
+function isCellCorrect(typed, letter) {
+  return typed.toLowerCase() === letter.toLowerCase();
+}
+if (typeof module !== 'undefined') module.exports = isCellCorrect;
+
+// Shared browser-engine "chrome": the UI-surround logic that is identical across
+// every puzzle tool's engine.js — byline, instructions, the two-click Clear
+// button, scroll-key forwarding, the localStorage save/restore/clear scaffolding,
+// the shared keydown guard wrapper, and the congrats-overlay dismiss handlers.
+// Each engine calls these from inside its own init(); the tool-specific cores
+// (SVG rendering, navigation, syncUI, answer checking) stay in the engine.
+// Injected into the HTML bundle as browser globals by getSharedBundle(); the
+// dual-mode guard at the bottom keeps the pattern consistent with the other
+// shared/ files even though no Node code requires it.
+
+// author + date → `.byline`. Missing pieces are simply omitted; an empty result
+// leaves the element blank.
+function renderByline(data) {
+  const byline = document.querySelector('.byline');
+  if (!byline) return;
+  const parts = [];
+  if (data.author) parts.push('by ' + data.author);
+  if (data.date) parts.push(String(data.date));
+  byline.textContent = parts.join(' · ');
+}
+
+// instructions string → one `<p>` per blank-line-separated paragraph inside
+// `#instructions`, which is revealed (hidden=false) only when content exists.
+function renderInstructions(data) {
+  const el = document.getElementById('instructions');
+  if (!data.instructions || !el) return;
+  data.instructions.split(/(?:\r?\n){2,}/).forEach(para => {
+    const p = document.createElement('p');
+    p.textContent = para.trim();
+    el.appendChild(p);
+  });
+  el.hidden = false;
+}
+
+// Two-click arm/disarm Clear button. First click swaps the label to "Sure?" and
+// adds `.armed` for 3s; a second click within that window calls clearState()
+// and reloads. `refocus` (optional) restores puzzle focus after the arming
+// click so the document keydown BUTTON guard doesn't block the next keystroke.
+function setupClearButton(clearBtn, clearState, refocus) {
+  let armed = false;
+  let timer = null;
+  clearBtn.addEventListener('click', () => {
+    if (!armed) {
+      armed = true;
+      clearBtn.textContent = 'Sure?';
+      clearBtn.classList.add('armed');
+      timer = setTimeout(() => {
+        armed = false;
+        clearBtn.textContent = 'Clear';
+        clearBtn.classList.remove('armed');
+      }, 3000);
+      if (refocus) refocus();
+    } else {
+      clearTimeout(timer);
+      clearState();
+      location.reload();
+    }
+  });
+}
+
+// Page-scroll deltas for keys the puzzles don't otherwise consume. Because the
+// hidden input holds focus, the browser suppresses native scrolling for these,
+// so the engines forward them here. Arrow = one nudge; Page = ~one viewport.
+const SCROLL_DELTAS = {
+  ArrowUp:   () => -80,
+  ArrowDown: () =>  80,
+  PageUp:    () => -window.innerHeight * 0.9,
+  PageDown:  () =>  window.innerHeight * 0.9,
+};
+
+// Scrolls the page for a forwarded scroll key. Returns true when `key` is a
+// scroll key (and the scroll was performed), false otherwise — so a caller that
+// first tries cell navigation (e.g. Marching Bands) can fall through to this
+// only when there is no in-grid target.
+function scrollByKey(key) {
+  const delta = SCROLL_DELTAS[key];
+  if (!delta) return false;
+  window.scrollBy({ top: delta(), behavior: 'auto' });
+  return true;
+}
+
+// Builds the auto-save localStorage key, or null when it would be degenerate.
+// Puzzles without both a title and a date get no auto-save (a `vp:<prefix>:|`
+// key would collide across every untitled/undated puzzle of that type).
+function storageKey(prefix, data) {
+  if (!data.title || !data.date) return null;
+  return 'vp:' + prefix + ':' + data.title + '|' + data.date;
+}
+
+// Flash a cell red to signal a wrong guess without disturbing the cell's own
+// fill or active-state styling. Clones the cell element into `flashLayer` — an
+// overlay <g> the engines paint above the cells but below the letters — relabels
+// the clone `.flash-wrong-overlay` (whose base.css animation fades it out), then
+// removes it once the animation ends. FLASH_WRONG_MS must match that animation's
+// duration in shared/base.css.
+const FLASH_WRONG_MS = 600;
+function flashWrong(cellEl, flashLayer) {
+  const flashEl = cellEl.cloneNode(false);
+  flashEl.removeAttribute('id');
+  flashEl.setAttribute('class', 'flash-wrong-overlay');
+  flashLayer.appendChild(flashEl);
+  setTimeout(() => flashEl.remove(), FLASH_WRONG_MS);
+}
+
+// localStorage save/restore/clear with the shared version + cellCount guard.
+// The saved shape differs per tool, so the tool supplies the variable parts:
+//   getState()      → tool payload merged under { v:1, cellCount } on save
+//   applyState(saved) → applies a payload that passed the version/cellCount guard
+// `key` may be null (see storageKey), in which case all three are no-ops.
+function setupStorage(key, { cellCount, getState, applyState }) {
+  function saveState() {
+    if (!key) return;
+    try {
+      localStorage.setItem(key, JSON.stringify({ v: 1, cellCount, ...getState() }));
+    } catch (_) {}
+  }
+  function restoreState() {
+    if (!key) return;
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(key)); } catch (_) {}
+    if (!saved || saved.v !== 1 || saved.cellCount !== cellCount) return;
+    applyState(saved);
+  }
+  function clearState() {
+    if (!key) return;
+    try { localStorage.removeItem(key); } catch (_) {}
+  }
+  return { saveState, restoreState, clearState };
+}
+
+// Wraps a tool's keydown handler with the guards shared by every engine: hasFocus,
+// Cmd/Ctrl+Arrow history navigation, generic Cmd/Ctrl passthrough, and BUTTON
+// focus skip. The tool-specific handler receives the event only when all guards
+// pass.
+function setupKeydown(handler) {
+  document.addEventListener('keydown', e => {
+    if (!document.hasFocus()) return;
+    if (e.metaKey && e.key === 'ArrowLeft') { history.back(); return; }
+    if (e.metaKey && e.key === 'ArrowRight') { history.forward(); return; }
+    if (e.metaKey || e.ctrlKey) return;
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+    handler(e);
+  });
+}
+
+// Wires the two congrats-overlay dismiss paths: backdrop click and Escape key.
+// Calls `onDismiss` on either; the engine sets its congratsDismissed flag and
+// restores focus there.
+function setupCongratsOverlay(overlay, onDismiss) {
+  function dismiss() {
+    overlay.hidden = true;
+    onDismiss();
+  }
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) dismiss();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !overlay.hidden) dismiss();
+  });
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    renderByline, renderInstructions, setupClearButton,
+    scrollByKey, storageKey, setupStorage, flashWrong,
+    setupKeydown, setupCongratsOverlay,
+  };
+}
+
+/* global window, document */
+(function () {
+  'use strict';
+
+  function init() {
+    // ── Data & constants ────────────────────────────────────────────────────
+    const data       = window.PUZZLE_DATA;
+    const totalCells = data.cells.length;
+
+    // ── Geometry & index maps ────────────────────────────────────────────────
+    const NS = 'http://www.w3.org/2000/svg';
+
+    function svgEl(tag, attrs) {
+      const el = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      return el;
+    }
+
+    function polar(r, a) { return [r * Math.cos(a), r * Math.sin(a)]; }
+    function f(n) { return n.toFixed(3); }
+
+    function cellPath(cell) {
+      const { theta_start: ts, theta_end: te,
+              r_inner_start: ris, r_outer_start: ros,
+              r_inner_end:   rie, r_outer_end:   roe } = cell;
+      const laf       = (te - ts > Math.PI) ? 1 : 0;
+      const r_out_arc = (ros + roe) / 2;
+      const r_in_arc  = (ris + rie) / 2;
+      const [ax, ay] = polar(ris, ts);
+      const [bx, by] = polar(ros, ts);
+      const [cx, cy] = polar(roe, te);
+      const [dx, dy] = polar(rie, te);
+      return `M${f(ax)},${f(ay)} L${f(bx)},${f(by)} ` +
+             `A${f(r_out_arc)},${f(r_out_arc)} 0 ${laf},1 ${f(cx)},${f(cy)} ` +
+             `L${f(dx)},${f(dy)} ` +
+             `A${f(r_in_arc)},${f(r_in_arc)} 0 ${laf},0 ${f(ax)},${f(ay)}Z`;
+    }
+
+    const inwardMap         = {};
+    const inwardEntryCells  = data.inward.map(() => []);
+    let cellPos = 1;
+    data.inward.forEach((entry, i) => {
+      for (let j = 0; j < entry.length; j++) {
+        inwardMap[cellPos] = { entryIndex: i, posInEntry: j };
+        inwardEntryCells[i].push(cellPos);
+        cellPos++;
+      }
+    });
+
+    const outwardMap        = {};
+    const outwardEntryCells = data.outward.map(() => []);
+    cellPos = totalCells;
+    data.outward.forEach((entry, i) => {
+      for (let j = 0; j < entry.length; j++) {
+        outwardMap[cellPos] = { entryIndex: i, posInEntry: j };
+        outwardEntryCells[i].push(cellPos);
+        cellPos--;
+      }
+    });
+
+    // ── State ────────────────────────────────────────────────────────────────
+    let activeCell = 1;
+    let direction  = 'inward';
+    let congratsDismissed = false;
+
+    // ── Logic functions ──────────────────────────────────────────────────────
+    function entryFirstCell(dir, entryIndex) {
+      return dir === 'inward'
+        ? inwardEntryCells[entryIndex][0]
+        : outwardEntryCells[entryIndex][0];
+    }
+
+    function entryLastCell(dir, entryIndex) {
+      const arr = dir === 'inward' ? inwardEntryCells[entryIndex] : outwardEntryCells[entryIndex];
+      return arr[arr.length - 1];
+    }
+
+    function nextInDir(cellNum, dir) {
+      const map     = dir === 'inward' ? inwardMap : outwardMap;
+      const entries = dir === 'inward' ? data.inward : data.outward;
+      const { entryIndex, posInEntry } = map[cellNum];
+      if (posInEntry < entries[entryIndex].length - 1) {
+        return dir === 'inward' ? cellNum + 1 : cellNum - 1;
+      }
+      const next = (entryIndex + 1) % entries.length;
+      return entryFirstCell(dir, next);
+    }
+
+    function prevInDir(cellNum, dir) {
+      const map     = dir === 'inward' ? inwardMap : outwardMap;
+      const entries = dir === 'inward' ? data.inward : data.outward;
+      const { entryIndex, posInEntry } = map[cellNum];
+      if (posInEntry > 0) {
+        return dir === 'inward' ? cellNum - 1 : cellNum + 1;
+      }
+      const prev = (entryIndex - 1 + entries.length) % entries.length;
+      return entryLastCell(dir, prev);
+    }
+
+    function nextEntryFirstCell(dir, cellNum) {
+      const map     = dir === 'inward' ? inwardMap : outwardMap;
+      const entries = dir === 'inward' ? data.inward : data.outward;
+      const next    = (map[cellNum].entryIndex + 1) % entries.length;
+      return entryFirstCell(dir, next);
+    }
+
+    const cellLetters = new Map();
+
+    function getCellLetter(n) { return cellLetters.get(n) || ''; }
+
+    function setCellLetter(n, letter) {
+      if (letter) cellLetters.set(n, letter);
+      else cellLetters.delete(n);
+      letterTexts[n].textContent = letter;
+      cellPaths[n].classList.remove('correct');
+      letterTexts[n].classList.remove('correct');
+    }
+
+    function checkCell() {
+      const n = activeCell;
+      if (isCellCorrect(getCellLetter(n), data.letters[n - 1])) {
+        cellPaths[n].classList.add('correct');
+        letterTexts[n].classList.add('correct');
+      } else {
+        flashWrong(cellPaths[n], flashLayer);
+      }
+      syncUI();
+      saveState();
+      document.getElementById('hidden-input').focus({ preventScroll: true });
+    }
+
+    function checkAllCellsIfFilled() {
+      if (!data.cells.every(c => getCellLetter(c.cell_number) !== '')) return;
+      if (!data.cells.every(c => isCellCorrect(getCellLetter(c.cell_number), data.letters[c.cell_number - 1]))) {
+        syncUI();
+        return;
+      }
+      data.cells.forEach(c => {
+        cellPaths[c.cell_number].classList.add('correct');
+        letterTexts[c.cell_number].classList.add('correct');
+      });
+      syncUI();
+    }
+
+    function checkBoardIfFilled() {
+      if (!data.cells.every(c => getCellLetter(c.cell_number) !== '')) return;
+      const boardStr = inwardEntryCells.flat().map(n => getCellLetter(n)).join('');
+      const boardHash = sha256hex(normalize(boardStr));
+      if (boardHash !== data.boardHash) { syncUI(); return; }
+      data.cells.forEach(c => {
+        cellPaths[c.cell_number].classList.add('correct');
+        letterTexts[c.cell_number].classList.add('correct');
+      });
+      data.inward.forEach((_, i) => {
+        document.querySelector(`[data-direction="inward"][data-entry-index="${i}"]`)
+          ?.classList.add('correct');
+      });
+      data.outward.forEach((_, i) => {
+        document.querySelector(`[data-direction="outward"][data-entry-index="${i}"]`)
+          ?.classList.add('correct');
+      });
+      syncUI();
+    }
+
+    function isSolved() {
+      return data.cells.every(c => cellPaths[c.cell_number].classList.contains('correct'));
+    }
+
+    function inwardRange(i) {
+      const arr = inwardEntryCells[i];
+      return `${arr[0]}–${arr[arr.length - 1]}`;
+    }
+
+    function outwardRange(i) {
+      const cells = outwardEntryCells[i];
+      return `${Math.min(...cells)}–${Math.max(...cells)}`;
+    }
+
+    function renderClues() {
+      const inwardList  = document.getElementById('inward-clues');
+      const outwardList = document.getElementById('outward-clues');
+
+      data.inward.forEach((entry, i) => {
+        const li = document.createElement('li');
+        li.className = 'clue-item';
+        li.dataset.direction  = 'inward';
+        li.dataset.entryIndex = i;
+        const rangeSpan = document.createElement('span');
+        rangeSpan.className = 'clue-range';
+        rangeSpan.textContent = inwardRange(i) + '.';
+        const textSpan = document.createElement('span');
+        textSpan.className = 'clue-text';
+        textSpan.textContent = entry.clue;
+        li.append(rangeSpan, textSpan);
+        li.addEventListener('click', () => {
+          direction  = 'inward';
+          focusCell(inwardEntryCells[i][0]);
+        });
+        inwardList.appendChild(li);
+      });
+
+      data.outward.forEach((entry, i) => {
+        const li = document.createElement('li');
+        li.className = 'clue-item';
+        li.dataset.direction  = 'outward';
+        li.dataset.entryIndex = i;
+        const rangeSpan = document.createElement('span');
+        rangeSpan.className = 'clue-range';
+        rangeSpan.textContent = outwardRange(i) + '.';
+        const textSpan = document.createElement('span');
+        textSpan.className = 'clue-text';
+        textSpan.textContent = entry.clue;
+        li.append(rangeSpan, textSpan);
+        li.addEventListener('click', () => {
+          direction  = 'outward';
+          focusCell(outwardEntryCells[i][0]);
+        });
+        outwardList.appendChild(li);
+      });
+    }
+
+    function focusCell(n) {
+      activeCell = n;
+      document.getElementById('hidden-input').focus({ preventScroll: true });
+      syncUI();
+    }
+
+    function onCellClick(n) {
+      if (n === activeCell) direction = direction === 'inward' ? 'outward' : 'inward';
+      focusCell(n);
+    }
+
+    function syncUI() {
+      document.querySelectorAll('.toggle-opt').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.dir === direction);
+      });
+
+      const curMap      = direction === 'inward' ? inwardMap : outwardMap;
+      const curEntryIdx = curMap[activeCell].entryIndex;
+
+      data.cells.forEach(cell => {
+        const el  = cellPaths[cell.cell_number];
+        const cel = curMap[cell.cell_number];
+        el.classList.toggle('active-entry', !!cel && cel.entryIndex === curEntryIdx);
+        el.classList.toggle('active-cell',  cell.cell_number === activeCell);
+      });
+
+      const oppMap      = direction === 'inward' ? outwardMap : inwardMap;
+      const oppDir      = direction === 'inward' ? 'outward' : 'inward';
+      const oppEntryIdx = oppMap[activeCell].entryIndex;
+
+      document.querySelectorAll('.clue-item').forEach(item => {
+        const itemDir = item.dataset.direction;
+        const itemIdx = Number(item.dataset.entryIndex);
+        item.classList.toggle('active-clue',
+          itemDir === direction && itemIdx === curEntryIdx);
+        item.classList.toggle('secondary-entry',
+          itemDir === oppDir && itemIdx === oppEntryIdx);
+      });
+
+      const curEntries = direction === 'inward' ? data.inward : data.outward;
+      const oppEntries = direction === 'inward' ? data.outward : data.inward;
+      const curRange   = direction === 'inward' ? inwardRange(curEntryIdx) : outwardRange(curEntryIdx);
+      const oppRange   = oppDir === 'inward'    ? inwardRange(oppEntryIdx) : outwardRange(oppEntryIdx);
+      barPrimaryDir.textContent    = direction.charAt(0).toUpperCase() + direction.slice(1);
+      barPrimaryNum.textContent    = curRange + '.';
+      barPrimaryText.textContent   = curEntries[curEntryIdx].clue;
+      barSecondaryDir.textContent  = oppDir.charAt(0).toUpperCase() + oppDir.slice(1);
+      barSecondaryNum.textContent  = oppRange + '.';
+      barSecondaryText.textContent = oppEntries[oppEntryIdx].clue;
+
+      const checkBtn = document.getElementById('check-btn');
+      if (!data.hashed && checkBtn) {
+        checkBtn.disabled = !getCellLetter(activeCell) ||
+          cellPaths[activeCell].classList.contains('correct');
+      }
+
+      // Chevron on leading edge of active cell pointing in direction of travel
+      const ac        = data.cells[activeCell - 1];
+      const isInward  = direction === 'inward';
+      const theta_e   = isInward ? ac.theta_end    : ac.theta_start;
+      const r_inner_e = isInward ? ac.r_inner_end  : ac.r_inner_start;
+      const r_outer_e = isInward ? ac.r_outer_end  : ac.r_outer_start;
+      const [ix, iy]  = polar(r_inner_e, theta_e);
+      const [ox, oy]  = polar(r_outer_e, theta_e);
+      const [mx, my]  = polar((r_inner_e + r_outer_e) / 2, theta_e);
+      const [tsx, tsy] = polar((ac.r_inner_start + ac.r_outer_start) / 2, ac.theta_start);
+      const [tex, tey] = polar((ac.r_inner_end   + ac.r_outer_end)   / 2, ac.theta_end);
+      let tdx = tex - tsx, tdy = tey - tsy;
+      if (!isInward) { tdx = -tdx; tdy = -tdy; }
+      const tlen      = Math.sqrt(tdx * tdx + tdy * tdy);
+      const prot      = (R_MAX - R_HOLE) / (N_TURNS + 1) * 0.15;
+      chevronEl.setAttribute('d',
+        `M${f(ix)},${f(iy)} L${f(mx + tdx/tlen*prot)},${f(my + tdy/tlen*prot)} L${f(ox)},${f(oy)}`);
+
+      const solved = isSolved();
+      const allFilled = data.cells.every(c => getCellLetter(c.cell_number) !== '');
+      if (!congratsDismissed) document.getElementById('congrats-overlay').hidden = !solved;
+      document.getElementById('done-wrong').hidden = !(allFilled && !solved);
+    }
+
+    const { saveState, restoreState, clearState } = setupStorage(storageKey('sp', data), {
+      cellCount: totalCells,
+      getState() {
+        const letters = {};
+        cellLetters.forEach((v, k) => { letters[k] = v; });
+        const correct = [];
+        data.cells.forEach(c => {
+          if (cellPaths[c.cell_number].classList.contains('correct')) correct.push(c.cell_number);
+        });
+        return { letters, correct };
+      },
+      applyState(saved) {
+        Object.entries(saved.letters).forEach(([k, v]) => {
+          const n = Number(k);
+          cellLetters.set(n, v);
+          letterTexts[n].textContent = v;
+        });
+        saved.correct.forEach(n => {
+          cellPaths[n].classList.add('correct');
+          letterTexts[n].classList.add('correct');
+        });
+      },
+    });
+
+    // ── Build SVG ────────────────────────────────────────────────────────────
+    const svg = document.getElementById('spiral-svg');
+
+    const { R_HOLE, R_MAX, N_TURNS } = data.geometry;
+    const PAD = 18;
+    svg.setAttribute('viewBox',
+      `${-(R_MAX + PAD)} ${-(R_MAX + PAD)} ${2 * (R_MAX + PAD)} ${2 * (R_MAX + PAD)}`);
+
+    // Spiral curl: winds inward from the last cell's inner edge, tapering to a point
+    const lastCell       = data.cells[data.cells.length - 1];
+    const curlStartR     = lastCell.r_inner_end;
+    const curlStartTheta = lastCell.theta_end;
+    const curlSteps      = 300;
+    const curlAngle      = 1.75 * 2 * Math.PI;
+    let curlD = '';
+    for (let i = 0; i <= curlSteps; i++) {
+      const t = i / curlSteps;
+      const [x, y] = polar(curlStartR * (1 - t * 0.97), curlStartTheta + t * curlAngle);
+      curlD += `${i === 0 ? 'M' : 'L'}${f(x)},${f(y)} `;
+    }
+    svg.appendChild(svgEl('path', { id: 'center-curl', d: curlD }));
+
+    // Four explicit layer groups: cells < circles < flash < letters.
+    // flashLayer holds wrong-guess flash overlays (see flashWrong) above the cells.
+    // The chevron is appended directly to svg after the groups so it paints on top.
+    const cellsLayer   = svgEl('g', {});
+    const circlesLayer = svgEl('g', {});
+    const flashLayer   = svgEl('g', {});
+    const lettersLayer = svgEl('g', {});
+    svg.append(cellsLayer, circlesLayer, flashLayer, lettersLayer);
+
+    const numSize      = (R_MAX - R_HOLE) / (N_TURNS * 6.5);
+    const letterSize   = (R_MAX - R_HOLE) / (N_TURNS * 3.2);
+    const BAND         = (R_MAX - R_HOLE) / (N_TURNS + 1);
+    const circleRadius = BAND / 2;
+
+    const cellCenters       = {};
+    const cellCircleCenters = {};
+    const cellPaths         = {};
+    const letterTexts       = {};
+
+    // Pass 1: cell paths (innermost-first for correct z-ordering of strokes).
+    for (let i = data.cells.length - 1; i >= 0; i--) {
+      const cell = data.cells[i];
+      const n    = cell.cell_number;
+      const path = svgEl('path', { id: `cell-${n}`, class: 'cell', d: cellPath(cell) });
+      path.addEventListener('click', () => onCellClick(n));
+      cellsLayer.appendChild(path);
+      cellPaths[n] = path;
+
+      const a_mid = (cell.theta_start + cell.theta_end) / 2;
+
+      // Letter center: biased slightly toward inner edge (intentional for legibility).
+      const r_mid = 0.55 * cell.r_inner_start + 0.45 * cell.r_outer_start;
+      cellCenters[n] = polar(r_mid, a_mid);
+
+      // Circle center: geometric midpoint of the cell shape, matching cellPath's arc radii.
+      const r_out = (cell.r_outer_start + cell.r_outer_end) / 2;
+      const r_in  = (cell.r_inner_start + cell.r_inner_end) / 2;
+      cellCircleCenters[n] = polar((r_out + r_in) / 2, a_mid);
+    }
+
+    // Pass 2: circle decorations for entries with styles.
+    function renderEntryCircles(entries, entryCells) {
+      entries.forEach((entry, i) => {
+        if (!entry.styles || !Array.isArray(entry.styles.circle)) return;
+        entry.styles.circle.forEach(posInEntry => {
+          const n = entryCells[i][posInEntry];
+          if (n === undefined) {
+            console.warn(`style-circle: entry ${i} has no cell at position ${posInEntry}`);
+            return;
+          }
+          const [cx, cy] = cellCircleCenters[n];
+          circlesLayer.appendChild(svgEl('circle', {
+            class: 'style-circle', cx: f(cx), cy: f(cy), r: f(circleRadius),
+          }));
+        });
+      });
+    }
+    renderEntryCircles(data.inward, inwardEntryCells);
+    renderEntryCircles(data.outward, outwardEntryCells);
+
+    // Pass 3: cell number labels and letter texts.
+    for (let i = data.cells.length - 1; i >= 0; i--) {
+      const cell = data.cells[i];
+      const n    = cell.cell_number;
+
+      const r_num = 0.78 * cell.r_outer_start + 0.22 * cell.r_inner_start;
+      const a_num = cell.theta_start + 0.18 * (cell.theta_end - cell.theta_start);
+      const [nx, ny] = polar(r_num, a_num);
+      const numText = svgEl('text', {
+        id: `cellnum-${n}`, class: 'cell-num',
+        x: f(nx), y: f(ny), 'font-size': f(numSize),
+      });
+      numText.textContent = n;
+      lettersLayer.appendChild(numText);
+
+      const [tx, ty] = cellCenters[n];
+      const letterText = svgEl('text', {
+        id: `letter-${n}`, class: 'cell-letter',
+        x: f(tx), y: f(ty), 'font-size': f(letterSize),
+      });
+      lettersLayer.appendChild(letterText);
+      letterTexts[n] = letterText;
+    }
+
+    const chevronEl = svgEl('path', { id: 'direction-chevron' });
+    svg.appendChild(chevronEl);
+
+    const barPrimaryDir    = document.querySelector('#active-clue-primary .active-clue-dir');
+    const barPrimaryNum    = document.querySelector('#active-clue-primary .active-clue-num');
+    const barPrimaryText   = document.querySelector('#active-clue-primary .active-clue-text');
+    const barSecondaryDir  = document.querySelector('#active-clue-secondary .active-clue-dir');
+    const barSecondaryNum  = document.querySelector('#active-clue-secondary .active-clue-num');
+    const barSecondaryText = document.querySelector('#active-clue-secondary .active-clue-text');
+
+    // ── Header & clues ───────────────────────────────────────────────────────
+    document.title = data.title;
+    document.querySelector('h1.title').textContent = data.title;
+    renderByline(data);
+    renderInstructions(data);
+    renderClues();
+
+    // ── Event wiring ─────────────────────────────────────────────────────────
+    document.querySelectorAll('.toggle-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        direction = btn.dataset.dir;
+        focusCell(activeCell);
+      });
+    });
+
+    const checkBtn = document.getElementById('check-btn');
+    if (!data.hashed) {
+      checkBtn.addEventListener('click', checkCell);
+    } else {
+      checkBtn.hidden = true;
+    }
+
+    setupClearButton(
+      document.getElementById('clear-btn'),
+      clearState,
+      () => document.getElementById('hidden-input').focus({ preventScroll: true })
+    );
+
+    const congratsOverlay = document.getElementById('congrats-overlay');
+
+    setupCongratsOverlay(congratsOverlay, () => {
+      congratsDismissed = true;
+      document.getElementById('hidden-input').focus({ preventScroll: true });
+    });
+
+    const hiddenInput = document.getElementById('hidden-input');
+
+    setupKeydown(e => {
+      if (e.key === '.') {
+        e.preventDefault();
+        direction = direction === 'inward' ? 'outward' : 'inward';
+        focusCell(activeCell);
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const map     = direction === 'inward' ? inwardMap : outwardMap;
+        const entries = direction === 'inward' ? data.inward : data.outward;
+        if (e.shiftKey) {
+          const prev = (map[activeCell].entryIndex - 1 + entries.length) % entries.length;
+          focusCell(entryFirstCell(direction, prev));
+        } else {
+          focusCell(nextEntryFirstCell(direction, activeCell));
+        }
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        focusCell(nextInDir(activeCell, direction));
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        focusCell(prevInDir(activeCell, direction));
+        return;
+      }
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        if (getCellLetter(activeCell)) {
+          setCellLetter(activeCell, '');
+          syncUI();
+        } else {
+          const prev = prevInDir(activeCell, direction);
+          setCellLetter(prev, '');
+          focusCell(prev);
+        }
+        saveState();
+        return;
+      }
+      if (e.key === ' ') {
+        e.preventDefault();
+        setCellLetter(activeCell, '');
+        saveState();
+        focusCell(nextInDir(activeCell, direction));
+        return;
+      }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
+          e.key === 'PageUp'  || e.key === 'PageDown') {
+        e.preventDefault();
+        scrollByKey(e.key);
+      }
+    });
+
+    hiddenInput.addEventListener('input', () => {
+      const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
+      hiddenInput.value = '';
+      if (!letter) return;
+      setCellLetter(activeCell, letter);
+      if (data.hashed) {
+        focusCell(nextInDir(activeCell, direction));
+        checkBoardIfFilled();
+      } else {
+        focusCell(nextInDir(activeCell, direction));
+        checkAllCellsIfFilled();
+      }
+      saveState();
+    });
+
+    svg.addEventListener('click', e => {
+      if (e.target === svg) document.getElementById('hidden-input').focus();
+    });
+
+    // ── Restore & focus ──────────────────────────────────────────────────────
+    restoreState();
+    focusCell(1);
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+</body>
+</html>

@@ -33,7 +33,6 @@
 
   /* Secondary / toggle button colors */
   --theme-color-btn2-bg:     #eeeeee;
-  --theme-color-btn2-text:   #333333;
   --theme-color-btn2-border: #aaaaaa;
   --theme-color-btn2-hover:  #e0e0e0;
 
@@ -72,6 +71,7 @@
 
   /* Instructions */
   --theme-color-instructions: var(--theme-color-muted);
+  --theme-instructions-size:  0.85rem;
 
   /* Congrats / overlay */
   --theme-color-overlay:         rgba(0, 0, 0, 0.45);

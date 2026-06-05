@@ -58,41 +58,12 @@ body { padding-top: 56px; }
   display: block;
 }
 
-#controls {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
 button {
   padding: 7px 18px;
   font-size: 0.9rem;
   cursor: pointer;
   border-radius: 4px;
   border: 1px solid;
-}
-
-#clear-btn::after {
-  content: 'Sure?';
-  display: block;
-  height: 0;
-  overflow: hidden;
-  visibility: hidden;
-}
-
-#direction-toggle {
-  display: flex;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-#direction-toggle .toggle-opt {
-  border-radius: 0;
-  border: none;
-  flex: 1;
-  white-space: nowrap;
 }
 
 
@@ -150,22 +121,4 @@ button {
   opacity: 0.5;
 }
 
-/* SVG cell states */
-.cell         { stroke-width: 0.6; }
-.cell.active-entry { }
-.cell.active-cell  { }
-.cell.correct      { }
-
-.cell-num    { pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
-.cell-letter { text-anchor: middle; dominant-baseline: middle; font-weight: bold; }
-.style-circle { pointer-events: none; }
-
 #direction-chevron { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-
-#hidden-input {
-  position: fixed;
-  left: -9999px;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}

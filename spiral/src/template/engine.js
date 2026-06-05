@@ -469,32 +469,14 @@
 
     const congratsOverlay = document.getElementById('congrats-overlay');
 
-    congratsOverlay.addEventListener('click', e => {
-      if (e.target === congratsOverlay) {
-        congratsDismissed = true;
-        congratsOverlay.hidden = true;
-        document.getElementById('hidden-input').focus({ preventScroll: true });
-      }
-    });
-
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && !congratsOverlay.hidden) {
-        congratsDismissed = true;
-        congratsOverlay.hidden = true;
-        document.getElementById('hidden-input').focus({ preventScroll: true });
-      }
+    setupCongratsOverlay(congratsOverlay, () => {
+      congratsDismissed = true;
+      document.getElementById('hidden-input').focus({ preventScroll: true });
     });
 
     const hiddenInput = document.getElementById('hidden-input');
 
-    // Navigation keys work even when focus has left the hidden input (e.g. after
-    // clicking outside the puzzle). Skip when a button has focus so direction-toggle
-    // clicks don't interfere. The document.hasFocus() guard is defensive — browsers
-    // suppress keydown entirely when focus is in chrome (URL bar, devtools), so it
-    // never fires in that case anyway.
-    document.addEventListener('keydown', e => {
-      if (!document.hasFocus()) return;
-      if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+    setupKeydown(e => {
       if (e.key === '.') {
         e.preventDefault();
         direction = direction === 'inward' ? 'outward' : 'inward';

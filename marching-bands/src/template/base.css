@@ -1,12 +1,6 @@
 .puzzle-main { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
 
-#instructions {
-  max-width: 600px;
-  margin: 0 auto 20px;
-  font-size: 0.875rem;
-  line-height: 1.5;
-}
-#instructions p + p { margin-top: 0.6em; }
+#instructions { max-width: 600px; margin: 0 auto; }
 
 .puzzle-body {
   display: grid;
@@ -46,39 +40,10 @@
 
 #puzzle-svg { display: block; overflow: visible; }
 
-.cell-letter { font-weight: bold; }
+.cell-letter { font-weight: bold; dominant-baseline: central; }
 
-#controls {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-#mode-toggle {
-  display: flex;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-#mode-toggle .toggle-opt {
-  border-radius: 0;
-  border: none;
-  flex: 1;
-  white-space: nowrap;
-}
-
-.toggle-opt {
-  padding: 6px 14px;
-  border: 1px solid #ccc;
-  background: #fff;
-  cursor: pointer;
-  font-size: 0.875rem;
-}
 
 button { cursor: pointer; border: 1px solid #ccc; border-radius: 3px; padding: 6px 14px; font-size: 0.875rem; }
-button:disabled { opacity: 0.4; cursor: default; }
 
 .clue-section h2 {
   font-size: 0.8rem;
@@ -116,26 +81,6 @@ button:disabled { opacity: 0.4; cursor: default; }
   text-align: right;
   margin-right: 0.2em;
   text-transform: uppercase;
-}
-
-#congrats, #done-wrong {
-  padding: 10px 16px;
-  border-radius: 4px;
-  font-size: 1.05rem;
-  text-align: center;
-  letter-spacing: 0.04em;
-  font-weight: bold;
-}
-
-#clear-btn::after { content: 'Sure?'; display: block; height: 0; overflow: hidden; visibility: hidden; }
-
-#hidden-input {
-  position: fixed;
-  top: 0;
-  left: -9999px;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
 }
 
 @media (max-width: 880px) {

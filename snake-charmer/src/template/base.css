@@ -67,18 +67,6 @@ body { padding-top: 56px; }
   height: auto;
 }
 
-.style-circle { pointer-events: none; }
-
-.cell-letter {
-  text-anchor: middle;
-  dominant-baseline: middle;
-}
-
-.cell-num {
-  text-anchor: middle;
-  dominant-baseline: middle;
-  pointer-events: none;
-}
 
 #clue-list {
   flex: 1;
@@ -100,43 +88,4 @@ button {
   border: 1px solid;
 }
 
-#clear-btn::after {
-  content: 'Sure?';
-  display: block;
-  height: 0;
-  overflow: hidden;
-  visibility: hidden;
-}
 
-#controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-#loop-toggle {
-  display: flex;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-#loop-toggle .toggle-opt {
-  border-radius: 0;
-  border: none;
-  white-space: nowrap;
-}
-
-.toggle-opt {
-  user-select: none;
-  cursor: pointer;
-}
-
-#hidden-input {
-  position: fixed;
-  left: -9999px;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}

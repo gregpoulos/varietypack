@@ -451,10 +451,7 @@
       }
     }
 
-    document.addEventListener('keydown', e => {
-      if (!document.hasFocus()) return;
-      if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
-
+    setupKeydown(e => {
       if (e.key === '.') {
         e.preventDefault();
         mode = mode === 'row' ? 'band' : 'row';
@@ -544,20 +541,9 @@
 
     const congratsOverlay = document.getElementById('congrats-overlay');
 
-    congratsOverlay.addEventListener('click', e => {
-      if (e.target === congratsOverlay) {
-        congratsDismissed = true;
-        congratsOverlay.hidden = true;
-        focusCell(activeN);
-      }
-    });
-
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && !congratsOverlay.hidden) {
-        congratsDismissed = true;
-        congratsOverlay.hidden = true;
-        focusCell(activeN);
-      }
+    setupCongratsOverlay(congratsOverlay, () => {
+      congratsDismissed = true;
+      focusCell(activeN);
     });
 
     // ── Restore & focus ───────────────────────────────────────────────────────

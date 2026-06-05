@@ -8,8 +8,40 @@ body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.4; }
   border-radius: 2px;
 }
 
-.cell { cursor: pointer; }
-.cell-letter { pointer-events: none; }
+.cell        { cursor: pointer; }
+.cell-letter { pointer-events: none; text-anchor: middle; dominant-baseline: middle; font-weight: bold; }
+.cell-num    { pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
+.style-circle { pointer-events: none; }
+
+#controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+button:disabled { opacity: 0.4; cursor: default; }
+
+#clear-btn::after {
+  content: 'Sure?';
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+#hidden-input {
+  position: fixed;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.puzzle-toggle { display: flex; border-radius: 4px; overflow: hidden; }
+.puzzle-toggle .toggle-opt { border-radius: 0; border: none; flex: 1; white-space: nowrap; }
+.toggle-opt { user-select: none; cursor: pointer; }
 
 #congrats-overlay {
   position: fixed;
