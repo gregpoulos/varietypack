@@ -44,18 +44,59 @@ function validatePuzzle(puzzle, sourcePath, validate) {
 
 const SHARED_DIR = path.join(__dirname, '..');
 
+function buildFontCss(themeName, themeEntry, fontMode) {
+  if (!themeEntry || !themeEntry.fonts) return '';
+  if (!fontMode) {
+    const supported = [
+      themeEntry.fonts.faces ? '--font embed' : null,
+      themeEntry.fonts.cdn   ? '--font link'  : null,
+    ].filter(Boolean);
+    throw new Error(`theme '${themeName}' uses custom fonts; pass ${supported.join(' or ')}`);
+  }
+  if (fontMode === 'link') {
+    if (!themeEntry.fonts.cdn) {
+      throw new Error(`theme '${themeName}' has no CDN font source; --font link is not supported`);
+    }
+    return `@import url('${themeEntry.fonts.cdn.url}');\n`;
+  }
+  if (!themeEntry.fonts.faces) {
+    throw new Error(`theme '${themeName}' has no local font files declared; --font embed is not supported`);
+  }
+  return themeEntry.fonts.faces.map(face => {
+    const filePath = path.isAbsolute(face.file)
+      ? face.file
+      : path.join(SHARED_DIR, 'themes', face.file);
+    let data;
+    try {
+      data = fs.readFileSync(filePath);
+    } catch {
+      throw new Error(`theme '${themeName}' embed failed: file not found: ${face.file}`);
+    }
+    const b64 = data.toString('base64');
+    return `@font-face {\n  font-family: '${face.family}';\n  font-weight: ${face.weight};\n  font-style: ${face.style};\n  src: url('data:font/woff2;base64,${b64}') format('woff2');\n}\n`;
+  }).join('\n');
+}
+
 // Assembles the full inlined stylesheet for a tool build, in cascade order:
 //   shared base → shared header → tool base
 //   → theme-base (neutral --theme-* defaults) → <theme>-tokens (overrides)
 //   → theme-components (tool-agnostic + per-tool namespaced rules)
 //   → shared print → tool print.
-// Adding a theme = drop a <theme>-tokens.css here and list it in VALID_THEMES;
-// no branch in this function.
-function composeThemeCss(templateDir, theme) {
+// Owns theme defaulting (→ broadsheet) and validation against THEME_REGISTRY, so
+// builders don't repeat it. Adding a theme = drop a <theme>-tokens.css here and add
+// an entry in themeRegistry.js; no branch in this function.
+function composeThemeCss(templateDir, theme, fontMode) {
+  theme = theme ?? 'broadsheet';
+  const themeEntry = THEME_REGISTRY[theme];
+  if (themeEntry === undefined) {
+    throw new Error(`Unknown theme "${theme}". Must be one of: ${VALID_THEMES.join(', ')}.`);
+  }
+  const fontCss = buildFontCss(theme, themeEntry, fontMode);
   const shared = (rel) => fs.readFileSync(path.join(SHARED_DIR, rel), 'utf8');
   const tool   = (rel) => fs.readFileSync(path.join(templateDir, rel), 'utf8');
 
-  return shared('base.css') + '\n' + shared('base-header.css') + '\n'
+  return fontCss
+    + shared('base.css') + '\n' + shared('base-header.css') + '\n'
     + tool('base.css') + '\n'
     + shared('themes/theme-base.css') + '\n'
     + shared(`themes/${theme}-tokens.css`) + '\n'
@@ -170,6 +211,6 @@ function processEntries(entries) {
   });
 }
 
-const VALID_THEMES = ['broadsheet', 'skeleton'];
+const { THEME_REGISTRY, VALID_THEMES } = require('./themeRegistry');
 
-module.exports = { loadPuzzle, validatePuzzle, composeThemeCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm, VALID_THEMES };
+module.exports = { loadPuzzle, validatePuzzle, composeThemeCss, buildFontCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm };

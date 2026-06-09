@@ -89,7 +89,7 @@ test('buildPuzzle: broadsheet theme includes broadsheet-tokens CSS', () => {
 test('buildPuzzle: skeleton theme excludes broadsheet tokens and includes skeleton colors', () => {
   const out = path.join(os.tmpdir(), `spiral-skeleton-${Date.now()}.html`);
   try {
-    buildPuzzle(SAMPLE, out, { theme: 'skeleton' });
+    buildPuzzle(SAMPLE, out, { theme: 'skeleton', font: 'embed' });
     const html = fs.readFileSync(out, 'utf8');
     assert.ok(!html.includes('#f9f7f1'), 'broadsheet token value found in skeleton output');
     assert.ok(html.includes('#1a1520'),  'skeleton background color not found');

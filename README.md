@@ -53,7 +53,8 @@ These are supported by every tool:
 | Option | Default | Description |
 |---|---|---|
 | `--muddle` | off | Build a hashed (answer-obscured) HTML from a source YAML — no `hashed:` field needed. Muddled YAMLs (which carry `boardHash:`) build hashed automatically without this flag. |
-| `--theme <name>` | `broadsheet` | Visual theme. All tools ship `broadsheet` and `skeleton`; the exact list may vary per tool. |
+| `--theme <name>` | `broadsheet` | Visual theme. All tools ship `broadsheet` and `skeleton`; the exact list may vary per tool. Themes with custom fonts (e.g. `skeleton`) require `--font`. |
+| `--font <mode>` | — | Font delivery for custom-font themes: `embed` inlines fonts as base64 (self-contained output) or `link` references a CDN via `@import` (needs network at solve time). Required when the theme uses custom fonts; silently ignored for system-font themes. |
 | `--minify` | off | Minify the generated HTML: terser-minifies each `<script>`, strips comments, and trims trailing whitespace. |
 | `-o <output.html>` | `<input-basename>.html` | Output path. Defaults to writing next to the input file. |
 | `-f`, `--force` | off | Overwrite the output file if it already exists. |
@@ -149,6 +150,35 @@ bands:
 N is derived from the first row (the sum of its answer lengths); the optional `size` field is validated against it.
 
 See [marching-bands/docs/SPEC.md](marching-bands/docs/SPEC.md) for the full format reference.
+
+---
+
+## Themes
+
+All tools share one set of themes. A theme controls colors, fonts, and decorative styling — never layout. Select one with `--theme <name>` (default `broadsheet`). The repo ships `broadsheet` (warm newsprint, system serif) and `skeleton` (dark, custom display font).
+
+**Creating a theme** is two steps:
+
+1. Add `shared/themes/<name>-tokens.css` — a `:root { … }` block overriding only the `--theme-*` variables that differ from the neutral defaults in `shared/themes/theme-base.css`. Tool-agnostic component styles in `theme-components.css` pick up the rest, so no per-tool CSS is needed.
+2. Register the name in `THEME_REGISTRY` in `shared/build/themeRegistry.js`.
+
+**Fonts.** A system-font-only theme registers `{ fonts: null }` and needs nothing else. To ship a custom font, commit the `.woff2` to `shared/themes/fonts/<name>/` and declare it in the registry entry:
+
+```js
+skeleton: {
+  fonts: {
+    faces: [{ family: 'Outfit', weight: '100 900', style: 'normal', file: 'fonts/skeleton/outfit-variable.woff2' }],
+    cdn:   { source: 'google', url: 'https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap' },
+  },
+},
+```
+
+Custom-font themes require a `--font` mode at build time:
+
+- `--font embed` — base64-inlines `faces` into `@font-face`; the HTML stays self-contained (no network at solve time) at the cost of the font's bytes in every file.
+- `--font link` — emits an `@import` to `cdn.url`; smaller HTML, but the font loads from the CDN in the solver's browser on every open.
+
+Declare `faces` for embed, `cdn` for link, or both. The flag is required for custom-font themes and silently ignored for system-font ones.
 
 ---
 

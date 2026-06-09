@@ -475,6 +475,17 @@
     });
 
     const hiddenInput = document.getElementById('hidden-input');
+    const keysOverlay = setupKeysOverlay(
+      [
+        ['Tab',       'Next entry'],
+        ['Shift+Tab', 'Previous entry'],
+        ['← →',       'Move along entry'],
+        ['⌫',         'Clear current cell'],
+        ['Space',     'Clear and advance'],
+        ['.',         'Toggle inward / outward'],
+      ],
+      () => hiddenInput.focus({ preventScroll: true })
+    );
 
     setupKeydown(e => {
       if (e.key === '.') {
@@ -530,7 +541,7 @@
         e.preventDefault();
         scrollByKey(e.key);
       }
-    });
+    }, { keysOverlay });
 
     hiddenInput.addEventListener('input', () => {
       const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();

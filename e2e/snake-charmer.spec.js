@@ -154,3 +154,45 @@ test('.correct cells render with white fill under print media', async ({ page })
   const printFill = await page.evaluate(() => getComputedStyle(document.getElementById('cell-0')).fill);
   expect(printFill).toBe('rgb(255, 255, 255)');
 });
+
+test('? button and ? key open keyboard-shortcuts modal; Esc closes it', async ({ page }) => {
+  await page.goto(`file://${htmlPath}`);
+  await page.evaluate(() => document.getElementById('hidden-input').focus());
+
+  const overlay = page.locator('#keys-overlay');
+  await expect(overlay).toBeHidden();
+
+  // Button click opens; Esc closes.
+  await page.click('#keys-btn');
+  await expect(overlay).toBeVisible();
+  await expect(page.locator('#keys-modal')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(overlay).toBeHidden();
+
+  // ? key opens; backdrop click closes.
+  await page.keyboard.press('?');
+  await expect(overlay).toBeVisible();
+  await overlay.click({ position: { x: 5, y: 5 } });
+  await expect(overlay).toBeHidden();
+});
+
+test('keystrokes are suppressed while the shortcuts modal is open', async ({ page }) => {
+  await page.goto(`file://${htmlPath}`);
+  await page.evaluate(() => document.getElementById('hidden-input').focus());
+
+  const firstCell = page.locator('#letter-0'); // cursor starts at ring position 0
+  await expect(firstCell).toHaveText('');
+
+  // With the modal open, focus parks on the close button and the keydown guard is
+  // active — a typed letter must not reach the grid.
+  await page.click('#keys-btn');
+  await expect(page.locator('#keys-overlay')).toBeVisible();
+  await page.keyboard.type('A');
+  await expect(firstCell).toHaveText('');
+
+  // Closing restores puzzle focus, so the same keystroke now lands.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#keys-overlay')).toBeHidden();
+  await page.keyboard.type('A');
+  await expect(firstCell).toHaveText('A');
+});

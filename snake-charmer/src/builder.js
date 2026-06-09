@@ -6,7 +6,7 @@ const { validate } = require('./validator');
 const { preparePuzzle } = require('./hasher');
 const { computeLayout } = require('./layout');
 const injectTemplate = require('../../shared/build/injectTemplate');
-const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle, VALID_THEMES } = require('../../shared/build/builderUtils');
+const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle } = require('../../shared/build/builderUtils');
 const { minifyHtml } = require('../../shared/build/minify');
 
 const TEMPLATE_DIR = path.join(__dirname, 'template');
@@ -15,12 +15,10 @@ function validatePuzzle(puzzle, sourcePath) {
   return sharedValidatePuzzle(puzzle, sourcePath, validate);
 }
 
-function buildHtml(prepared, ring, shape, theme) {
+function buildHtml(prepared, ring, shape, theme, font) {
   shape = shape ?? 'stadium';
-  theme = theme ?? 'broadsheet';
-  if (!VALID_THEMES.includes(theme)) throw new Error(`Unknown theme "${theme}". Must be one of: ${VALID_THEMES.join(', ')}.`);
   const template = fs.readFileSync(path.join(TEMPLATE_DIR, 'index.html'), 'utf8');
-  const css = composeThemeCss(TEMPLATE_DIR, theme);
+  const css = composeThemeCss(TEMPLATE_DIR, theme, font);
   const engineJs = fs.readFileSync(path.join(TEMPLATE_DIR, 'engine.js'), 'utf8');
   const stadiumShapeJs = fs.readFileSync(path.join(TEMPLATE_DIR, 'shapes', 'stadium.js'), 'utf8');
   const turnShapeJs    = fs.readFileSync(path.join(TEMPLATE_DIR, 'shapes', 'turn.js'), 'utf8');
@@ -90,7 +88,7 @@ function buildPuzzle(inputPath, outputPath, options) {
       `Warning: ${conflicts.length} ring cell(s) have entries from multiple loops starting on the same square: cells ${conflicts.join(', ')}\n`
     );
   }
-  const html = buildHtml(prepared, ring, shape, options?.theme);
+  const html = buildHtml(prepared, ring, shape, options?.theme, options?.font);
   const output = options?.minify ? minifyHtml(html) : html;
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, output, 'utf8');

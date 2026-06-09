@@ -6,7 +6,8 @@ const fs       = require('fs');
 const os       = require('os');
 const path     = require('path');
 const vm       = require('vm');
-const { loadPuzzle, validatePuzzle, composeThemeCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm } = require('../build/builderUtils');
+const { loadPuzzle, validatePuzzle, composeThemeCss, buildFontCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm } = require('../build/builderUtils');
+const { THEME_REGISTRY } = require('../build/themeRegistry');
 
 // ── getSharedBundle ───────────────────────────────────────────────────────────
 
@@ -63,7 +64,7 @@ test('composeThemeCss: broadsheet bundle stacks base, tool base, theme-base, tok
 });
 
 test('composeThemeCss: skeleton bundle uses skeleton tokens + shared neutral layer; no broadsheet palette', () => {
-  const css = composeThemeCss(COMPOSE_FIXTURE, 'skeleton');
+  const css = composeThemeCss(COMPOSE_FIXTURE, 'skeleton', 'embed');
   assert.ok(css.includes(THEME_BASE_MARKER),    'theme-base missing');
   assert.ok(css.includes('#1a1520'),            'skeleton token value missing');
   assert.ok(css.includes('.cell.active-entry'), 'theme-components missing');
@@ -71,10 +72,11 @@ test('composeThemeCss: skeleton bundle uses skeleton tokens + shared neutral lay
   assert.ok(!css.includes('#f9f7f1'),           'broadsheet token value must be absent');
 });
 
-test('composeThemeCss: a token-only theme drops in with no per-tool CSS and no JS branch', () => {
+test('composeThemeCss: a registered token-only theme drops in with no per-tool CSS and no JS branch', () => {
   const themesDir = path.join(__dirname, '..', 'themes');
   const tokenPath = path.join(themesDir, 'dropintest-tokens.css');
   fs.writeFileSync(tokenPath, ':root { --theme-color-bg: #abcdef; }\n');
+  THEME_REGISTRY.dropintest = { fonts: null };
   try {
     const css = composeThemeCss(COMPOSE_FIXTURE, 'dropintest');
     assert.ok(css.includes('#abcdef'),            'drop-in token value missing');
@@ -84,7 +86,45 @@ test('composeThemeCss: a token-only theme drops in with no per-tool CSS and no J
     assert.ok(!css.includes('#1a1520'),           'skeleton palette must not bleed');
   } finally {
     fs.rmSync(tokenPath, { force: true });
+    delete THEME_REGISTRY.dropintest;
   }
+});
+
+test('composeThemeCss: defaults to broadsheet when theme is omitted', () => {
+  const css = composeThemeCss(COMPOSE_FIXTURE, undefined);
+  assert.ok(css.includes('#f9f7f1'), 'broadsheet token value missing');
+});
+
+test('composeThemeCss: throws a clear error for an unregistered theme', () => {
+  assert.throws(
+    () => composeThemeCss(COMPOSE_FIXTURE, 'nonexistent'),
+    /Unknown theme "nonexistent"\. Must be one of:/
+  );
+});
+
+test('composeThemeCss: fontMode is ignored for system-font theme — output identical with or without it', () => {
+  const cssWithEmbed   = composeThemeCss(COMPOSE_FIXTURE, 'broadsheet', 'embed');
+  const cssWithoutMode = composeThemeCss(COMPOSE_FIXTURE, 'broadsheet');
+  assert.equal(cssWithEmbed, cssWithoutMode);
+});
+
+test('composeThemeCss: throws for skeleton theme when fontMode is omitted', () => {
+  assert.throws(
+    () => composeThemeCss(COMPOSE_FIXTURE, 'skeleton'),
+    /uses custom fonts.*--font embed or --font link/
+  );
+});
+
+test('composeThemeCss: skeleton theme with embed mode includes @font-face and Outfit family', () => {
+  const css = composeThemeCss(COMPOSE_FIXTURE, 'skeleton', 'embed');
+  assert.ok(css.includes('@font-face'), 'should include @font-face block');
+  assert.ok(css.includes('Outfit'),     'should reference Outfit family');
+});
+
+test('composeThemeCss: skeleton theme with link mode includes @import', () => {
+  const css = composeThemeCss(COMPOSE_FIXTURE, 'skeleton', 'link');
+  assert.ok(css.includes('@import'), 'should include @import rule');
+  assert.ok(css.includes('fonts.googleapis.com'), 'should include Google Fonts CDN URL');
 });
 
 // ── loadPuzzle ────────────────────────────────────────────────────────────────
@@ -413,4 +453,105 @@ test('processEntries: source entry — no hash key in output', () => {
   assert.equal(out[0].length, 6);
   assert.equal(out[0]._norm,  'wahwah');
   assert.ok(!('hash' in out[0]));
+});
+
+// ── buildFontCss ──────────────────────────────────────────────────────────────
+
+test('buildFontCss: returns empty string for system-font theme regardless of fontMode', () => {
+  const entry = { fonts: null };
+  assert.equal(buildFontCss('broadsheet', entry, 'embed'), '');
+  assert.equal(buildFontCss('broadsheet', entry, 'link'),  '');
+  assert.equal(buildFontCss('broadsheet', entry, undefined), '');
+});
+
+test('buildFontCss: returns empty string for unregistered theme entry', () => {
+  assert.equal(buildFontCss('unknown', undefined, 'embed'), '');
+});
+
+test('buildFontCss: link mode returns @import with cdn url', () => {
+  const entry = {
+    fonts: { cdn: { source: 'google', url: 'https://fonts.googleapis.com/css2?family=Test' } }
+  };
+  const css = buildFontCss('testtheme', entry, 'link');
+  assert.ok(css.startsWith('@import'));
+  assert.ok(css.includes('https://fonts.googleapis.com/css2?family=Test'));
+});
+
+test('buildFontCss: link mode throws when no cdn declared', () => {
+  const tmp = path.join(os.tmpdir(), `f-${Date.now()}.woff2`);
+  fs.writeFileSync(tmp, Buffer.from([0]));
+  try {
+    const entry = { fonts: { faces: [{ family: 'F', weight: 400, style: 'normal', file: tmp }] } };
+    assert.throws(() => buildFontCss('myfont', entry, 'link'), /has no CDN font source/);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+});
+
+test('buildFontCss: embed mode reads file and returns @font-face with base64 src', () => {
+  const tmp = path.join(os.tmpdir(), `test-font-${Date.now()}.woff2`);
+  const bytes = Buffer.from([0x77, 0x4f, 0x46, 0x32, 0x00, 0x01]);
+  fs.writeFileSync(tmp, bytes);
+  try {
+    const entry = {
+      fonts: { faces: [{ family: 'Test Font', weight: 400, style: 'normal', file: tmp }] }
+    };
+    const css = buildFontCss('testfont', entry, 'embed');
+    assert.ok(css.includes("font-family: 'Test Font'"));
+    assert.ok(css.includes('font-weight: 400'));
+    assert.ok(css.includes('font-style: normal'));
+    assert.ok(css.includes("format('woff2')"));
+    assert.ok(css.includes('data:font/woff2;base64,'));
+    assert.ok(css.includes(bytes.toString('base64')));
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+});
+
+test('buildFontCss: embed mode throws when font file missing', () => {
+  const entry = {
+    fonts: { faces: [{ family: 'F', weight: 400, style: 'normal', file: '/no/such/font.woff2' }] }
+  };
+  assert.throws(() => buildFontCss('myfont', entry, 'embed'), /embed failed: file not found/);
+});
+
+test('buildFontCss: no fontMode throws listing both modes when both available', () => {
+  const tmp = path.join(os.tmpdir(), `f-${Date.now()}.woff2`);
+  fs.writeFileSync(tmp, Buffer.from([0]));
+  try {
+    const entry = {
+      fonts: {
+        faces: [{ family: 'F', weight: 400, style: 'normal', file: tmp }],
+        cdn:   { source: 'google', url: 'https://example.com' }
+      }
+    };
+    assert.throws(
+      () => buildFontCss('myfont', entry, undefined),
+      /uses custom fonts.*--font embed or --font link/
+    );
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+});
+
+test('buildFontCss: no fontMode error lists only --font embed when cdn absent', () => {
+  const tmp = path.join(os.tmpdir(), `f-${Date.now()}.woff2`);
+  fs.writeFileSync(tmp, Buffer.from([0]));
+  try {
+    const entry = { fonts: { faces: [{ family: 'F', weight: 400, style: 'normal', file: tmp }] } };
+    let msg = '';
+    try { buildFontCss('myfont', entry, undefined); } catch (e) { msg = e.message; }
+    assert.ok(msg.includes('--font embed'));
+    assert.ok(!msg.includes('--font link'));
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+});
+
+test('buildFontCss: no fontMode error lists only --font link when faces absent', () => {
+  const entry = { fonts: { cdn: { source: 'google', url: 'https://example.com' } } };
+  let msg = '';
+  try { buildFontCss('myfont', entry, undefined); } catch (e) { msg = e.message; }
+  assert.ok(msg.includes('--font link'));
+  assert.ok(!msg.includes('--font embed'));
 });

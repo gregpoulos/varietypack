@@ -1,9 +1,9 @@
 /* Skeleton theme — dark purple, strong personality. Overrides theme-base. */
 :root {
-  --theme-font-body:    'Courier New', Courier, monospace;
-  --theme-font-display: Impact, 'Arial Black', sans-serif;
-  --theme-font-button:  Impact, 'Arial Black', sans-serif;
-  --theme-font-cell:    system-ui, -apple-system, sans-serif;
+  --theme-font-body:    'Outfit', system-ui, sans-serif;
+  --theme-font-display: 'Outfit', system-ui, sans-serif;
+  --theme-font-button:  'Outfit', system-ui, sans-serif;
+  --theme-font-cell:    'Outfit', system-ui, sans-serif;
 
   --theme-color-header-rule: #7c3aed;
   --theme-title-tracking:    0.06em;

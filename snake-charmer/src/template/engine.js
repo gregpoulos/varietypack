@@ -294,6 +294,17 @@ function prevRingPos(pos, total) {
 
     const congratsOverlay = document.getElementById('congrats-overlay');
     const doneWrong = document.getElementById('done-wrong');
+    const keysOverlay = setupKeysOverlay(
+      [
+        ['Tab',       'Next entry'],
+        ['Shift+Tab', 'Previous entry'],
+        ['← →',       'Move along ring'],
+        ['⌫',         'Clear current cell'],
+        ['Space',     'Clear and advance'],
+        ['.',         'Toggle direction'],
+      ],
+      () => hiddenInput.focus({ preventScroll: true })
+    );
 
     const loopBtns = (() => {
       const toggle = document.getElementById('loop-toggle');
@@ -362,7 +373,7 @@ function prevRingPos(pos, total) {
         e.preventDefault();
         scrollByKey(e.key);
       }
-    });
+    }, { keysOverlay });
 
     hiddenInput.addEventListener('input', () => {
       const ringPos = activeRingPos;

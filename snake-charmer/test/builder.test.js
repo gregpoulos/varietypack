@@ -457,12 +457,12 @@ test('buildPuzzle: writes coincident-start warning to stderr', () => {
 
 // ── theme support ─────────────────────────────────────────────────────────────
 
-test('buildHtml: skeleton theme — CSS includes Impact font', () => {
+test('buildHtml: skeleton theme — CSS includes Outfit font', () => {
   const puzzle = loadPuzzle(SAMPLE);
   const prepared = preparePuzzle(puzzle);
   const { ring } = computeLayout(prepared.entries, prepared.loops);
-  const html = buildHtml(prepared, ring, 'stadium', 'skeleton');
-  assert.ok(html.includes('Impact'), 'skeleton CSS should reference Impact font');
+  const html = buildHtml(prepared, ring, 'stadium', 'skeleton', 'embed');
+  assert.ok(html.includes('Outfit'), 'skeleton CSS should reference Outfit font');
 });
 
 test('buildHtml: unknown theme throws', () => {
@@ -479,9 +479,9 @@ test('buildPuzzle: skeleton theme writes skeleton CSS to output', () => {
   const os = require('os');
   const fs = require('fs');
   const outPath = path.join(os.tmpdir(), 'sc-test-skeleton.html');
-  buildPuzzle(SAMPLE, outPath, { theme: 'skeleton' });
+  buildPuzzle(SAMPLE, outPath, { theme: 'skeleton', font: 'embed' });
   const content = fs.readFileSync(outPath, 'utf8');
-  assert.ok(content.includes('Impact'), 'skeleton output should include Impact font');
+  assert.ok(content.includes('Outfit'), 'skeleton output should include Outfit font');
   fs.unlinkSync(outPath);
 });
 

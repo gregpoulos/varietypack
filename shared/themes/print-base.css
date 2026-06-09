@@ -10,6 +10,8 @@
   #active-clue-bar,
   #controls,
   #congrats-overlay,
+  #keys-overlay,
+  #keys-btn,
   #done-wrong { display: none !important; }
 
   body { padding-top: 0 !important; }

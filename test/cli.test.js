@@ -274,7 +274,7 @@ test('build: directory mode forwards flags to each tool', () => {
   const inDir = tmpDir();
   const outDir = tmpDir();
   fs.copyFileSync(SC_FIXTURE, path.join(inDir, 'sc.yaml'));
-  const r = run('build', inDir, '--theme', 'skeleton', '-o', outDir);
+  const r = run('build', inDir, '--theme', 'skeleton', '--font', 'embed', '-o', outDir);
   assert.equal(r.status, 0, r.stderr);
   assert.ok(fs.existsSync(path.join(outDir, 'sc.html')));
   const bad = run('build', inDir, '--theme', 'nonexistent', '-o', tmpDir());

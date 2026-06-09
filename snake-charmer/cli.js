@@ -6,7 +6,7 @@ const fs = require('fs');
 const { buildPuzzle } = require('./src/builder');
 const parseCliArgs          = require('../shared/build/parseCliArgs');
 const { defaultOutputPath } = require('../shared/build/builderUtils');
-const { GLOBAL_OPTIONS }    = require('../shared/build/globalHelp');
+const { GLOBAL_OPTIONS, GLOBAL_FLAG_SPECS } = require('../shared/build/globalHelp');
 const { TOOL_OPTIONS }      = require('./cliHelp');
 
 const args = process.argv.slice(2);
@@ -37,12 +37,8 @@ if (args.length < 1) {
 let flags, positionals;
 try {
   ({ flags, positionals } = parseCliArgs(args, [
-    { flag: '-o',                   name: 'output' },
-    { flag: '--shape',              name: 'shape', values: ['circle', 'stadium', 'turn', 'double-turn'] },
-    { flag: '--theme',              name: 'theme', values: ['broadsheet', 'skeleton'] },
-    { flag: ['-f', '--force'],      name: 'force', boolean: true },
-    { flag: '--minify',             name: 'minify', boolean: true },
-    { flag: '--muddle',             name: 'muddle', boolean: true },
+    ...GLOBAL_FLAG_SPECS,
+    { flag: '--shape', name: 'shape', values: ['circle', 'stadium', 'turn', 'double-turn'] },
   ]));
 } catch (err) {
   process.stderr.write(`${err.message}\n`);
@@ -65,7 +61,7 @@ if (!flags.force && fs.existsSync(output)) {
 }
 
 try {
-  const { title } = buildPuzzle(input, output, { shape: flags.shape, theme: flags.theme, minify: flags.minify, muddle: flags.muddle });
+  const { title } = buildPuzzle(input, output, { shape: flags.shape, theme: flags.theme, font: flags.font, minify: flags.minify, muddle: flags.muddle });
   process.stdout.write(`Built "${title}" → ${output}\n`);
 } catch (err) {
   process.stderr.write(`${err.message}\n`);

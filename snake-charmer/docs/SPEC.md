@@ -90,5 +90,6 @@ entries:
   - `double-turn` — S-shape: three horizontal arms (top opens right, bottom opens left) connected by left and right body arc systems; requires even ring size
 - **Visual theme**: The `--theme` CLI flag controls the puzzle's visual appearance. Themes affect colors, fonts, and decorative styling but not the ring layout.
   - `broadsheet` (default) — warm newsprint aesthetic: off-white background, Georgia serif, ink-on-paper feel
-  - `skeleton` — dark mode: near-black background, vivid purple accents, Impact display font with monospace body text
+  - `skeleton` — dark mode: near-black background, vivid purple accents, and a custom typeface delivered via `--font` (see **Custom fonts** below)
+- **Custom fonts**: Themes that use non-system fonts (currently `skeleton`) require a `--font` mode. `--font embed` inlines the font as base64 so the output stays self-contained; `--font link` emits an `@import` pointing at a CDN, which loads in the solver's browser on every open and so needs network access at solve time. The flag is silently ignored for system-font themes like `broadsheet`.
 - **Even cell count**: The ring grid requires an even total cell count. If your puzzle has an odd total, adjust an answer by one letter.

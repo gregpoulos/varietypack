@@ -6,7 +6,7 @@ const fs = require('fs');
 const { buildPuzzle }  = require('./src/builder');
 const parseCliArgs          = require('../shared/build/parseCliArgs');
 const { defaultOutputPath } = require('../shared/build/builderUtils');
-const { GLOBAL_OPTIONS }    = require('../shared/build/globalHelp');
+const { GLOBAL_OPTIONS, GLOBAL_FLAG_SPECS } = require('../shared/build/globalHelp');
 
 const args = process.argv.slice(2);
 
@@ -34,13 +34,7 @@ if (args.length < 1) {
 
 let flags, positionals;
 try {
-  ({ flags, positionals } = parseCliArgs(args, [
-    { flag: '-o',              name: 'output' },
-    { flag: '--theme',         name: 'theme', values: ['broadsheet', 'skeleton'] },
-    { flag: ['-f', '--force'], name: 'force', boolean: true },
-    { flag: '--minify',        name: 'minify', boolean: true },
-    { flag: '--muddle',        name: 'muddle', boolean: true },
-  ]));
+  ({ flags, positionals } = parseCliArgs(args, [...GLOBAL_FLAG_SPECS]));
 } catch (err) {
   process.stderr.write(`${err.message}\n`);
   process.exit(1);
@@ -62,7 +56,7 @@ if (!flags.force && fs.existsSync(resolvedOutput)) {
 }
 
 try {
-  const { title } = buildPuzzle(resolvedInput, resolvedOutput, { theme: flags.theme, minify: flags.minify, muddle: flags.muddle });
+  const { title } = buildPuzzle(resolvedInput, resolvedOutput, { theme: flags.theme, font: flags.font, minify: flags.minify, muddle: flags.muddle });
   process.stdout.write(`Built "${title}" → ${resolvedOutput}\n`);
 } catch (err) {
   process.stderr.write(`${err.message}\n`);

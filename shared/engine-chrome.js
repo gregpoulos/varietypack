@@ -129,12 +129,13 @@ function setupStorage(key, { cellCount, getState, applyState }) {
 }
 
 // Wraps a tool's keydown handler with the guards shared by every engine: hasFocus,
-// Cmd/Ctrl+Arrow history navigation, generic Cmd/Ctrl passthrough, and BUTTON
-// focus skip. The tool-specific handler receives the event only when all guards
-// pass.
-function setupKeydown(handler) {
+// Cmd/Ctrl+Arrow history navigation, generic Cmd/Ctrl passthrough, BUTTON focus
+// skip, and keys-overlay open. The tool-specific handler receives the event only
+// when all guards pass.
+function setupKeydown(handler, { keysOverlay } = {}) {
   document.addEventListener('keydown', e => {
     if (!document.hasFocus()) return;
+    if (keysOverlay && !keysOverlay.hidden) return;
     if (e.metaKey && e.key === 'ArrowLeft') { history.back(); return; }
     if (e.metaKey && e.key === 'ArrowRight') { history.forward(); return; }
     if (e.metaKey || e.ctrlKey) return;
@@ -159,10 +160,87 @@ function setupCongratsOverlay(overlay, onDismiss) {
   });
 }
 
+// Builds and wires the keyboard-shortcuts modal from a list of [keys, description]
+// pairs (the only part that differs between tools). Creates the #keys-btn trigger
+// (fixed bottom-right corner) and the #keys-overlay > #keys-modal dialog, both
+// appended to <body>. Returns the overlay element for setupKeydown's keysOverlay
+// guard.
+//
+// Opens on button click or ? keypress; closes on backdrop click, close-button
+// click, or Escape. Opening moves focus to the close button so keystrokes can't
+// leak into the grid while the modal is up; `refocus` restores puzzle focus on close.
+function setupKeysOverlay(shortcuts, refocus) {
+  const btn = document.createElement('button');
+  btn.id = 'keys-btn';
+  btn.type = 'button';
+  btn.setAttribute('aria-label', 'Keyboard shortcuts');
+  btn.textContent = '?';
+  document.body.appendChild(btn);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'keys-overlay';
+  overlay.hidden = true;
+
+  const modal = document.createElement('div');
+  modal.id = 'keys-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Keyboard shortcuts');
+
+  const header = document.createElement('div');
+  header.id = 'keys-modal-header';
+  const heading = document.createElement('span');
+  heading.textContent = 'Keyboard shortcuts';
+  const closeBtn = document.createElement('button');
+  closeBtn.id = 'keys-close';
+  closeBtn.type = 'button';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.textContent = '✕';
+  header.append(heading, closeBtn);
+
+  const table = document.createElement('table');
+  for (const [keys, desc] of shortcuts) {
+    const row = document.createElement('tr');
+    const keyCell = document.createElement('td');
+    const kbd = document.createElement('kbd');
+    kbd.textContent = keys;
+    keyCell.appendChild(kbd);
+    const descCell = document.createElement('td');
+    descCell.textContent = desc;
+    row.append(keyCell, descCell);
+    table.appendChild(row);
+  }
+
+  modal.append(header, table);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  function open() {
+    overlay.hidden = false;
+    closeBtn.focus();
+  }
+  function close() {
+    overlay.hidden = true;
+    refocus();
+  }
+  btn.addEventListener('click', () => overlay.hidden ? open() : close());
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', e => {
+    if (!document.hasFocus()) return;
+    if (e.key === 'Escape' && !overlay.hidden) { close(); return; }
+    if (e.key === '?' && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      overlay.hidden ? open() : close();
+    }
+  });
+  return overlay;
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     renderByline, renderInstructions, setupClearButton,
     scrollByKey, storageKey, setupStorage, flashWrong,
-    setupKeydown, setupCongratsOverlay,
+    setupKeydown, setupCongratsOverlay, setupKeysOverlay,
   };
 }

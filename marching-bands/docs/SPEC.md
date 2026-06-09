@@ -104,10 +104,11 @@ Build with `varietypack build --muddle` (or from a pre-muddled YAML produced by 
 ## CLI usage
 
 ```
-marching-bands [--theme broadsheet|skeleton] <input.yaml> [-o output.html]
+marching-bands [--theme broadsheet|skeleton] [--font embed|link] <input.yaml> [-o output.html]
 ```
 
 - `--theme` — visual theme; default `broadsheet`
+- `--font` — font delivery for themes that use custom fonts (e.g. `skeleton`): `embed` (base64-inlined, self-contained) or `link` (CDN `@import`, needs network at solve time). Required for custom-font themes; ignored for system-font themes
 - `<input.yaml>` — required; path to the puzzle YAML file
 - `-o output.html` — optional; when omitted, writes `<input-basename>.html` next to the input file
 

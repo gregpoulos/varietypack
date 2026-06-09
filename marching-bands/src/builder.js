@@ -5,7 +5,7 @@ const path = require('path');
 const { validate }      = require('./validator');
 const { preparePuzzle } = require('./hasher');
 const injectTemplate    = require('../../shared/build/injectTemplate');
-const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle, VALID_THEMES } = require('../../shared/build/builderUtils');
+const { loadPuzzle, validatePuzzle: sharedValidatePuzzle, composeThemeCss, getSharedBundle } = require('../../shared/build/builderUtils');
 const { minifyHtml }    = require('../../shared/build/minify');
 
 const TEMPLATE_DIR = path.join(__dirname, 'template');
@@ -14,16 +14,11 @@ function validatePuzzle(puzzle, sourcePath) {
   return sharedValidatePuzzle(puzzle, sourcePath, validate);
 }
 
-function buildHtml(prepared, theme) {
-  theme = theme ?? 'broadsheet';
-  if (!VALID_THEMES.includes(theme)) {
-    throw new Error(`Unknown theme "${theme}". Must be one of: ${VALID_THEMES.join(', ')}.`);
-  }
-
+function buildHtml(prepared, theme, font) {
   const template  = fs.readFileSync(path.join(TEMPLATE_DIR, 'index.html'), 'utf8');
   const engineJs  = fs.readFileSync(path.join(TEMPLATE_DIR, 'engine.js'), 'utf8');
 
-  const css = composeThemeCss(TEMPLATE_DIR, theme);
+  const css = composeThemeCss(TEMPLATE_DIR, theme, font);
   const js  = getSharedBundle() + '\n' + engineJs;
 
   const puzzleData = {
@@ -48,7 +43,7 @@ function buildPuzzle(inputPath, outputPath, options) {
   validatePuzzle(rawPuzzle, inputPath);
   const hashed  = !!(options?.muddle || rawPuzzle.boardHash !== undefined);
   const prepared = preparePuzzle({ ...rawPuzzle, hashed });
-  const html = buildHtml(prepared, options?.theme);
+  const html = buildHtml(prepared, options?.theme, options?.font);
   const output = options?.minify ? minifyHtml(html) : html;
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, output, 'utf8');

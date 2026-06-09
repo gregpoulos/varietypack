@@ -451,6 +451,17 @@
       }
     }
 
+    const keysOverlay = setupKeysOverlay(
+      [
+        ['Tab',       'Next row or band'],
+        ['Shift+Tab', 'Previous row or band'],
+        ['↑ ↓ ← →',   'Move one cell'],
+        ['⌫',         'Clear current cell'],
+        ['Space',     'Clear and advance'],
+        ['.',         'Toggle row / band mode'],
+      ],
+      () => focusCell(activeN)
+    );
     setupKeydown(e => {
       if (e.key === '.') {
         e.preventDefault();
@@ -514,7 +525,7 @@
 
       if (e.key === 'PageDown') { e.preventDefault(); scrollByKey('PageDown'); return; }
       if (e.key === 'PageUp')   { e.preventDefault(); scrollByKey('PageUp'); return; }
-    });
+    }, { keysOverlay });
 
     document.getElementById('hidden-input').addEventListener('input', e => {
       const letter = normalize(e.target.value).slice(-1).toUpperCase();

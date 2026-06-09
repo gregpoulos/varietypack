@@ -74,9 +74,20 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 **Applies to:** all tool `cli.js` files.
 
-**Theme semantics:** Themes are token files over a neutral shared layer. `shared/themes/theme-base.css` defines neutral `--theme-*` defaults; each theme is a `shared/themes/<name>-tokens.css` that overrides them. `shared/themes/theme-components.css` supplies all tool-agnostic, var-driven component styles (masthead, buttons, SVG cell states, congrats card) **plus** per-tool namespaced sections for tool-specific selectors (bands, chevrons, secondary cells). Each tool's `<body>` carries a `class="tool-<name>"` hook (e.g. `tool-snake-charmer`) that scopes the per-tool sections; there is no separate per-tool CSS file. Adding a new theme requires only `<name>-tokens.css` and its name in `VALID_THEMES` — no per-tool CSS, no branch in `composeThemeCss`. Both `broadsheet` and `skeleton` ship as `<name>-tokens.css` files under this model. All themes must cover the full selector vocabulary required by the engine — any class or ID added to the engine must be styled via `--theme-*` vars in `theme-components.css` (either in the shared section or in the tool's namespaced section).
+**Theme semantics:** Themes are token files over a neutral shared layer. `shared/themes/theme-base.css` defines neutral `--theme-*` defaults; each theme is a `shared/themes/<name>-tokens.css` that overrides them. `shared/themes/theme-components.css` supplies all tool-agnostic, var-driven component styles (masthead, buttons, SVG cell states, congrats card) **plus** per-tool namespaced sections for tool-specific selectors (bands, chevrons, secondary cells). Each tool's `<body>` carries a `class="tool-<name>"` hook (e.g. `tool-snake-charmer`) that scopes the per-tool sections; there is no separate per-tool CSS file. Adding a new theme requires `<name>-tokens.css` and an entry in `THEME_REGISTRY` in `shared/build/themeRegistry.js`. Both `broadsheet` and `skeleton` ship as `<name>-tokens.css` files under this model. All themes must cover the full selector vocabulary required by the engine — any class or ID added to the engine must be styled via `--theme-*` vars in `theme-components.css` (either in the shared section or in the tool's namespaced section).
 
 **Tool-specific optional flags** (e.g. `--shape` in Snake Charmer) are allowed and must not conflict with shared flag names. Tools document their own optional flags in their `CLAUDE.md` and `docs/SPEC.md`.
+
+---
+
+## Font flag
+
+**Rule:** Every tool CLI accepts `--font embed|link` to control font delivery for themes that use custom fonts. The flag is silently ignored for system-font themes (`fonts: null` in the registry). For custom-font themes, omitting `--font` is an error.
+
+- `--font embed` — base64-encodes font files into `@font-face` declarations; output is self-contained with no network dependencies. Font files must be committed to `shared/themes/fonts/<theme>/` and declared in the registry's `fonts.faces` array.
+- `--font link` — emits a `@import url(...)` pointing at the CDN URL declared in the registry's `fonts.cdn.url`. The font loads in the solver's browser on every puzzle open; requires network access at solve time. Prefer Bunny Fonts over Google Fonts for GDPR-sensitive deployments.
+
+**Applies to:** all tool `cli.js` files.
 
 ---
 
@@ -106,6 +117,28 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 ---
 
+## Keyboard shortcuts modal
+
+**Rule:** Every tool exposes a keyboard-shortcuts reference via a fixed `?` button and the `?` key. Both are wired by `setupKeysOverlay(shortcuts, refocus)` from `shared/engine-chrome.js` — each engine calls it with a tool-specific `[[keys, description], …]` array and the same `refocus` function it passes to `setupClearButton`. The return value (the overlay element) is passed to `setupKeydown` as `{ keysOverlay }`.
+
+**Creation:** `setupKeysOverlay` appends two elements to `<body>`:
+1. `#keys-btn` — a fixed bottom-right corner button labelled `?`.
+2. `#keys-overlay` — a full-viewport backdrop wrapping `#keys-modal` (a `role="dialog"` card listing the shortcuts as a table of `<kbd>` + description rows).
+
+**Opening and closing:**
+- Clicking `#keys-btn`, or pressing `?` (without Meta/Ctrl), opens the modal and moves focus to `#keys-close` so keystrokes can't leak into the grid.
+- Pressing `?` again, pressing Escape, clicking the backdrop, or clicking `#keys-close` all close the modal and call `refocus()` to restore puzzle focus.
+
+**Keystroke guard:** `setupKeydown` has a `keysOverlay` option; when the overlay is visible, the tool's keydown handler returns immediately, so no puzzle key fires while the modal is up.
+
+**CSS:** `#keys-btn` layout (fixed position, size, z-index) lives in `shared/base.css`. All colour/font styling for `#keys-btn`, `#keys-overlay`, `#keys-modal`, `#keys-modal-header`, `#keys-close`, and `kbd` lives in `shared/themes/theme-components.css` using the standard `--theme-*` variables (`--theme-color-bg`, `--theme-color-text`, `--theme-color-soft-border`, `--theme-color-btn2-*`). No per-theme overrides are required; the neutral page-level vars give the right contrast for every theme.
+
+**Print:** `#keys-overlay` and `#keys-btn` are both hidden in `@media print` (see `shared/themes/print-base.css`).
+
+**Applies to:** `shared/engine-chrome.js` (`setupKeysOverlay`, `setupKeydown`), all three `src/template/engine.js` files.
+
+---
+
 ## Shared element naming conventions
 
 All tools use these element names for equivalent concepts — use them exactly as listed. Elements marked *(tool-specific)* are only present in the named tool and do not need to be styled in other tools' theme files.
@@ -123,6 +156,11 @@ All tools use these element names for equivalent concepts — use them exactly a
 | Focused/cursor cell | `.cell.active-cell` |
 | Controls wrapper | `#controls` |
 | Clear progress button | `#clear-btn` |
+| Keyboard-shortcuts trigger button | `#keys-btn` |
+| Keyboard-shortcuts backdrop | `#keys-overlay` |
+| Keyboard-shortcuts modal card | `#keys-modal` |
+| Keyboard-shortcuts modal header | `#keys-modal-header` |
+| Keyboard-shortcuts close button | `#keys-close` |
 | Toggle buttons | `.toggle-opt` (`.active` on the selected one) |
 | Clue list wrapper | `#clue-list` *(Snake Charmer)* |
 | Clue list items | `.clue-item` |
