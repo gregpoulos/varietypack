@@ -2,6 +2,8 @@
 
 A monorepo of variety word puzzle generators.
 
+**[Try the examples online](https://gregpoulos.github.io/varietypack/examples/)**
+
 ## Usage
 
 ```fish
@@ -73,7 +75,7 @@ Some tools accept additional options. Pass them after the path argument.
 
 ### Snake Charmer
 
-N numbered answers fill a continuous snake-shaped loop of cells. Each answer starts at its numbered cell and proceeds clockwise; the loop is closed so the last answer ends where the first begins.
+N numbered answers fill a continuous snake-shaped loop of cells. Each answer starts at its numbered cell and proceeds clockwise; the loop is closed so the last answer ends where the first begins. **[Try an example](https://gregpoulos.github.io/varietypack/examples/snake-charmer.html)**
 
 ```yaml
 kind: snake-charmer
@@ -94,7 +96,7 @@ See [snake-charmer/docs/SPEC.md](snake-charmer/docs/SPEC.md) for the full format
 
 ### Spiral
 
-Two sets of entries share every cell: inward entries fill the spiral from the outer edge toward the center; outward entries fill it from the center back out. The combined inward string must be the reverse of the combined outward string. Minimum 40 cells. The generated HTML is print-ready.
+Two sets of entries share every cell: inward entries fill the spiral from the outer edge toward the center; outward entries fill it from the center back out. The combined inward string must be the reverse of the combined outward string. Minimum 40 cells. The generated HTML is print-ready. **[Try an example](https://gregpoulos.github.io/varietypack/examples/spiral.html)**
 
 ```yaml
 kind: spiral
@@ -119,7 +121,7 @@ See [spiral/docs/SPEC.md](spiral/docs/SPEC.md) for the full format reference.
 
 ### Marching Bands
 
-An N×N grid where words march in two formations: **Rows** (two or more words per numbered row, reading left to right) and **Bands** (words march clockwise around each concentric rectangular band). Every cell belongs to exactly one Row word and one Band word; where words begin and end within a row or band is for the solver to discover. For odd N, the center cell is a black square. The generated HTML is print-ready.
+An N×N grid where words march in two formations: **Rows** (two or more words per numbered row, reading left to right) and **Bands** (words march clockwise around each concentric rectangular band). Every cell belongs to exactly one Row word and one Band word; where words begin and end within a row or band is for the solver to discover. For odd N, the center cell is a black square. The generated HTML is print-ready. **[Try an example](https://gregpoulos.github.io/varietypack/examples/marching-bands.html)**
 
 ```yaml
 kind: marching-bands
