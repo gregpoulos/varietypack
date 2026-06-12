@@ -58,7 +58,7 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 **Rule:** Every tool CLI accepts `<input.yaml>` as its only required positional argument and uses `-o <output.html>` for an explicit output path. When `-o` is omitted, the output path defaults to `<input-basename>.html` written next to the input file. No tool may require a positional output argument.
 
-**Usage line order:** Optional flags first, then `<input.yaml>`, then `[-o <output.html>]`. Example: `Usage: mytool [--theme broadsheet|skeleton] <input.yaml> [-o <output.html>]`.
+**Usage line order:** `<input.yaml>` first, then `[options]` (including `-o`). Example: `Usage: mytool <input.yaml> [options]`.
 
 **Applies to:** all tool `cli.js` files.
 
@@ -171,7 +171,7 @@ All tools use these element names for equivalent concepts — use them exactly a
 | All-filled-but-wrong banner | `#done-wrong` |
 | Per-entry circle decoration | `.style-circle` |
 | Secondary-entry cells | `.cell.secondary-entry` *(Snake Charmer)* |
-| Secondary-entry clue highlight | `.clue-item.secondary-entry` *(class-based across all tools)* |
+| Secondary-entry clue highlight | `.clue-item.secondary-entry` *(Snake Charmer, Spiral — applied to individual clue items)* / `.clue-group.secondary-entry` *(Marching Bands — applied to the group wrapper, not individual items)* |
 | Inward/outward clue lists | `#inward-clues`, `#outward-clues` *(Spiral; the `.clue-section-inward` / `.clue-section-outward` wrappers hold them)* |
 | Direction-tracking chevron | `#direction-chevron` *(Spiral)* |
 | Center-curl spiral decoration | `#center-curl` *(Spiral)* |
@@ -325,7 +325,7 @@ The period key mirrors the effect of clicking the already-active cell or clickin
 
 **Rule:** Printing a puzzle must produce a clean, unsolved appearance regardless of solve state. All cell fill colors (active, highlighted, correct) must reset to white. All clue styling (active highlight, correct strikethrough) must reset to unstyled.
 
-**Applies to:** `shared/themes/print-base.css` (the cross-tool resets) followed by each tool's `template/print.css` (tool-specific layout and any extra cell-state selectors) — both concatenated *after* the theme CSS by `composeThemeCss`. `print-base.css` is the final override layer: its declarations are `!important`, so the resets win over any theme rule regardless of selector specificity or source order (without it, a theme highlight rule that ties or exceeds the reset's specificity could silently survive in print). A tool's `print.css` that needs to override a base reset must also use `!important`. The shared base covers the common selectors (`.cell`, `.cell.active-entry`, `.cell.active-cell`, `.cell.correct`, `.clue-item.active-clue`, `.clue-item.secondary-entry`, `.clue-item.correct .clue-text`); a tool's `print.css` adds only selectors the base doesn't list (e.g. snake's `.secondary-entry` cell variants, marching-bands' `.band-even`/`.band-odd`, marching-bands' `.clue-group.active-clue` which replaces the shared `.clue-item.active-clue` for that tool).
+**Applies to:** `shared/themes/print-base.css` (the cross-tool resets) followed by each tool's `template/print.css` (tool-specific layout rules) — both concatenated *after* the theme CSS by `composeThemeCss`. `print-base.css` is the final override layer: its declarations are `!important`, so the resets win over any theme rule regardless of selector specificity or source order (without it, a theme highlight rule that ties or exceeds the reset's specificity could silently survive in print). A tool's `print.css` that needs to override a base reset must also use `!important`. The shared base covers all cell-state selectors (`.cell`, `.cell.active-entry`, `.cell.active-cell`, `.cell.correct`) and clue-state selectors (`.clue-item.active-clue`, `.clue-item.secondary-entry`, `.clue-item.correct .clue-text`). A tool's `print.css` handles only tool-specific non-cell overrides — e.g. MB's `.clue-group.active-clue` (MB uses `.clue-group` not `.clue-item` for clue highlights) and layout adjustments. Do not add per-tool cell-state selectors to a tool's `print.css` — the shared `!important` reset already covers every cell class.
 
 **How to verify:** Mark some cells correct, then print (or use browser print preview) — no green fills, no struck-through clues.
 
@@ -351,7 +351,7 @@ The period key mirrors the effect of clicking the already-active cell or clickin
 | Spiral | `vp:sp:<title>\|<date>` |
 | Marching Bands | `vp:mb:<title>\|<date>` |
 
-**Save format:** `{ v: 1, cellCount, letters, correct }` (Marching Bands uses `cellCount: N²−1` for odd N or `N²` for even N, where N is the grid size). The `v` field is a schema version; restore code must reject saves where `v !== 1` (enables clean future upgrades without leaking old-format data into new code).
+**Save format:** `{ v: 1, cellCount, letters, correct, activeMs }` (Marching Bands uses `cellCount: N²−1` for odd N or `N²` for even N, where N is the grid size). `activeMs` is the accumulated active-solve time in ms and may be absent in saves from before the completion event feature. The `v` field is a schema version; restore code must reject saves where `v !== 1` (enables clean future upgrades without leaking old-format data into new code).
 
 **Guards:** Both `saveState()` and `restoreState()` return early if `title` or `date` is absent — a degenerate key like `vp:sc:|` would be a collision magnet across all untitled/undated puzzles of that type. Puzzles without dates do not get auto-save.
 
@@ -359,4 +359,72 @@ The period key mirrors the effect of clicking the already-active cell or clickin
 
 **Applies to:** each tool's `src/template/engine.js`.
 
-**Clear button (`#clear-btn`):** A muted secondary button in `#controls`. Uses a two-click arm pattern: first click changes the label to "Sure?" and adds class `.armed` for 3 seconds; second click calls `clearState()` (removes the localStorage key) then `location.reload()`. The button carries `type="button"` to avoid accidental form submission. Its `min-width` is stabilised by a `base.css` rule `#clear-btn::after { content: 'Sure?'; display: block; height: 0; overflow: hidden; visibility: hidden; }` so the layout does not shift when the label changes.
+**Clear button (`#clear-btn`):** A muted secondary button in `#controls`. Uses a two-click arm pattern: first click changes the label to "Sure?" and adds class `.armed` for 3 seconds; second click calls `onConfirmed()` — the engine-supplied callback that performs a full in-memory board reset (see `resetBoard` contract below). The button carries `type="button"` to avoid accidental form submission. Its `min-width` is stabilised by a `base.css` rule `#clear-btn::after { content: 'Sure?'; display: block; height: 0; overflow: hidden; visibility: hidden; }` so the layout does not shift when the label changes.
+
+**`resetBoard()` contract:** Each engine defines a `resetBoard()` function (in the Logic functions section of `init()`) and passes it as the `onConfirmed` argument to `setupClearButton`. It must restore the board to its freshly-loaded state: (1) zero all letter state (`letterState.fill('')` for SC; clear `cellLetters` map/object for Spiral/MB); (2) reset all letter text content to `''`; (3) remove `.correct` from all cell paths and letter texts (and clear `dataset.correct` for MB cells); (4) remove `.correct` from all clue `<li>` elements in tools that mark clues correct (SC and Spiral; MB does not mark clues correct, so it skips this); (5) remove any `.flash-wrong-overlay` elements from `flashLayer`; (6) reset `congratsDismissed = false`; (7) reset the navigation sub-mode to its initial value so the cleared board matches a fresh load (`mode = 'row'` for MB, `direction = 'inward'` for Spiral; SC's loop is reset implicitly by the `focusCell(0, 0)` in step 10); (8) call `clearState()` (removes the localStorage key); (9) call `timer.reset()` (zeroes the active-time accumulator and `started` flag); (10) call `latch.reset()` (allows re-emission of `varietypack:complete` if the board is re-solved); (11) call `focusCell` at the initial cell so `syncUI()` re-derives all highlights and banners. No page reload occurs — the board resets entirely in memory.
+
+---
+
+## Completion event — `varietypack:complete`
+
+**Rule:** On the first false→true transition of "board solved" during a page load, every engine emits `varietypack:complete` on `.puzzle-main` and posts to `window.parent`. Implemented via `makeCompletionLatch` in `shared/engine-chrome.js`.
+
+### CustomEvent
+
+```js
+new CustomEvent('varietypack:complete', {
+  bubbles: true,
+  composed: true,
+  detail: { boardHash, kind, title, date, timeMs, solution },
+})
+```
+
+**Target:** `.puzzle-main` — the shared outer puzzle container present in all three tools.
+
+**`detail` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `boardHash` | string (64-char hex) | SHA-256 of the canonical board string. Always present in both hashed and non-hashed builds. |
+| `kind` | string | `"snake-charmer"`, `"spiral"`, or `"marching-bands"` |
+| `title` | string | Puzzle title from YAML |
+| `date` | string | Puzzle date from YAML (may be `undefined` for puzzles without a `date` field) |
+| `timeMs` | number | Active solve time in ms — see Timing semantics below |
+| `solution` | string | Normalized board string (SHA-256 preimage) — `sha256hex(solution) === boardHash` |
+
+### postMessage (iframe embedding)
+
+```js
+window.parent?.postMessage(
+  { type: 'varietypack:complete', boardHash, kind, title, date, timeMs },
+  '*'
+)
+```
+
+**`solution` is intentionally absent from `postMessage`.** The `'*'` targetOrigin broadcasts to any parent host. In hashed builds, `solution` is proof-of-knowledge and must not be broadcast to unknown origins. In non-hashed builds the answers are in the HTML anyway, so this is a belt-and-suspenders exclusion.
+
+### `solution` — canonical board string per tool
+
+| Tool | String |
+|---|---|
+| Snake Charmer | Ring cells in traversal order (loop 0), joined and lowercased |
+| Spiral | Inward cells 1 → N, joined and lowercased |
+| Marching Bands | Row-major order (1 → N²), skipping center cell, lowercased |
+
+This is the same string each tool's `checkBoardIfFilled` passes to `sha256hex()`.
+
+### Timing semantics — `timeMs`
+
+`timeMs` is **active solve time**: total duration the puzzle was open and visible, from the first letter input to completion, accumulated across sessions. The clock starts on first letter-mutation (not page load), pauses when the tab is hidden, resumes when visible. Open-but-idle time counts; no idle detection.
+
+**Persistence:** The accumulator is saved in the auto-save localStorage payload under `activeMs`. On `visibilitychange→hidden`, the `setupTimer` function (in `shared/engine-chrome.js`) folds the running interval and calls the engine's `saveState` so the accumulated time survives tab-close.
+
+### Emission guarantee
+
+Fires exactly once per page load, on the first false→true solved transition. Restoring a previously-solved puzzle from localStorage does not re-emit — the latch is sealed immediately after `restoreState()`.
+
+### Implementation
+
+`makeCompletionLatch` and `setupTimer` live in `shared/engine-chrome.js` and are called from each engine's `init()`.
+
+**Applies to:** `shared/engine-chrome.js`, all three `src/template/engine.js` files, all three hashers.

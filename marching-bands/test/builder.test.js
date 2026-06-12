@@ -66,12 +66,12 @@ test('buildPuzzle: PUZZLE_DATA contains rows and bands arrays', () => {
   });
 });
 
-test('buildPuzzle: non-hashed HTML contains letters array', () => {
+test('buildPuzzle: non-hashed HTML contains letters array and boardHash', () => {
   withTmpFiles((yamlPath, htmlPath) => {
     buildPuzzle(yamlPath, htmlPath);
     const html = fs.readFileSync(htmlPath, 'utf8');
     assert.ok(html.includes('"letters"'), 'letters not found');
-    assert.ok(!html.includes('"boardHash"'), 'boardHash should be absent');
+    assert.ok(html.includes('"boardHash"'), 'boardHash should be present');
   });
 });
 

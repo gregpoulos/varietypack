@@ -17,13 +17,11 @@
   }
   .clue-section { break-inside: avoid; }
 
-  /* MB uses .clue-group.active-clue (not .clue-item.active-clue) — reset here since print-base.css covers the item selector */
-  .clue-group.active-clue { background: transparent !important; }
+  /* MB uses .clue-group.active-clue / .clue-group.secondary-entry (not .clue-item.*) — reset here since print-base.css covers the item selectors */
+  .clue-group.active-clue    { background: transparent !important; }
+  .clue-group.secondary-entry { background: transparent !important; }
 
-  /* Cell-state selectors beyond the shared print base */
-  .cell.band-even,
-  .cell.band-odd { fill: #fff; stroke: #999; stroke-width: 1; }
-  .cell-center { fill: #222; }
+  .cell-center { fill: #222 !important; }
 }
 
 @media print and (orientation: landscape) {

@@ -21,7 +21,7 @@ Directory options:
   --build-index    Write index.html linking all built puzzles (default: off)
 
 Tool-specific options (e.g. --shape for snake-charmer) are forwarded to the
-tool and documented in each tool's README.
+tool and documented in each tool's docs/SPEC.md.
 
 When given a directory, builds all YAML puzzle files found in it.
 `;

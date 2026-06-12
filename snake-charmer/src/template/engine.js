@@ -142,13 +142,17 @@ function prevRingPos(pos, total) {
 
     function checkBoardIfFilled() {
       if (!letterState.every(l => l !== '')) return;
-      if (sha256hex(letterState.join('').toLowerCase()) !== data.boardHash) { syncUI(); return; }
+      if (sha256hex(getSolution()) !== data.boardHash) { syncUI(); return; }
       letterState.forEach((_, rp) => {
         cellPaths[rp].classList.add('correct');
         letterTexts[rp].classList.add('correct');
       });
       data.entries.forEach((_, ei) => cluesList.children[ei].classList.add('correct'));
       syncUI();
+    }
+
+    function getSolution() {
+      return letterState.join('').toLowerCase();
     }
 
     function isSolved() {
@@ -169,6 +173,7 @@ function prevRingPos(pos, total) {
         checkBtn.disabled = !letterState[activeRingPos] ||
           cellPaths[activeRingPos].classList.contains('correct');
       }
+      latch.check(everyCellCorrect);
     }
 
     const { saveState, restoreState, clearState } = setupStorage(storageKey('sc', data), {
@@ -176,7 +181,7 @@ function prevRingPos(pos, total) {
       getState() {
         const correct = [];
         cellPaths.forEach((p, i) => { if (p.classList.contains('correct')) correct.push(i); });
-        return { letters: letterState, correct };
+        return { letters: letterState, correct, activeMs: timer.getElapsedMs() };
       },
       applyState(saved) {
         saved.letters.forEach((letter, i) => {
@@ -188,7 +193,20 @@ function prevRingPos(pos, total) {
           cellPaths[i].classList.add('correct');
           letterTexts[i].classList.add('correct');
         });
+        timer.restoreMs(saved.activeMs);
       },
+    });
+
+    const timer = setupTimer({ onPause: () => saveState() });
+    const puzzleRoot = document.querySelector('.puzzle-main');
+    const latch = makeCompletionLatch({
+      puzzleRoot,
+      kind:         data.kind,
+      title:        data.title,
+      date:         data.date,
+      getBoardHash: () => data.boardHash,
+      getSolution,
+      getElapsedMs: () => timer.getElapsedMs(),
     });
 
     // ── Build SVG ─────────────────────────────────────────────────────────────
@@ -330,7 +348,6 @@ function prevRingPos(pos, total) {
       });
     })();
 
-    // Navigation keys work even when focus has left the hidden input (e.g. after
     setupKeydown(e => {
       const ringPos = activeRingPos;
       if (e.key === 'Backspace') {
@@ -380,6 +397,7 @@ function prevRingPos(pos, total) {
       const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
       hiddenInput.value = '';
       if (!letter) return;
+      timer.onFirstInput();
       setCellLetter(ringPos, letter);
       // Advance before the hash check — awaiting the check first causes keystroke lag.
       advanceCell(ringPos);
@@ -417,9 +435,25 @@ function prevRingPos(pos, total) {
       });
     }
 
+    function resetBoard() {
+      letterState.fill('');
+      for (let rp = 0; rp < ringSize; rp++) {
+        letterTexts[rp].textContent = '';
+        cellPaths[rp].classList.remove('correct');
+        letterTexts[rp].classList.remove('correct');
+      }
+      Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
+      while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
+      congratsDismissed = false;
+      clearState();
+      timer.reset();
+      latch.reset();
+      focusCell(0, 0);
+    }
+
     setupClearButton(
       document.getElementById('clear-btn'),
-      clearState,
+      resetBoard,
       () => hiddenInput.focus({ preventScroll: true })
     );
 
@@ -430,6 +464,7 @@ function prevRingPos(pos, total) {
 
     // ── Restore & focus ─────────────────────────────────────────────────────────
     restoreState();
+    latch.sealIfSolved(isSolved());
     focusCell(0, 0);
   }
 

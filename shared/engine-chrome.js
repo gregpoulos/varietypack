@@ -33,10 +33,11 @@ function renderInstructions(data) {
 }
 
 // Two-click arm/disarm Clear button. First click swaps the label to "Sure?" and
-// adds `.armed` for 3s; a second click within that window calls clearState()
-// and reloads. `refocus` (optional) restores puzzle focus after the arming
-// click so the document keydown BUTTON guard doesn't block the next keystroke.
-function setupClearButton(clearBtn, clearState, refocus) {
+// adds `.armed` for 3s; a second click within that window calls onConfirmed(),
+// which each engine supplies to perform the full in-memory board reset.
+// `refocus` (optional) restores puzzle focus after the arming click so the
+// document keydown BUTTON guard doesn't block the next keystroke.
+function setupClearButton(clearBtn, onConfirmed, refocus) {
   let armed = false;
   let timer = null;
   clearBtn.addEventListener('click', () => {
@@ -52,8 +53,10 @@ function setupClearButton(clearBtn, clearState, refocus) {
       if (refocus) refocus();
     } else {
       clearTimeout(timer);
-      clearState();
-      location.reload();
+      armed = false;
+      clearBtn.textContent = 'Clear';
+      clearBtn.classList.remove('armed');
+      onConfirmed();
     }
   });
 }
@@ -237,10 +240,90 @@ function setupKeysOverlay(shortcuts, refocus) {
   return overlay;
 }
 
+function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
+  let activeMs = 0;
+  let runningSince = null;
+  let started = false;
+
+  function onFirstInput() {
+    if (started) return;
+    started = true;
+    runningSince = _now();
+  }
+
+  // Resets all timer state to initial values — used by resetBoard in each
+  // engine so a cleared puzzle starts timing fresh from the next keystroke.
+  function reset() {
+    started = false;
+    runningSince = null;
+    activeMs = 0;
+  }
+
+  function getElapsedMs() {
+    return activeMs + (runningSince !== null ? _now() - runningSince : 0);
+  }
+
+  function restoreMs(ms) {
+    activeMs = (typeof ms === 'number' && ms >= 0) ? ms : 0;
+  }
+
+  function handleVisibility(hidden) {
+    if (hidden) {
+      if (runningSince !== null) {
+        activeMs += _now() - runningSince;
+        runningSince = null;
+      }
+      // Only flush to storage if the clock was ever started — an idle tab that
+      // never received input has nothing new to persist.
+      if (started && onPause) onPause();
+    } else {
+      // Guard against unpaired visible events (bfcache, iOS app-switcher) that
+      // would overwrite runningSince and silently drop accumulated time.
+      if (started && runningSince === null) runningSince = _now();
+    }
+  }
+
+  const register = listenVisibility ??
+    (fn => document.addEventListener('visibilitychange', () => fn(document.hidden)));
+  register(handleVisibility);
+
+  return { onFirstInput, reset, getElapsedMs, restoreMs };
+}
+
+function makeCompletionLatch({
+  puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs,
+  _postMessage,
+}) {
+  let fired = false;
+  const pm = _postMessage ?? ((msg) => window.parent?.postMessage(msg, '*'));
+
+  function sealIfSolved(isSolved) {
+    if (isSolved) fired = true;
+  }
+
+  function reset() { fired = false; }
+
+  function check(isSolved) {
+    if (fired || !isSolved) return;
+    fired = true;
+    const timeMs = getElapsedMs();
+    const solution = getSolution();
+    const boardHash = getBoardHash();
+    const detail = { boardHash, kind, title, date, timeMs, solution };
+    puzzleRoot.dispatchEvent(new CustomEvent('varietypack:complete', {
+      bubbles: true, composed: true, detail,
+    }));
+    pm({ type: 'varietypack:complete', boardHash, kind, title, date, timeMs });
+  }
+
+  return { check, sealIfSolved, reset };
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     renderByline, renderInstructions, setupClearButton,
     scrollByKey, storageKey, setupStorage, flashWrong,
-    setupKeydown, setupCongratsOverlay, setupKeysOverlay,
+    setupKeydown, setupCongratsOverlay, setupKeysOverlay, setupTimer,
+    makeCompletionLatch,
   };
 }

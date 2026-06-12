@@ -1,7 +1,8 @@
 'use strict';
 
 const normalize = require('../../shared/normalize');
-const { validateEntryStyles, validateCommonHeader } = require('../../shared/build/builderUtils');
+const { validateCommonHeader } = require('../../shared/build/builderUtils');
+const { validateEntry, hasLengthWithoutHash } = require('../../shared/build/validateEntry');
 
 function validate(puzzle) {
   const errors   = [];
@@ -21,11 +22,7 @@ function validate(puzzle) {
   // Integrity guards
   const isMuddled  = puzzle.boardHash !== undefined;
   const allEntries = [...puzzle.inward, ...puzzle.outward];
-  const hasLengthEntries = allEntries.some(e => e && typeof e === 'object' && e.answer === undefined && typeof e.length === 'number');
-  if (hasLengthEntries && !isMuddled) {
-    errors.push("Muddled entries (length: without answer:) require a top-level boardHash. Use 'varietypack muddle' to produce this format.");
-    return { errors, warnings };
-  }
+  if (hasLengthWithoutHash(allEntries, isMuddled, errors)) return { errors, warnings };
   if (isMuddled) {
     warnings.push('note: entries are muddled; answer validation skipped');
   }
@@ -35,38 +32,12 @@ function validate(puzzle) {
   // or invalid entry) — so the reversal check below can require `norm !== null`.
   function validateEntries(entries, label) {
     return entries.map((entry, i) => {
-      if (!entry || typeof entry !== 'object') {
-        errors.push(`${label}[${i}] must be an object`);
-        return { length: 0, norm: null };
-      }
-      if (!entry.clue || typeof entry.clue !== 'string' || !entry.clue.trim()) {
-        errors.push(`${label}[${i}].clue must be a non-empty string`);
-      }
-
-      if (isMuddled) {
-        if (entry.answer !== undefined) {
-          errors.push(`${label}[${i}]: muddled entry must use length:, not answer:`);
-          return { length: 0, norm: null };
-        }
-        if (!Number.isInteger(entry.length) || entry.length < 1) {
-          errors.push(`${label}[${i}]: muddled entry must have an integer length >= 1`);
-          return { length: 0, norm: null };
-        }
-        validateEntryStyles(entry, `${label}[${i}]`, entry.length, errors, warnings);
-        return { length: entry.length, norm: null };
-      }
-
-      if (!entry.answer || typeof entry.answer !== 'string' || !entry.answer.trim()) {
-        errors.push(`${label}[${i}].answer must be a non-empty string`);
-        return { length: 0, norm: null };
-      }
-      const norm = normalize(entry.answer);
-      if (!norm.length) {
-        errors.push(`${label}[${i}].answer must contain at least one letter`);
-        return { length: 0, norm: null };
-      }
-      validateEntryStyles(entry, `${label}[${i}]`, norm.length, errors, warnings);
-      return { length: norm.length, norm };
+      const len = validateEntry(entry, `${label}[${i}]`, isMuddled, errors, warnings);
+      if (len === null) return { length: 0, norm: null };
+      const norm = (!isMuddled && entry && typeof entry.answer === 'string')
+        ? normalize(entry.answer)
+        : null;
+      return { length: len, norm };
     });
   }
 

@@ -9,6 +9,48 @@
 
 body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.4; }
 
+/* Tools with a fixed active-clue bar need body padding to clear it */
+body.tool-snake-charmer,
+body.tool-spiral { padding-top: 56px; }
+
+#active-clue-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 5px 16px 4px;
+}
+
+.active-clue-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+#active-clue-secondary {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.active-clue-num {
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.active-clue-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#instructions {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
 .clue-item {
   font-size: 0.875rem;
   padding: 2px 6px;
@@ -26,6 +68,14 @@ body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.4; }
   justify-content: center;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+button {
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid;
+  padding: 6px 14px;
+  font-size: 0.875rem;
 }
 
 button:disabled { opacity: 0.4; cursor: default; }
@@ -106,42 +156,6 @@ button:disabled { opacity: 0.4; cursor: default; }
 h1.title { font-size: 1.5rem; font-weight: bold; line-height: 1; }
 .byline  { font-size: 0.875rem; margin-top: 4px; }
 
-body { padding-top: 56px; }
-
-#active-clue-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  padding: 5px 16px 4px;
-}
-
-.active-clue-row {
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-  font-size: 0.875rem;
-  line-height: 1.4;
-}
-
-#active-clue-secondary {
-  font-size: 0.8rem;
-  opacity: 0.6;
-}
-
-.active-clue-num {
-  font-weight: bold;
-  flex-shrink: 0;
-}
-
-.active-clue-text {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-
 .puzzle-main {
   max-width: 1100px;
   margin: 0 auto;
@@ -189,12 +203,6 @@ body { padding-top: 56px; }
 }
 
 .clue-item { cursor: pointer; }
-
-button {
-  cursor: pointer;
-  border-radius: 4px;
-  border: 1px solid;
-}
 
 
 
@@ -302,55 +310,22 @@ button {
   --theme-byline-style:      italic;
 
   --theme-color-bg:    #f9f7f1;
-  --theme-color-text:  #111111;
-  --theme-color-muted: #555555;
 
   --theme-color-bar-border:  #bbbbbb;
   --theme-color-soft-border: #bbbbbb;
 
-  --theme-color-btn-bg:       #222222;
-  --theme-color-btn-hover:    #444444;
-  --theme-color-btn-disabled: #999999;
-  --theme-button-tracking:    0.05em;
+  --theme-color-btn-bg:    #222222;
+  --theme-color-btn-hover: #444444;
 
-  --theme-color-btn2-bg:     #f0ece0;
-  --theme-color-btn2-border: #aaaaaa;
-  --theme-color-btn2-hover:  #e4e0d4;
+  --theme-color-btn2-bg:    #f0ece0;
+  --theme-color-btn2-hover: #e4e0d4;
 
-  --theme-color-clear-fg:       #999999;
-  --theme-color-clear-hover-fg: #333333;
-
-  --theme-color-cell-bg:     #ffffff;
-  --theme-color-cell-stroke: #999999;
-  --theme-color-cell-text:   #111111;
-
-  --theme-color-highlight:           #deeeff;
   --theme-color-band-even:           #e8e8e8;
   --theme-color-highlight-band-even: #cee2f8;
-  --theme-color-active:              #b8d4f5;
-  --theme-color-active-stroke:       #1e5799;
   --theme-color-clue-hover:          #ede8d2;
   --theme-color-secondary-entry:     #f5f0e0;
 
-  --theme-color-secondary-active:        #7aaed8;
-  --theme-color-secondary-active-stroke: #3a72a8;
-
-  --theme-color-correct-bg:     #c8e6c9;
-  --theme-color-correct-stroke: #4caf50;
-  --theme-color-correct-text:   #1a6e22;
-
-  --theme-color-circle:      #bbbbbb;
-  --theme-color-curl:        #aaaaaa;
-  --theme-color-cell-center: #222222;
-
-  --theme-color-congrats-bg:     #2e7d32;
-  --theme-color-congrats-border: #1b5e20;
-  --theme-color-congrats-text:   #ffffff;
-
-  --theme-color-wrong-bg:     #fff3e0;
-  --theme-color-wrong-border: #e65100;
-
-  --theme-color-danger: #b91c1c;
+  --theme-color-circle: #bbbbbb;
 }
 
 /* theme-components: every tool-agnostic selector, driven entirely by --theme-*.
@@ -583,7 +558,7 @@ kbd {
 .tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
 .tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
 .tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
-.tool-marching-bands .clue-group.secondary-clue { background: var(--theme-color-secondary-entry); }
+.tool-marching-bands .clue-group.secondary-entry { background: var(--theme-color-secondary-entry); }
 
 /* Spiral — no .cell-letter font-size (see comment above). */
 .tool-spiral .clue-item { padding: 2px 6px 2px 2px; }
@@ -637,11 +612,6 @@ kbd {
 /* Shared print resets live in shared/themes/print-base.css (concatenated just
    before this file). Only snake-charmer-specific print rules belong here. */
 @media print {
-  /* Cell-state selectors beyond the shared print base */
-  .cell.secondary-entry,
-  .cell.active-cell.secondary-entry,
-  .cell.correct.active-cell { fill: #fff; stroke: #999; stroke-width: 1; }
-
   .puzzle-main { padding: 12px 16px; }
   .puzzle-header { margin-bottom: 12px; padding-bottom: 8px; }
 
@@ -717,10 +687,62 @@ kbd {
   <script>window.PUZZLE_DATA = {
   "title": "Snake Charmer",
   "kind": "snake-charmer",
+  "hashed": false,
   "author": "Greg Poulos",
   "date": "2026",
+  "instructions": "Enter each answer in a clockwise direction starting at the correspondingly numbered cell in the grid. The chain of answers will snake its way around the loop twice.",
+  "letters": [
+    "m",
+    "a",
+    "l",
+    "l",
+    "i",
+    "m",
+    "a",
+    "g",
+    "o",
+    "d",
+    "e",
+    "l",
+    "b",
+    "e",
+    "r",
+    "t",
+    "h",
+    "a",
+    "m",
+    "i",
+    "l",
+    "t",
+    "o",
+    "n",
+    "i",
+    "c",
+    "k",
+    "y",
+    "l",
+    "i",
+    "e",
+    "t",
+    "o",
+    "t",
+    "o",
+    "f",
+    "u",
+    "g",
+    "u",
+    "e",
+    "s",
+    "s",
+    "w",
+    "h",
+    "o",
+    "d",
+    "i",
+    "s"
+  ],
+  "boardHash": "bb08026e8b3647ccf6ca0a4555d05e7ecccb0fa5851938ec9d841e005ea21967",
   "loops": 2,
-  "hashed": false,
   "shape": "double-turn",
   "entries": [
     {
@@ -850,58 +872,7 @@ kbd {
     "cy_bot": 319.93805346802804,
     "svgWidth": 377.83662361046584,
     "svgHeight": 364.85636527326096
-  },
-  "letters": [
-    "m",
-    "a",
-    "l",
-    "l",
-    "i",
-    "m",
-    "a",
-    "g",
-    "o",
-    "d",
-    "e",
-    "l",
-    "b",
-    "e",
-    "r",
-    "t",
-    "h",
-    "a",
-    "m",
-    "i",
-    "l",
-    "t",
-    "o",
-    "n",
-    "i",
-    "c",
-    "k",
-    "y",
-    "l",
-    "i",
-    "e",
-    "t",
-    "o",
-    "t",
-    "o",
-    "f",
-    "u",
-    "g",
-    "u",
-    "e",
-    "s",
-    "s",
-    "w",
-    "h",
-    "o",
-    "d",
-    "i",
-    "s"
-  ],
-  "instructions": "Enter each answer in a clockwise direction starting at the correspondingly numbered cell in the grid. The chain of answers will snake its way around the loop twice."
+  }
 };</script>
   <script>
 function normalize(str) {
@@ -1024,10 +995,11 @@ function renderInstructions(data) {
 }
 
 // Two-click arm/disarm Clear button. First click swaps the label to "Sure?" and
-// adds `.armed` for 3s; a second click within that window calls clearState()
-// and reloads. `refocus` (optional) restores puzzle focus after the arming
-// click so the document keydown BUTTON guard doesn't block the next keystroke.
-function setupClearButton(clearBtn, clearState, refocus) {
+// adds `.armed` for 3s; a second click within that window calls onConfirmed(),
+// which each engine supplies to perform the full in-memory board reset.
+// `refocus` (optional) restores puzzle focus after the arming click so the
+// document keydown BUTTON guard doesn't block the next keystroke.
+function setupClearButton(clearBtn, onConfirmed, refocus) {
   let armed = false;
   let timer = null;
   clearBtn.addEventListener('click', () => {
@@ -1043,8 +1015,10 @@ function setupClearButton(clearBtn, clearState, refocus) {
       if (refocus) refocus();
     } else {
       clearTimeout(timer);
-      clearState();
-      location.reload();
+      armed = false;
+      clearBtn.textContent = 'Clear';
+      clearBtn.classList.remove('armed');
+      onConfirmed();
     }
   });
 }
@@ -1228,11 +1202,91 @@ function setupKeysOverlay(shortcuts, refocus) {
   return overlay;
 }
 
+function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
+  let activeMs = 0;
+  let runningSince = null;
+  let started = false;
+
+  function onFirstInput() {
+    if (started) return;
+    started = true;
+    runningSince = _now();
+  }
+
+  // Resets all timer state to initial values — used by resetBoard in each
+  // engine so a cleared puzzle starts timing fresh from the next keystroke.
+  function reset() {
+    started = false;
+    runningSince = null;
+    activeMs = 0;
+  }
+
+  function getElapsedMs() {
+    return activeMs + (runningSince !== null ? _now() - runningSince : 0);
+  }
+
+  function restoreMs(ms) {
+    activeMs = (typeof ms === 'number' && ms >= 0) ? ms : 0;
+  }
+
+  function handleVisibility(hidden) {
+    if (hidden) {
+      if (runningSince !== null) {
+        activeMs += _now() - runningSince;
+        runningSince = null;
+      }
+      // Only flush to storage if the clock was ever started — an idle tab that
+      // never received input has nothing new to persist.
+      if (started && onPause) onPause();
+    } else {
+      // Guard against unpaired visible events (bfcache, iOS app-switcher) that
+      // would overwrite runningSince and silently drop accumulated time.
+      if (started && runningSince === null) runningSince = _now();
+    }
+  }
+
+  const register = listenVisibility ??
+    (fn => document.addEventListener('visibilitychange', () => fn(document.hidden)));
+  register(handleVisibility);
+
+  return { onFirstInput, reset, getElapsedMs, restoreMs };
+}
+
+function makeCompletionLatch({
+  puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs,
+  _postMessage,
+}) {
+  let fired = false;
+  const pm = _postMessage ?? ((msg) => window.parent?.postMessage(msg, '*'));
+
+  function sealIfSolved(isSolved) {
+    if (isSolved) fired = true;
+  }
+
+  function reset() { fired = false; }
+
+  function check(isSolved) {
+    if (fired || !isSolved) return;
+    fired = true;
+    const timeMs = getElapsedMs();
+    const solution = getSolution();
+    const boardHash = getBoardHash();
+    const detail = { boardHash, kind, title, date, timeMs, solution };
+    puzzleRoot.dispatchEvent(new CustomEvent('varietypack:complete', {
+      bubbles: true, composed: true, detail,
+    }));
+    pm({ type: 'varietypack:complete', boardHash, kind, title, date, timeMs });
+  }
+
+  return { check, sealIfSolved, reset };
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     renderByline, renderInstructions, setupClearButton,
     scrollByKey, storageKey, setupStorage, flashWrong,
-    setupKeydown, setupCongratsOverlay, setupKeysOverlay,
+    setupKeydown, setupCongratsOverlay, setupKeysOverlay, setupTimer,
+    makeCompletionLatch,
   };
 }
 
@@ -1837,13 +1891,17 @@ function prevRingPos(pos, total) {
 
     function checkBoardIfFilled() {
       if (!letterState.every(l => l !== '')) return;
-      if (sha256hex(letterState.join('').toLowerCase()) !== data.boardHash) { syncUI(); return; }
+      if (sha256hex(getSolution()) !== data.boardHash) { syncUI(); return; }
       letterState.forEach((_, rp) => {
         cellPaths[rp].classList.add('correct');
         letterTexts[rp].classList.add('correct');
       });
       data.entries.forEach((_, ei) => cluesList.children[ei].classList.add('correct'));
       syncUI();
+    }
+
+    function getSolution() {
+      return letterState.join('').toLowerCase();
     }
 
     function isSolved() {
@@ -1864,6 +1922,7 @@ function prevRingPos(pos, total) {
         checkBtn.disabled = !letterState[activeRingPos] ||
           cellPaths[activeRingPos].classList.contains('correct');
       }
+      latch.check(everyCellCorrect);
     }
 
     const { saveState, restoreState, clearState } = setupStorage(storageKey('sc', data), {
@@ -1871,7 +1930,7 @@ function prevRingPos(pos, total) {
       getState() {
         const correct = [];
         cellPaths.forEach((p, i) => { if (p.classList.contains('correct')) correct.push(i); });
-        return { letters: letterState, correct };
+        return { letters: letterState, correct, activeMs: timer.getElapsedMs() };
       },
       applyState(saved) {
         saved.letters.forEach((letter, i) => {
@@ -1883,7 +1942,20 @@ function prevRingPos(pos, total) {
           cellPaths[i].classList.add('correct');
           letterTexts[i].classList.add('correct');
         });
+        timer.restoreMs(saved.activeMs);
       },
+    });
+
+    const timer = setupTimer({ onPause: () => saveState() });
+    const puzzleRoot = document.querySelector('.puzzle-main');
+    const latch = makeCompletionLatch({
+      puzzleRoot,
+      kind:         data.kind,
+      title:        data.title,
+      date:         data.date,
+      getBoardHash: () => data.boardHash,
+      getSolution,
+      getElapsedMs: () => timer.getElapsedMs(),
     });
 
     // ── Build SVG ─────────────────────────────────────────────────────────────
@@ -2025,7 +2097,6 @@ function prevRingPos(pos, total) {
       });
     })();
 
-    // Navigation keys work even when focus has left the hidden input (e.g. after
     setupKeydown(e => {
       const ringPos = activeRingPos;
       if (e.key === 'Backspace') {
@@ -2075,6 +2146,7 @@ function prevRingPos(pos, total) {
       const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
       hiddenInput.value = '';
       if (!letter) return;
+      timer.onFirstInput();
       setCellLetter(ringPos, letter);
       // Advance before the hash check — awaiting the check first causes keystroke lag.
       advanceCell(ringPos);
@@ -2112,9 +2184,25 @@ function prevRingPos(pos, total) {
       });
     }
 
+    function resetBoard() {
+      letterState.fill('');
+      for (let rp = 0; rp < ringSize; rp++) {
+        letterTexts[rp].textContent = '';
+        cellPaths[rp].classList.remove('correct');
+        letterTexts[rp].classList.remove('correct');
+      }
+      Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
+      while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
+      congratsDismissed = false;
+      clearState();
+      timer.reset();
+      latch.reset();
+      focusCell(0, 0);
+    }
+
     setupClearButton(
       document.getElementById('clear-btn'),
-      clearState,
+      resetBoard,
       () => hiddenInput.focus({ preventScroll: true })
     );
 
@@ -2125,6 +2213,7 @@ function prevRingPos(pos, total) {
 
     // ── Restore & focus ─────────────────────────────────────────────────────────
     restoreState();
+    latch.sealIfSolved(isSolved());
     focusCell(0, 0);
   }
 

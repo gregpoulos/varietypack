@@ -94,9 +94,9 @@ test('preparePuzzle: non-hashed builds letters array row-major', () => {
   assert.deepEqual(r.letters.slice(20, 25), ['t', 'u', 'v', 'w', 'x']);
 });
 
-test('preparePuzzle: non-hashed does not include boardHash', () => {
+test('preparePuzzle: non-hashed includes boardHash', () => {
   const r = preparePuzzle(minimalPuzzle());
-  assert.equal(r.boardHash, undefined);
+  assert.ok('boardHash' in r, 'boardHash must be present in non-hashed output');
 });
 
 test('preparePuzzle: hashed mode has boardHash, no letters', () => {
@@ -149,4 +149,33 @@ test('preparePuzzle: passthrough — no per-entry hash in PUZZLE_DATA rows and b
 test('preparePuzzle: passthrough — derives N from entry.length when boardHash present', () => {
   const result = preparePuzzle(muddledMB3());
   assert.equal(result.size, 3);  // N=3 from rows[0]: 2+1
+});
+
+// ── boardHash in non-hashed mode ──────────────────────────────────────────────
+
+// minimalPuzzle() is already defined at top of this file (5×5 grid).
+
+test('preparePuzzle non-hashed: boardHash is present', () => {
+  const result = preparePuzzle(minimalPuzzle());
+  assert.ok(result.boardHash, 'boardHash must be present in non-hashed output');
+});
+
+test('preparePuzzle non-hashed: boardHash matches sha256hex of the letters string', () => {
+  // In non-hashed mode, both boardHash and letters are present.
+  // The hash must equal sha256hex of all non-null letters joined.
+  const result = preparePuzzle(minimalPuzzle());
+  assert.ok(Array.isArray(result.letters));
+  const boardStr = result.letters.filter(l => l !== null).join('');
+  assert.strictEqual(result.boardHash, sha256hex(boardStr));
+});
+
+test('preparePuzzle non-hashed: letters still present alongside boardHash', () => {
+  const result = preparePuzzle(minimalPuzzle());
+  assert.ok(Array.isArray(result.letters));
+});
+
+test('preparePuzzle hashed: boardHash present and letters absent', () => {
+  const result = preparePuzzle({ ...minimalPuzzle(), hashed: true });
+  assert.ok(result.boardHash);
+  assert.strictEqual(result.letters, undefined);
 });

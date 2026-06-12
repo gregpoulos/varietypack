@@ -1,7 +1,5 @@
 .puzzle-main { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
 
-#instructions { max-width: 600px; margin: 0 auto; }
-
 .puzzle-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) min-content minmax(0, 1fr);
@@ -42,8 +40,6 @@
 
 .cell-letter { font-weight: bold; dominant-baseline: central; }
 
-
-button { cursor: pointer; border: 1px solid #ccc; border-radius: 3px; padding: 6px 14px; font-size: 0.875rem; }
 
 .clue-section h2 {
   font-size: 0.8rem;

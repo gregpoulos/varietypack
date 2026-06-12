@@ -1,11 +1,6 @@
 /* Shared print resets live in shared/themes/print-base.css (concatenated just
    before this file). Only snake-charmer-specific print rules belong here. */
 @media print {
-  /* Cell-state selectors beyond the shared print base */
-  .cell.secondary-entry,
-  .cell.active-cell.secondary-entry,
-  .cell.correct.active-cell { fill: #fff; stroke: #999; stroke-width: 1; }
-
   .puzzle-main { padding: 12px 16px; }
   .puzzle-header { margin-bottom: 12px; padding-bottom: 8px; }
 

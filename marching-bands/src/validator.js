@@ -1,7 +1,8 @@
 'use strict';
 
 const normalize = require('../../shared/normalize');
-const { validateEntryStyles, validateCommonHeader } = require('../../shared/build/builderUtils');
+const { validateCommonHeader } = require('../../shared/build/builderUtils');
+const { validateEntry, hasLengthWithoutHash } = require('../../shared/build/validateEntry');
 const { bandCells, centerFlatIndex } = require('./layout');
 
 function validate(puzzle) {
@@ -28,11 +29,7 @@ function validate(puzzle) {
       ...(Array.isArray(puzzle.rows)  ? puzzle.rows.flatMap(r  => r?.entries ?? []) : []),
       ...(Array.isArray(puzzle.bands) ? puzzle.bands.flatMap(b => b?.entries ?? []) : []),
     ];
-    const hasLengthEntries = allEntries.some(e => e && typeof e === 'object' && e.answer === undefined && typeof e.length === 'number');
-    if (hasLengthEntries && !isMuddled) {
-      errors.push("Muddled entries (length: without answer:) require a top-level boardHash. Use 'varietypack muddle' to produce this format.");
-      return { errors, warnings };
-    }
+    if (hasLengthWithoutHash(allEntries, isMuddled, errors)) return { errors, warnings };
   }
   if (isMuddled) {
     warnings.push('note: entries are muddled; answer validation skipped');
@@ -41,33 +38,9 @@ function validate(puzzle) {
   // Derive N from rows[0] using entryLength semantics (handles both source and muddled entries)
   let N = 0;
   for (let i = 0; i < firstRow.entries.length; i++) {
-    const e = firstRow.entries[i];
-    if (!e || typeof e !== 'object') {
-      errors.push(`rows[0].entries[${i}] must be an object`);
-      return { errors, warnings };
-    }
-    if (isMuddled) {
-      if (e.answer !== undefined) {
-        errors.push(`rows[0].entries[${i}]: muddled entry must use length:, not answer:`);
-        return { errors, warnings };
-      }
-      if (!Number.isInteger(e.length) || e.length < 1) {
-        errors.push(`rows[0].entries[${i}]: muddled entry must have an integer length >= 1`);
-        return { errors, warnings };
-      }
-      N += e.length;
-    } else {
-      if (!e.answer || typeof e.answer !== 'string') {
-        errors.push(`rows[0].entries[${i}].answer must be a non-empty string`);
-        return { errors, warnings };
-      }
-      const norm = normalize(e.answer);
-      if (!norm.length) {
-        errors.push(`rows[0].entries[${i}].answer must contain at least one letter`);
-        return { errors, warnings };
-      }
-      N += norm.length;
-    }
+    const len = validateEntry(firstRow.entries[i], `rows[0].entries[${i}]`, isMuddled, errors, warnings);
+    if (len === null) return { errors, warnings };
+    N += len;
   }
 
   if (N < 3) {
@@ -97,38 +70,9 @@ function validate(puzzle) {
     let sum = 0;
     let anySkipped = false;
     for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i];
-      const label = `${parentLabel}.entries[${i}]`;
-      if (!entry || typeof entry !== 'object') {
-        errors.push(`${label} must be an object`); anySkipped = true; continue;
-      }
-      if (!entry.clue || typeof entry.clue !== 'string' || !entry.clue.trim()) {
-        errors.push(`${label}.clue must be a non-empty string`);
-      }
-
-      if (isMuddled) {
-        if (entry.answer !== undefined) {
-          errors.push(`${label}: muddled entry must use length:, not answer:`);
-          anySkipped = true; continue;
-        }
-        if (!Number.isInteger(entry.length) || entry.length < 1) {
-          errors.push(`${label}: muddled entry must have an integer length >= 1`);
-          anySkipped = true; continue;
-        }
-        validateEntryStyles(entry, label, entry.length, errors, warnings);
-        sum += entry.length;
-      } else {
-        if (!entry.answer || typeof entry.answer !== 'string' || !entry.answer.trim()) {
-          errors.push(`${label}.answer must be a non-empty string`);
-          anySkipped = true; continue;
-        }
-        const norm = normalize(entry.answer);
-        if (!norm.length) {
-          errors.push(`${label}.answer must contain at least one letter`); anySkipped = true; continue;
-        }
-        validateEntryStyles(entry, label, norm.length, errors, warnings);
-        sum += norm.length;
-      }
+      const len = validateEntry(entries[i], `${parentLabel}.entries[${i}]`, isMuddled, errors, warnings);
+      if (len === null) { anySkipped = true; continue; }
+      sum += len;
     }
     return { sum, anySkipped };
   }

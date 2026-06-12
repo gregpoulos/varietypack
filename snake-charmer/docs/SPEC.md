@@ -13,7 +13,7 @@ A Snake Charmer puzzle file is a YAML file with the following fields.
 | `entries` | yes | array | Ordered list of puzzle entries (index 0 = entry #1) |
 | `loops`        | no  | integer | Number of times the ring is traversed. Must be `2` (the default); any other value is rejected. Multi-loop (>2) puzzles are a planned future feature. |
 | `shape`        | no  | string  | Ring shape: `circle`, `stadium`, `turn`, or `double-turn`; see Notes for constraints. When omitted, auto-selects `double-turn` if the ring size supports it, otherwise `stadium`. The `--shape` CLI flag overrides this field. |
-| `instructions` | no  | string  | Puzzle instructions shown between the header and the ring; supports multiple paragraphs separated by blank lines |
+| `instructions` | no  | string  | Puzzle instructions shown at the top of the clue column (above the clue list); supports multiple paragraphs separated by blank lines. Unlike the other tools, SC places instructions inside `#clue-list` rather than in a full-width band between the header and the ring — its layout has no such band. |
 
 ## Entry fields
 

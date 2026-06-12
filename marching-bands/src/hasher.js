@@ -42,11 +42,9 @@ function preparePuzzle(puzzle) {
         letters[flatIdx] = rowLetters[letterIdx++];
       }
     }
-    if (hashed) {
-      prepared.boardHash = sha256hex(letters.filter(l => l !== null).join(''));
-    } else {
-      prepared.letters = letters;
-    }
+    const boardStr = letters.filter(l => l !== null).join('');
+    prepared.boardHash = sha256hex(boardStr);
+    if (!hashed) prepared.letters = letters;
   }
 
   return prepared;

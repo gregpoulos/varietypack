@@ -3,6 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { preparePuzzle } = require('../src/hasher');
+const sha256hex = require('../../shared/sha256hex');
 
 function minimal() {
   return {
@@ -36,9 +37,9 @@ test('preparePuzzle: non-hashed includes letters array', () => {
   assert.deepEqual(r.letters, ['a','b','c','d','e','f','g','h']);
 });
 
-test('preparePuzzle: non-hashed does not include boardHash', () => {
+test('preparePuzzle: non-hashed includes boardHash', () => {
   const r = preparePuzzle(minimal());
-  assert.equal(r.boardHash, undefined);
+  assert.ok('boardHash' in r, 'boardHash must be present in non-hashed output');
 });
 
 test('preparePuzzle: hashed mode has boardHash, no letters', () => {
@@ -49,7 +50,6 @@ test('preparePuzzle: hashed mode has boardHash, no letters', () => {
 });
 
 test('preparePuzzle: boardHash equals sha256hex of inward canonical string', () => {
-  const sha256hex = require('../../shared/sha256hex');
   // minimal() inward: ABCD, EFGH → normalized: abcd, efgh → canonical: 'abcdefgh'
   // same as letters.join('') in non-hashed mode
   const p = { ...minimal(), hashed: true };
@@ -58,7 +58,6 @@ test('preparePuzzle: boardHash equals sha256hex of inward canonical string', () 
 });
 
 test('preparePuzzle: boardHash equals sha256hex(letters.join("")) for the same puzzle', () => {
-  const sha256hex = require('../../shared/sha256hex');
   const p = {
     kind: 'spiral', title: 'T', hashed: false,
     inward:  [{ clue: 'A', answer: 'ABCD' }, { clue: 'B', answer: 'EFGH' }],
@@ -148,4 +147,30 @@ test('preparePuzzle: passthrough — no per-entry hash in PUZZLE_DATA', () => {
   const result = preparePuzzle(puzzle);
   assert.ok(!('hash' in result.inward[0]));
   assert.ok(!('hash' in result.outward[0]));
+});
+
+// ── boardHash in non-hashed mode + kind field ─────────────────────────────────
+
+// minimal() is already defined at top of this file:
+//   inward: ABCD + EFGH  → 'abcdefgh'
+//   boardHash = sha256hex('abcdefgh')
+
+test('preparePuzzle non-hashed: boardHash is present', () => {
+  const result = preparePuzzle(minimal());
+  assert.ok(result.boardHash, 'boardHash must be present in non-hashed output');
+});
+
+test('preparePuzzle non-hashed: boardHash equals sha256hex of inward concat', () => {
+  const result = preparePuzzle(minimal());
+  assert.strictEqual(result.boardHash, sha256hex('abcdefgh'));
+});
+
+test('preparePuzzle non-hashed: letters still present alongside boardHash', () => {
+  const result = preparePuzzle(minimal());
+  assert.ok(Array.isArray(result.letters));
+});
+
+test('preparePuzzle: kind is "spiral"', () => {
+  const result = preparePuzzle(minimal());
+  assert.strictEqual(result.kind, 'spiral');
 });

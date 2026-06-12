@@ -228,7 +228,7 @@ kbd {
 .tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
 .tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
 .tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
-.tool-marching-bands .clue-group.secondary-clue { background: var(--theme-color-secondary-entry); }
+.tool-marching-bands .clue-group.secondary-entry { background: var(--theme-color-secondary-entry); }
 
 /* Spiral — no .cell-letter font-size (see comment above). */
 .tool-spiral .clue-item { padding: 2px 6px 2px 2px; }

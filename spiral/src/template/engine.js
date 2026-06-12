@@ -144,9 +144,7 @@
 
     function checkBoardIfFilled() {
       if (!data.cells.every(c => getCellLetter(c.cell_number) !== '')) return;
-      const boardStr = inwardEntryCells.flat().map(n => getCellLetter(n)).join('');
-      const boardHash = sha256hex(normalize(boardStr));
-      if (boardHash !== data.boardHash) { syncUI(); return; }
+      if (sha256hex(getSolution()) !== data.boardHash) { syncUI(); return; }
       data.cells.forEach(c => {
         cellPaths[c.cell_number].classList.add('correct');
         letterTexts[c.cell_number].classList.add('correct');
@@ -160,6 +158,10 @@
           ?.classList.add('correct');
       });
       syncUI();
+    }
+
+    function getSolution() {
+      return inwardEntryCells.flat().map(n => getCellLetter(n)).join('').toLowerCase();
     }
 
     function isSolved() {
@@ -231,7 +233,7 @@
     }
 
     function syncUI() {
-      document.querySelectorAll('.toggle-opt').forEach(btn => {
+      toggleOpts.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.dir === direction);
       });
 
@@ -269,7 +271,6 @@
       barSecondaryNum.textContent  = oppRange + '.';
       barSecondaryText.textContent = oppEntries[oppEntryIdx].clue;
 
-      const checkBtn = document.getElementById('check-btn');
       if (!data.hashed && checkBtn) {
         checkBtn.disabled = !getCellLetter(activeCell) ||
           cellPaths[activeCell].classList.contains('correct');
@@ -295,8 +296,9 @@
 
       const solved = isSolved();
       const allFilled = data.cells.every(c => getCellLetter(c.cell_number) !== '');
-      if (!congratsDismissed) document.getElementById('congrats-overlay').hidden = !solved;
-      document.getElementById('done-wrong').hidden = !(allFilled && !solved);
+      if (!congratsDismissed) congratsOverlay.hidden = !solved;
+      doneWrong.hidden = !(allFilled && !solved);
+      latch.check(solved);
     }
 
     const { saveState, restoreState, clearState } = setupStorage(storageKey('sp', data), {
@@ -308,7 +310,7 @@
         data.cells.forEach(c => {
           if (cellPaths[c.cell_number].classList.contains('correct')) correct.push(c.cell_number);
         });
-        return { letters, correct };
+        return { letters, correct, activeMs: timer.getElapsedMs() };
       },
       applyState(saved) {
         Object.entries(saved.letters).forEach(([k, v]) => {
@@ -320,7 +322,20 @@
           cellPaths[n].classList.add('correct');
           letterTexts[n].classList.add('correct');
         });
+        timer.restoreMs(saved.activeMs);
       },
+    });
+
+    const timer = setupTimer({ onPause: () => saveState() });
+    const puzzleRoot = document.querySelector('.puzzle-main');
+    const latch = makeCompletionLatch({
+      puzzleRoot,
+      kind:         data.kind,
+      title:        data.title,
+      date:         data.date,
+      getBoardHash: () => data.boardHash,
+      getSolution,
+      getElapsedMs: () => timer.getElapsedMs(),
     });
 
     // ── Build SVG ────────────────────────────────────────────────────────────
@@ -439,35 +454,52 @@
     const barSecondaryNum  = document.querySelector('#active-clue-secondary .active-clue-num');
     const barSecondaryText = document.querySelector('#active-clue-secondary .active-clue-text');
 
+    const toggleOpts      = Array.from(document.querySelectorAll('.toggle-opt'));
+    const checkBtn        = document.getElementById('check-btn');
+    const congratsOverlay = document.getElementById('congrats-overlay');
+    const doneWrong       = document.getElementById('done-wrong');
+
     // ── Header & clues ───────────────────────────────────────────────────────
-    document.title = data.title;
-    document.querySelector('h1.title').textContent = data.title;
     renderByline(data);
     renderInstructions(data);
     renderClues();
 
     // ── Event wiring ─────────────────────────────────────────────────────────
-    document.querySelectorAll('.toggle-opt').forEach(btn => {
+    toggleOpts.forEach(btn => {
       btn.addEventListener('click', () => {
         direction = btn.dataset.dir;
         focusCell(activeCell);
       });
     });
 
-    const checkBtn = document.getElementById('check-btn');
     if (!data.hashed) {
       checkBtn.addEventListener('click', checkCell);
     } else {
       checkBtn.hidden = true;
     }
 
+    function resetBoard() {
+      cellLetters.clear();
+      data.cells.forEach(c => {
+        letterTexts[c.cell_number].textContent = '';
+        cellPaths[c.cell_number].classList.remove('correct');
+        letterTexts[c.cell_number].classList.remove('correct');
+      });
+      document.querySelectorAll('.clue-item').forEach(li => li.classList.remove('correct'));
+      while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
+      congratsDismissed = false;
+      direction = 'inward';
+      clearState();
+      timer.reset();
+      latch.reset();
+      focusCell(inwardEntryCells[0][0]);
+    }
+
     setupClearButton(
       document.getElementById('clear-btn'),
-      clearState,
+      resetBoard,
       () => document.getElementById('hidden-input').focus({ preventScroll: true })
     );
-
-    const congratsOverlay = document.getElementById('congrats-overlay');
 
     setupCongratsOverlay(congratsOverlay, () => {
       congratsDismissed = true;
@@ -547,6 +579,7 @@
       const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
       hiddenInput.value = '';
       if (!letter) return;
+      timer.onFirstInput();
       setCellLetter(activeCell, letter);
       if (data.hashed) {
         focusCell(nextInDir(activeCell, direction));
@@ -564,6 +597,7 @@
 
     // ── Restore & focus ──────────────────────────────────────────────────────
     restoreState();
+    latch.sealIfSolved(isSolved());
     focusCell(1);
   }
 

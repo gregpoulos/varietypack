@@ -8,6 +8,48 @@
 
 body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.4; }
 
+/* Tools with a fixed active-clue bar need body padding to clear it */
+body.tool-snake-charmer,
+body.tool-spiral { padding-top: 56px; }
+
+#active-clue-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 5px 16px 4px;
+}
+
+.active-clue-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+#active-clue-secondary {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.active-clue-num {
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.active-clue-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#instructions {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
 .clue-item {
   font-size: 0.875rem;
   padding: 2px 6px;
@@ -25,6 +67,14 @@ body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.4; }
   justify-content: center;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+button {
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid;
+  padding: 6px 14px;
+  font-size: 0.875rem;
 }
 
 button:disabled { opacity: 0.4; cursor: default; }
@@ -105,53 +155,12 @@ button:disabled { opacity: 0.4; cursor: default; }
 h1.title { font-size: 1.5rem; font-weight: bold; line-height: 1; }
 .byline  { font-size: 0.875rem; margin-top: 4px; }
 
-body { padding-top: 56px; }
-
-#active-clue-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  padding: 5px 16px 4px;
-}
-
-.active-clue-row {
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-  font-size: 0.875rem;
-  line-height: 1.4;
-}
-
-#active-clue-secondary {
-  font-size: 0.8rem;
-  opacity: 0.6;
-}
-
-.active-clue-num {
-  font-weight: bold;
-  flex-shrink: 0;
-}
-
-.active-clue-text {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
 .puzzle-main {
   max-width: 1300px;
   margin: 0 auto;
   padding: 0 16px 20px;
 }
 
-
-#instructions {
-  max-width: 600px;
-  margin-left: auto;
-  margin-right: auto;
-}
 
 #grid-wrap {
   display: flex;
@@ -164,15 +173,6 @@ body { padding-top: 56px; }
   height: auto;
   display: block;
 }
-
-button {
-  padding: 7px 18px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  border-radius: 4px;
-  border: 1px solid;
-}
-
 
 .puzzle-body {
   display: grid;
@@ -334,55 +334,22 @@ button {
   --theme-byline-style:      italic;
 
   --theme-color-bg:    #f9f7f1;
-  --theme-color-text:  #111111;
-  --theme-color-muted: #555555;
 
   --theme-color-bar-border:  #bbbbbb;
   --theme-color-soft-border: #bbbbbb;
 
-  --theme-color-btn-bg:       #222222;
-  --theme-color-btn-hover:    #444444;
-  --theme-color-btn-disabled: #999999;
-  --theme-button-tracking:    0.05em;
+  --theme-color-btn-bg:    #222222;
+  --theme-color-btn-hover: #444444;
 
-  --theme-color-btn2-bg:     #f0ece0;
-  --theme-color-btn2-border: #aaaaaa;
-  --theme-color-btn2-hover:  #e4e0d4;
+  --theme-color-btn2-bg:    #f0ece0;
+  --theme-color-btn2-hover: #e4e0d4;
 
-  --theme-color-clear-fg:       #999999;
-  --theme-color-clear-hover-fg: #333333;
-
-  --theme-color-cell-bg:     #ffffff;
-  --theme-color-cell-stroke: #999999;
-  --theme-color-cell-text:   #111111;
-
-  --theme-color-highlight:           #deeeff;
   --theme-color-band-even:           #e8e8e8;
   --theme-color-highlight-band-even: #cee2f8;
-  --theme-color-active:              #b8d4f5;
-  --theme-color-active-stroke:       #1e5799;
   --theme-color-clue-hover:          #ede8d2;
   --theme-color-secondary-entry:     #f5f0e0;
 
-  --theme-color-secondary-active:        #7aaed8;
-  --theme-color-secondary-active-stroke: #3a72a8;
-
-  --theme-color-correct-bg:     #c8e6c9;
-  --theme-color-correct-stroke: #4caf50;
-  --theme-color-correct-text:   #1a6e22;
-
-  --theme-color-circle:      #bbbbbb;
-  --theme-color-curl:        #aaaaaa;
-  --theme-color-cell-center: #222222;
-
-  --theme-color-congrats-bg:     #2e7d32;
-  --theme-color-congrats-border: #1b5e20;
-  --theme-color-congrats-text:   #ffffff;
-
-  --theme-color-wrong-bg:     #fff3e0;
-  --theme-color-wrong-border: #e65100;
-
-  --theme-color-danger: #b91c1c;
+  --theme-color-circle: #bbbbbb;
 }
 
 /* theme-components: every tool-agnostic selector, driven entirely by --theme-*.
@@ -615,7 +582,7 @@ kbd {
 .tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
 .tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
 .tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
-.tool-marching-bands .clue-group.secondary-clue { background: var(--theme-color-secondary-entry); }
+.tool-marching-bands .clue-group.secondary-entry { background: var(--theme-color-secondary-entry); }
 
 /* Spiral — no .cell-letter font-size (see comment above). */
 .tool-spiral .clue-item { padding: 2px 6px 2px 2px; }
@@ -714,7 +681,7 @@ kbd {
   </div>
   <div class="puzzle-main">
     <div class="puzzle-header">
-      <h1 class="title"></h1>
+      <h1 class="title">Spiral</h1>
       <p class="byline"></p>
     </div>
     <div id="instructions" hidden></div>
@@ -751,9 +718,92 @@ kbd {
   <script>
     window.PUZZLE_DATA = {
   "title": "Spiral",
+  "kind": "spiral",
+  "hashed": false,
   "author": "Greg Poulos",
   "date": "2026",
-  "hashed": false,
+  "instructions": "Answers from the “Inward” clue list should be entered starting at the outermost cell of the puzzle (cell #1) spiraling toward the center of the grid; answers from the “Outward” clue list should be likewise entered starting from the innermost cell and spiralling outward.",
+  "letters": [
+    "r",
+    "o",
+    "t",
+    "i",
+    "d",
+    "e",
+    "r",
+    "e",
+    "k",
+    "w",
+    "a",
+    "h",
+    "w",
+    "a",
+    "h",
+    "s",
+    "p",
+    "e",
+    "e",
+    "d",
+    "y",
+    "b",
+    "u",
+    "r",
+    "t",
+    "o",
+    "n",
+    "y",
+    "h",
+    "w",
+    "h",
+    "t",
+    "o",
+    "m",
+    "b",
+    "o",
+    "y",
+    "b",
+    "e",
+    "a",
+    "r",
+    "n",
+    "a",
+    "i",
+    "s",
+    "e",
+    "t",
+    "r",
+    "a",
+    "c",
+    "e",
+    "y",
+    "e",
+    "m",
+    "i",
+    "n",
+    "e",
+    "d",
+    "w",
+    "a",
+    "r",
+    "d",
+    "i",
+    "v",
+    "a",
+    "d",
+    "j",
+    "a",
+    "n",
+    "i",
+    "m",
+    "a",
+    "c",
+    "r",
+    "o",
+    "j",
+    "a",
+    "m"
+  ],
+  "boardHash": "fe6d78f4e1901af8a8f9d373090f815dd2edd887147b0becdc37a0d484bdbc03",
   "inward": [
     {
       "clue": "Indian flatbread",
@@ -1604,88 +1654,7 @@ kbd {
     "R_HOLE": 25,
     "R_MAX": 265,
     "N_TURNS": 4
-  },
-  "letters": [
-    "r",
-    "o",
-    "t",
-    "i",
-    "d",
-    "e",
-    "r",
-    "e",
-    "k",
-    "w",
-    "a",
-    "h",
-    "w",
-    "a",
-    "h",
-    "s",
-    "p",
-    "e",
-    "e",
-    "d",
-    "y",
-    "b",
-    "u",
-    "r",
-    "t",
-    "o",
-    "n",
-    "y",
-    "h",
-    "w",
-    "h",
-    "t",
-    "o",
-    "m",
-    "b",
-    "o",
-    "y",
-    "b",
-    "e",
-    "a",
-    "r",
-    "n",
-    "a",
-    "i",
-    "s",
-    "e",
-    "t",
-    "r",
-    "a",
-    "c",
-    "e",
-    "y",
-    "e",
-    "m",
-    "i",
-    "n",
-    "e",
-    "d",
-    "w",
-    "a",
-    "r",
-    "d",
-    "i",
-    "v",
-    "a",
-    "d",
-    "j",
-    "a",
-    "n",
-    "i",
-    "m",
-    "a",
-    "c",
-    "r",
-    "o",
-    "j",
-    "a",
-    "m"
-  ],
-  "instructions": "Answers from the “Inward” clue list should be entered starting at the outermost cell of the puzzle (cell #1) spiraling toward the center of the grid; answers from the “Outward” clue list should be likewise entered starting from the innermost cell and spiralling outward."
+  }
 };
   </script>
   <script>function normalize(str) {
@@ -1808,10 +1777,11 @@ function renderInstructions(data) {
 }
 
 // Two-click arm/disarm Clear button. First click swaps the label to "Sure?" and
-// adds `.armed` for 3s; a second click within that window calls clearState()
-// and reloads. `refocus` (optional) restores puzzle focus after the arming
-// click so the document keydown BUTTON guard doesn't block the next keystroke.
-function setupClearButton(clearBtn, clearState, refocus) {
+// adds `.armed` for 3s; a second click within that window calls onConfirmed(),
+// which each engine supplies to perform the full in-memory board reset.
+// `refocus` (optional) restores puzzle focus after the arming click so the
+// document keydown BUTTON guard doesn't block the next keystroke.
+function setupClearButton(clearBtn, onConfirmed, refocus) {
   let armed = false;
   let timer = null;
   clearBtn.addEventListener('click', () => {
@@ -1827,8 +1797,10 @@ function setupClearButton(clearBtn, clearState, refocus) {
       if (refocus) refocus();
     } else {
       clearTimeout(timer);
-      clearState();
-      location.reload();
+      armed = false;
+      clearBtn.textContent = 'Clear';
+      clearBtn.classList.remove('armed');
+      onConfirmed();
     }
   });
 }
@@ -2012,11 +1984,91 @@ function setupKeysOverlay(shortcuts, refocus) {
   return overlay;
 }
 
+function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
+  let activeMs = 0;
+  let runningSince = null;
+  let started = false;
+
+  function onFirstInput() {
+    if (started) return;
+    started = true;
+    runningSince = _now();
+  }
+
+  // Resets all timer state to initial values — used by resetBoard in each
+  // engine so a cleared puzzle starts timing fresh from the next keystroke.
+  function reset() {
+    started = false;
+    runningSince = null;
+    activeMs = 0;
+  }
+
+  function getElapsedMs() {
+    return activeMs + (runningSince !== null ? _now() - runningSince : 0);
+  }
+
+  function restoreMs(ms) {
+    activeMs = (typeof ms === 'number' && ms >= 0) ? ms : 0;
+  }
+
+  function handleVisibility(hidden) {
+    if (hidden) {
+      if (runningSince !== null) {
+        activeMs += _now() - runningSince;
+        runningSince = null;
+      }
+      // Only flush to storage if the clock was ever started — an idle tab that
+      // never received input has nothing new to persist.
+      if (started && onPause) onPause();
+    } else {
+      // Guard against unpaired visible events (bfcache, iOS app-switcher) that
+      // would overwrite runningSince and silently drop accumulated time.
+      if (started && runningSince === null) runningSince = _now();
+    }
+  }
+
+  const register = listenVisibility ??
+    (fn => document.addEventListener('visibilitychange', () => fn(document.hidden)));
+  register(handleVisibility);
+
+  return { onFirstInput, reset, getElapsedMs, restoreMs };
+}
+
+function makeCompletionLatch({
+  puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs,
+  _postMessage,
+}) {
+  let fired = false;
+  const pm = _postMessage ?? ((msg) => window.parent?.postMessage(msg, '*'));
+
+  function sealIfSolved(isSolved) {
+    if (isSolved) fired = true;
+  }
+
+  function reset() { fired = false; }
+
+  function check(isSolved) {
+    if (fired || !isSolved) return;
+    fired = true;
+    const timeMs = getElapsedMs();
+    const solution = getSolution();
+    const boardHash = getBoardHash();
+    const detail = { boardHash, kind, title, date, timeMs, solution };
+    puzzleRoot.dispatchEvent(new CustomEvent('varietypack:complete', {
+      bubbles: true, composed: true, detail,
+    }));
+    pm({ type: 'varietypack:complete', boardHash, kind, title, date, timeMs });
+  }
+
+  return { check, sealIfSolved, reset };
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     renderByline, renderInstructions, setupClearButton,
     scrollByKey, storageKey, setupStorage, flashWrong,
-    setupKeydown, setupCongratsOverlay, setupKeysOverlay,
+    setupKeydown, setupCongratsOverlay, setupKeysOverlay, setupTimer,
+    makeCompletionLatch,
   };
 }
 
@@ -2166,9 +2218,7 @@ if (typeof module !== 'undefined') {
 
     function checkBoardIfFilled() {
       if (!data.cells.every(c => getCellLetter(c.cell_number) !== '')) return;
-      const boardStr = inwardEntryCells.flat().map(n => getCellLetter(n)).join('');
-      const boardHash = sha256hex(normalize(boardStr));
-      if (boardHash !== data.boardHash) { syncUI(); return; }
+      if (sha256hex(getSolution()) !== data.boardHash) { syncUI(); return; }
       data.cells.forEach(c => {
         cellPaths[c.cell_number].classList.add('correct');
         letterTexts[c.cell_number].classList.add('correct');
@@ -2182,6 +2232,10 @@ if (typeof module !== 'undefined') {
           ?.classList.add('correct');
       });
       syncUI();
+    }
+
+    function getSolution() {
+      return inwardEntryCells.flat().map(n => getCellLetter(n)).join('').toLowerCase();
     }
 
     function isSolved() {
@@ -2253,7 +2307,7 @@ if (typeof module !== 'undefined') {
     }
 
     function syncUI() {
-      document.querySelectorAll('.toggle-opt').forEach(btn => {
+      toggleOpts.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.dir === direction);
       });
 
@@ -2291,7 +2345,6 @@ if (typeof module !== 'undefined') {
       barSecondaryNum.textContent  = oppRange + '.';
       barSecondaryText.textContent = oppEntries[oppEntryIdx].clue;
 
-      const checkBtn = document.getElementById('check-btn');
       if (!data.hashed && checkBtn) {
         checkBtn.disabled = !getCellLetter(activeCell) ||
           cellPaths[activeCell].classList.contains('correct');
@@ -2317,8 +2370,9 @@ if (typeof module !== 'undefined') {
 
       const solved = isSolved();
       const allFilled = data.cells.every(c => getCellLetter(c.cell_number) !== '');
-      if (!congratsDismissed) document.getElementById('congrats-overlay').hidden = !solved;
-      document.getElementById('done-wrong').hidden = !(allFilled && !solved);
+      if (!congratsDismissed) congratsOverlay.hidden = !solved;
+      doneWrong.hidden = !(allFilled && !solved);
+      latch.check(solved);
     }
 
     const { saveState, restoreState, clearState } = setupStorage(storageKey('sp', data), {
@@ -2330,7 +2384,7 @@ if (typeof module !== 'undefined') {
         data.cells.forEach(c => {
           if (cellPaths[c.cell_number].classList.contains('correct')) correct.push(c.cell_number);
         });
-        return { letters, correct };
+        return { letters, correct, activeMs: timer.getElapsedMs() };
       },
       applyState(saved) {
         Object.entries(saved.letters).forEach(([k, v]) => {
@@ -2342,7 +2396,20 @@ if (typeof module !== 'undefined') {
           cellPaths[n].classList.add('correct');
           letterTexts[n].classList.add('correct');
         });
+        timer.restoreMs(saved.activeMs);
       },
+    });
+
+    const timer = setupTimer({ onPause: () => saveState() });
+    const puzzleRoot = document.querySelector('.puzzle-main');
+    const latch = makeCompletionLatch({
+      puzzleRoot,
+      kind:         data.kind,
+      title:        data.title,
+      date:         data.date,
+      getBoardHash: () => data.boardHash,
+      getSolution,
+      getElapsedMs: () => timer.getElapsedMs(),
     });
 
     // ── Build SVG ────────────────────────────────────────────────────────────
@@ -2461,35 +2528,52 @@ if (typeof module !== 'undefined') {
     const barSecondaryNum  = document.querySelector('#active-clue-secondary .active-clue-num');
     const barSecondaryText = document.querySelector('#active-clue-secondary .active-clue-text');
 
+    const toggleOpts      = Array.from(document.querySelectorAll('.toggle-opt'));
+    const checkBtn        = document.getElementById('check-btn');
+    const congratsOverlay = document.getElementById('congrats-overlay');
+    const doneWrong       = document.getElementById('done-wrong');
+
     // ── Header & clues ───────────────────────────────────────────────────────
-    document.title = data.title;
-    document.querySelector('h1.title').textContent = data.title;
     renderByline(data);
     renderInstructions(data);
     renderClues();
 
     // ── Event wiring ─────────────────────────────────────────────────────────
-    document.querySelectorAll('.toggle-opt').forEach(btn => {
+    toggleOpts.forEach(btn => {
       btn.addEventListener('click', () => {
         direction = btn.dataset.dir;
         focusCell(activeCell);
       });
     });
 
-    const checkBtn = document.getElementById('check-btn');
     if (!data.hashed) {
       checkBtn.addEventListener('click', checkCell);
     } else {
       checkBtn.hidden = true;
     }
 
+    function resetBoard() {
+      cellLetters.clear();
+      data.cells.forEach(c => {
+        letterTexts[c.cell_number].textContent = '';
+        cellPaths[c.cell_number].classList.remove('correct');
+        letterTexts[c.cell_number].classList.remove('correct');
+      });
+      document.querySelectorAll('.clue-item').forEach(li => li.classList.remove('correct'));
+      while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
+      congratsDismissed = false;
+      direction = 'inward';
+      clearState();
+      timer.reset();
+      latch.reset();
+      focusCell(inwardEntryCells[0][0]);
+    }
+
     setupClearButton(
       document.getElementById('clear-btn'),
-      clearState,
+      resetBoard,
       () => document.getElementById('hidden-input').focus({ preventScroll: true })
     );
-
-    const congratsOverlay = document.getElementById('congrats-overlay');
 
     setupCongratsOverlay(congratsOverlay, () => {
       congratsDismissed = true;
@@ -2569,6 +2653,7 @@ if (typeof module !== 'undefined') {
       const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
       hiddenInput.value = '';
       if (!letter) return;
+      timer.onFirstInput();
       setCellLetter(activeCell, letter);
       if (data.hashed) {
         focusCell(nextInDir(activeCell, direction));
@@ -2586,6 +2671,7 @@ if (typeof module !== 'undefined') {
 
     // ── Restore & focus ──────────────────────────────────────────────────────
     restoreState();
+    latch.sealIfSolved(isSolved());
     focusCell(1);
   }
 

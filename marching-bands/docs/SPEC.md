@@ -101,17 +101,6 @@ Band k's entry lengths must sum to `4 × (N−1−2k)`.
 
 Build with `varietypack build --muddle` (or from a pre-muddled YAML produced by `varietypack muddle`) to generate an answer-obscured HTML. Plain-text answers are never included; only a SHA-256 hash of the entire board (all cells in row-major order, center cell skipped for odd N, lowercase) is stored as `boardHash`. The solver cannot view-source to find answers. No partial correctness feedback is given until all cells are filled; the complete board is then hashed and compared to `boardHash`.
 
-## CLI usage
-
-```
-marching-bands [--theme broadsheet|skeleton] [--font embed|link] <input.yaml> [-o output.html]
-```
-
-- `--theme` — visual theme; default `broadsheet`
-- `--font` — font delivery for themes that use custom fonts (e.g. `skeleton`): `embed` (base64-inlined, self-contained) or `link` (CDN `@import`, needs network at solve time). Required for custom-font themes; ignored for system-font themes
-- `<input.yaml>` — required; path to the puzzle YAML file
-- `-o output.html` — optional; when omitted, writes `<input-basename>.html` next to the input file
-
 ## Example
 
 A 5×5 puzzle skeleton (N=5, 2 bands, 5 rows). The clue/answer **lengths** are valid; cell-letter consistency between rows and bands is omitted here for brevity (see the notes below):

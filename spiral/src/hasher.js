@@ -10,6 +10,7 @@ function preparePuzzle(puzzle) {
   const outward = processEntries(puzzle.outward);
 
   const prepared = {
+    kind:    'spiral',
     title:   puzzle.title,
     author:  puzzle.author,
     date:    puzzle.date,
@@ -21,10 +22,10 @@ function preparePuzzle(puzzle) {
 
   if (puzzle.boardHash !== undefined) {
     prepared.boardHash = puzzle.boardHash;
-  } else if (hashed) {
-    prepared.boardHash = sha256hex(inward.map(e => e._norm).join(''));
   } else {
-    prepared.letters = inward.flatMap(e => e._norm.split(''));
+    const boardStr = inward.map(e => e._norm).join('');
+    prepared.boardHash = sha256hex(boardStr);
+    if (!hashed) prepared.letters = inward.flatMap(e => e._norm.split(''));
   }
 
   return prepared;

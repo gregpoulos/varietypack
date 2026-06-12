@@ -11,7 +11,7 @@ function preparePuzzle(puzzle) {
   const entries   = processed.map(({ _norm, ...e }) => e);
 
   const result = {
-    title: puzzle.title, kind: puzzle.kind, author: puzzle.author, date: puzzle.date,
+    title: puzzle.title, kind: 'snake-charmer', author: puzzle.author, date: puzzle.date,
     loops, hashed, entries,
     ...(puzzle.instructions !== undefined ? { instructions: puzzle.instructions } : {}),
   };
@@ -22,11 +22,8 @@ function preparePuzzle(puzzle) {
     const concat   = processed.map(e => e._norm).join('');
     const ringSize = concat.length / loops;
     const ring     = concat.slice(0, ringSize);
-    if (hashed) {
-      result.boardHash = sha256hex(ring);
-    } else {
-      result.letters = ring.split('');
-    }
+    result.boardHash = sha256hex(ring);
+    if (!hashed) result.letters = ring.split('');
   }
 
   return result;

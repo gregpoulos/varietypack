@@ -282,11 +282,11 @@ test('buildPuzzle: --muddle omits letters and includes boardHash', () => {
   }
 });
 
-test('buildHtml: PUZZLE_DATA contains shape field (stadium default)', () => {
+test('buildHtml: PUZZLE_DATA contains shape field when explicitly passed', () => {
   const puzzle = loadPuzzle(SAMPLE);
   const prepared = preparePuzzle(puzzle);
-  const { ring } = computeLayout(prepared.entries, prepared.loops);
-  const html = buildHtml(prepared, ring);
+  const { ring } = computeLayout(prepared.entries, prepared.loops, 'stadium');
+  const html = buildHtml(prepared, ring, 'stadium');
   const match = html.match(/window\.PUZZLE_DATA\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
   const data = JSON.parse(match[1]);
   assert.equal(data.shape, 'stadium');

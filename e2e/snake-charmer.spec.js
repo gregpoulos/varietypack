@@ -9,6 +9,7 @@
 // unlike Spiral and Marching Bands.
 
 const { test, expect } = require('@playwright/test');
+const assert = require('node:assert/strict');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
@@ -195,4 +196,61 @@ test('keystrokes are suppressed while the shortcuts modal is open', async ({ pag
   await expect(page.locator('#keys-overlay')).toBeHidden();
   await page.keyboard.type('A');
   await expect(firstCell).toHaveText('A');
+});
+
+test('completion event fires with correct payload on solve', async ({ page }) => {
+  // Use the non-hashed circle-8 fixture (PUZZLE_DATA.letters available).
+  // circle-8.yaml has no date field, so detail.date will be undefined.
+  await page.goto(`file://${htmlPath}`);
+
+  // Set up listeners before any interaction.
+  await page.evaluate(() => {
+    window.__vpEvents = [];
+    window.__vpMsgs   = [];
+    document.querySelector('.puzzle-main').addEventListener('varietypack:complete', e => {
+      window.__vpEvents.push(JSON.parse(JSON.stringify(e.detail)));
+    });
+    window.addEventListener('message', e => {
+      if (e.data?.type === 'varietypack:complete') window.__vpMsgs.push(e.data);
+    });
+  });
+
+  // Read answers from PUZZLE_DATA.letters and type them in cell order.
+  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
+  for (const letter of letters) {
+    await page.keyboard.press(`Key${letter.toUpperCase()}`);
+  }
+
+  await page.waitForFunction(() => window.__vpMsgs.length > 0);
+
+  const [events, msgs] = await page.evaluate(() => [window.__vpEvents, window.__vpMsgs]);
+
+  // Exactly one event.
+  assert.strictEqual(events.length, 1, 'exactly one varietypack:complete event');
+  const detail = events[0];
+
+  // Payload shape.
+  assert.ok(typeof detail.boardHash === 'string' && detail.boardHash.length === 64,
+    'boardHash is 64-char hex');
+  assert.strictEqual(detail.kind, 'snake-charmer');
+  assert.strictEqual(detail.title, 'Test N=8 (circle)');
+  assert.ok(typeof detail.timeMs === 'number' && detail.timeMs >= 0, 'timeMs is non-negative number');
+  assert.ok(typeof detail.solution === 'string' && detail.solution.length > 0,
+    'solution is a non-empty string');
+
+  // solution is the boardHash preimage.
+  const computedHash = await page.evaluate(
+    (sol) => sha256hex(sol),
+    detail.solution
+  );
+  assert.strictEqual(computedHash, detail.boardHash, 'sha256hex(solution) === boardHash');
+
+  // postMessage: exactly one, solution absent.
+  assert.strictEqual(msgs.length, 1, 'exactly one postMessage');
+  const msg = msgs[0];
+  assert.strictEqual(msg.type,      'varietypack:complete');
+  assert.strictEqual(msg.boardHash, detail.boardHash);
+  assert.strictEqual(msg.kind,      'snake-charmer');
+  assert.strictEqual(msg.timeMs,    detail.timeMs);
+  assert.strictEqual(msg.solution,  undefined, 'solution must be absent from postMessage');
 });

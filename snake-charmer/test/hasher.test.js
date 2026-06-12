@@ -216,5 +216,41 @@ test('preparePuzzle: non-hashed mode unchanged — still computes letters array'
   };
   const result = preparePuzzle(puzzle);
   assert.deepEqual(result.letters, ['a','b','c','d','e','f']);
-  assert.ok(!('boardHash' in result));
+  assert.ok('boardHash' in result);
+});
+
+// ── boardHash in non-hashed mode ──────────────────────────────────────────────
+
+// The puzzle used in non-hashed boardHash tests:
+//   entries ABC + DEF + ABCDEF with loops=2
+//   concat = 'abcdefabcdef', ringSize=6, ring='abcdef'
+const RING_PUZZLE = {
+  kind: 'snake-charmer', title: 'T', date: '2026', loops: 2,
+  entries: [
+    { clue: 'One',   answer: 'ABC'    },
+    { clue: 'Two',   answer: 'DEF'    },
+    { clue: 'Three', answer: 'ABCDEF' },
+  ],
+};
+
+test('preparePuzzle non-hashed: boardHash is present', () => {
+  const result = preparePuzzle(RING_PUZZLE);
+  assert.ok(result.boardHash, 'boardHash must be present in non-hashed output');
+});
+
+test('preparePuzzle non-hashed: boardHash equals sha256hex(ring)', () => {
+  const result = preparePuzzle(RING_PUZZLE);
+  assert.strictEqual(result.boardHash, sha256hex('abcdef'));
+});
+
+test('preparePuzzle non-hashed: letters still present alongside boardHash', () => {
+  const result = preparePuzzle(RING_PUZZLE);
+  assert.ok(Array.isArray(result.letters));
+  assert.deepEqual(result.letters, ['a','b','c','d','e','f']);
+});
+
+test('preparePuzzle hashed: boardHash is present (existing contract)', () => {
+  const result = preparePuzzle({ ...RING_PUZZLE, hashed: true });
+  assert.strictEqual(result.boardHash, sha256hex('abcdef'));
+  assert.strictEqual(result.letters, undefined);
 });

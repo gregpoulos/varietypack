@@ -211,6 +211,24 @@ function processEntries(entries) {
   });
 }
 
+// Returns the fields common to every tool's PUZZLE_DATA object.
+// Required fields (title, kind, hashed) are always included.
+// Optional fields (author, date, instructions, letters, boardHash) are
+// included only when !== undefined, so JSON.stringify never emits them as null.
+function commonPuzzleData(prepared) {
+  const data = {
+    title:  prepared.title,
+    kind:   prepared.kind,
+    hashed: prepared.hashed,
+  };
+  if (prepared.author       !== undefined) data.author       = prepared.author;
+  if (prepared.date         !== undefined) data.date         = prepared.date;
+  if (prepared.instructions !== undefined) data.instructions = prepared.instructions;
+  if (prepared.letters      !== undefined) data.letters      = prepared.letters;
+  if (prepared.boardHash    !== undefined) data.boardHash    = prepared.boardHash;
+  return data;
+}
+
 const { THEME_REGISTRY, VALID_THEMES } = require('./themeRegistry');
 
-module.exports = { loadPuzzle, validatePuzzle, composeThemeCss, buildFontCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm };
+module.exports = { loadPuzzle, validatePuzzle, composeThemeCss, buildFontCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm, commonPuzzleData };

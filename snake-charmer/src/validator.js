@@ -1,7 +1,8 @@
 'use strict';
 
 const normalize = require('../../shared/normalize');
-const { validateEntryStyles, validateCommonHeader } = require('../../shared/build/builderUtils');
+const { validateCommonHeader } = require('../../shared/build/builderUtils');
+const { validateEntry, hasLengthWithoutHash } = require('../../shared/build/validateEntry');
 
 function validate(puzzle) {
   const errors   = [];
@@ -31,51 +32,16 @@ function validate(puzzle) {
   }
 
   // Integrity guards
-  const isMuddled        = puzzle.boardHash !== undefined;
-  const hasLengthEntries = puzzle.entries.some(e => e && typeof e === 'object' && e.answer === undefined && typeof e.length === 'number');
-  if (hasLengthEntries && !isMuddled) {
-    errors.push("Muddled entries (length: without answer:) require a top-level boardHash. Use 'varietypack muddle' to produce this format.");
-    return { errors, warnings };
-  }
+  const isMuddled = puzzle.boardHash !== undefined;
+  if (hasLengthWithoutHash(puzzle.entries, isMuddled, errors)) return { errors, warnings };
   if (isMuddled) {
     warnings.push('note: entries are muddled; answer validation skipped');
   }
 
   // Per-entry validation — source entries require answer:, muddled entries require length:
   const entryLengths = puzzle.entries.map((entry, i) => {
-    if (!entry || typeof entry !== 'object') {
-      errors.push(`entries[${i}] must be an object`);
-      return 0;
-    }
-    if (!entry.clue || typeof entry.clue !== 'string' || !entry.clue.trim()) {
-      errors.push(`entries[${i}].clue must be a non-empty string`);
-    }
-
-    if (isMuddled) {
-      if (entry.answer !== undefined) {
-        errors.push(`entries[${i}]: muddled entry must use length:, not answer:`);
-        return 0;
-      }
-      if (!Number.isInteger(entry.length) || entry.length < 1) {
-        errors.push(`entries[${i}]: muddled entry must have an integer length >= 1`);
-        return 0;
-      }
-      validateEntryStyles(entry, `entries[${i}]`, entry.length, errors, warnings);
-      return entry.length;
-    }
-
-    const hasValidAnswer = entry.answer && typeof entry.answer === 'string' && entry.answer.trim();
-    if (!hasValidAnswer) {
-      errors.push(`entries[${i}].answer must be a non-empty string`);
-      return 0;
-    }
-    const norm = normalize(entry.answer);
-    if (!norm.length) {
-      errors.push(`entries[${i}].answer must contain at least one letter`);
-      return 0;
-    }
-    validateEntryStyles(entry, `entries[${i}]`, norm.length, errors, warnings);
-    return norm.length;
+    const len = validateEntry(entry, `entries[${i}]`, isMuddled, errors, warnings);
+    return len !== null ? len : 0;
   });
 
   const totalCells = entryLengths.reduce((sum, l) => sum + l, 0);

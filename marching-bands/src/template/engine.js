@@ -53,12 +53,12 @@
     function setCellLetter(n, letter) {
       if (letter) cellLetters[n] = letter;
       else delete cellLetters[n];
-      const el = document.getElementById(`letter-${n}`);
+      const el = letterTexts[n];
       if (el) {
         el.textContent = letter;
         el.classList.remove('correct');
       }
-      const rect = document.getElementById(`cell-${n}`);
+      const rect = cellRects[n];
       if (rect) {
         delete rect.dataset.correct;
         rect.classList.remove('correct');
@@ -168,16 +168,16 @@
       }
 
       // Clear all clue highlights
-      for (const group of rowClueGroups)  { group.classList.remove('active-clue'); group.classList.remove('secondary-clue'); }
-      for (const group of bandClueGroups) { group.classList.remove('active-clue'); group.classList.remove('secondary-clue'); }
+      for (const group of rowClueGroups)  { group.classList.remove('active-clue'); group.classList.remove('secondary-entry'); }
+      for (const group of bandClueGroups) { group.classList.remove('active-clue'); group.classList.remove('secondary-entry'); }
 
       // Highlight active row/band clue cluster; secondary-highlight the cross-direction cluster
       if (mode === 'row') {
         rowClueGroups[activeRowIndex()].classList.add('active-clue');
-        bandClueGroups[activeBandIndex()].classList.add('secondary-clue');
+        bandClueGroups[activeBandIndex()].classList.add('secondary-entry');
       } else {
         bandClueGroups[activeBandIndex()].classList.add('active-clue');
-        rowClueGroups[activeRowIndex()].classList.add('secondary-clue');
+        rowClueGroups[activeRowIndex()].classList.add('secondary-entry');
       }
 
       // Mode toggle active segment
@@ -202,6 +202,7 @@
         ? rowClueGroups[activeRowIndex()]
         : bandClueGroups[activeBandIndex()];
       activeClueGroup?.scrollIntoView({ block: 'nearest' });
+      latch.check(solved);
     }
 
     function markAllCorrect() {
@@ -216,11 +217,13 @@
     function checkCell() {
       const n = activeN;
       const rect = cellRects[n];
-      if (rect?.dataset.correct) return; // already correct
+      if (rect?.dataset.correct) { syncUI(); document.getElementById('hidden-input').focus({ preventScroll: true }); return; }
       const letter = getCellLetter(n);
-      if (!letter) return;
+      if (!letter) { syncUI(); document.getElementById('hidden-input').focus({ preventScroll: true }); return; }
       if (!isCellCorrect(letter, data.letters[n - 1])) {
         if (rect) flashWrong(rect, flashLayer);
+        syncUI();
+        document.getElementById('hidden-input').focus({ preventScroll: true });
         return;
       }
       if (rect) { rect.dataset.correct = '1'; rect.classList.add('correct'); }
@@ -240,16 +243,20 @@
       syncUI();
     }
 
+    function getSolution() {
+      const p = [];
+      for (let n = 1; n <= N * N; n++) {
+        if (n === CENTER_N) continue;
+        p.push(getCellLetter(n).toLowerCase());
+      }
+      return p.join('');
+    }
+
     // Hashed: once the board is full, hash it and compare to boardHash. On a match,
     // mark everything correct; otherwise syncUI() shows the done-wrong banner.
     function checkBoardIfFilled() {
       if (!isBoardFilled()) return;
-      const parts = [];
-      for (let n = 1; n <= N * N; n++) {
-        if (n === CENTER_N) continue;
-        parts.push(getCellLetter(n).toLowerCase());
-      }
-      if (sha256hex(parts.join('')) !== data.boardHash) { syncUI(); return; }
+      if (sha256hex(getSolution()) !== data.boardHash) { syncUI(); return; }
       markAllCorrect();
       syncUI();
     }
@@ -265,22 +272,34 @@
           if (l) letters[n] = l;
           if (cellRects[n]?.dataset.correct) correct.push(n);
         }
-        return { letters, correct };
+        return { letters, correct, activeMs: timer.getElapsedMs() };
       },
       applyState(saved) {
         for (const [nStr, letter] of Object.entries(saved.letters || {})) {
           const n = Number(nStr);
           if (n === CENTER_N) continue;
           cellLetters[n] = letter;
-          const el = document.getElementById(`letter-${n}`);
-          if (el) el.textContent = letter;
+          if (letterTexts[n]) letterTexts[n].textContent = letter;
         }
         for (const n of (saved.correct || [])) {
           const rect = cellRects[n];
           if (rect) { rect.dataset.correct = '1'; rect.classList.add('correct'); }
           letterTexts[n]?.classList.add('correct');
         }
+        timer.restoreMs(saved.activeMs);
       },
+    });
+
+    const timer = setupTimer({ onPause: () => saveState() });
+    const puzzleRoot = document.querySelector('.puzzle-main');
+    const latch = makeCompletionLatch({
+      puzzleRoot,
+      kind:         data.kind,
+      title:        data.title,
+      date:         data.date,
+      getBoardHash: () => data.boardHash,
+      getSolution,
+      getElapsedMs: () => timer.getElapsedMs(),
     });
 
     // ── Build SVG ─────────────────────────────────────────────────────────────
@@ -335,9 +354,6 @@
       const text = makeSvgEl('text', {
         id: `letter-${n}`,
         x: cx, y: cy,
-        'text-anchor': 'middle',
-        'dominant-baseline': 'central',
-        'font-size': '14',
         class: 'cell-letter',
       });
       text.textContent = '';
@@ -430,7 +446,6 @@
     buildClues(data.bands, bandsCluesList, bandClueGroups, k => BAND_LETTERS[k],
       gi => { mode = 'band'; focusCell(bandCellsMap[gi][0]); });
 
-    document.querySelector('h1.title').textContent = data.title;
     renderByline(data);
     renderInstructions(data);
 
@@ -531,6 +546,7 @@
       const letter = normalize(e.target.value).slice(-1).toUpperCase();
       e.target.value = '';
       if (!letter) return;
+      timer.onFirstInput();
       setCellLetter(activeN, letter);
       focusCell(nextCell(activeN));
       if (data.hashed) checkBoardIfFilled();
@@ -544,9 +560,27 @@
       document.getElementById('check-btn').addEventListener('click', checkCell);
     }
 
+    function resetBoard() {
+      for (let n = 1; n <= N * N; n++) {
+        if (n === CENTER_N) continue;
+        delete cellLetters[n];
+        const text = letterTexts[n];
+        if (text) { text.textContent = ''; text.classList.remove('correct'); }
+        const rect = cellRects[n];
+        if (rect) { delete rect.dataset.correct; rect.classList.remove('correct'); }
+      }
+      while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
+      congratsDismissed = false;
+      mode = 'row';
+      clearState();
+      timer.reset();
+      latch.reset();
+      focusCell(rowCellsMap[0][0]);
+    }
+
     setupClearButton(
       document.getElementById('clear-btn'),
-      clearState,
+      resetBoard,
       () => focusCell(activeN)
     );
 
@@ -559,6 +593,7 @@
 
     // ── Restore & focus ───────────────────────────────────────────────────────
     restoreState();
+    latch.sealIfSolved(isSolved());
     focusCell(activeN);
   }
 

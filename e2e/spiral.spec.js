@@ -6,6 +6,7 @@
 // cursor-advance invariant; and the print-media reset of .correct cell fills.
 
 const { test, expect } = require('@playwright/test');
+const assert = require('node:assert/strict');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
@@ -219,4 +220,43 @@ test('keystrokes are suppressed while the shortcuts modal is open', async ({ pag
   await expect(page.locator('#keys-overlay')).toBeHidden();
   await page.keyboard.type('A');
   await expect(firstCell).toHaveText('A');
+});
+
+test('completion event fires with correct payload on solve', async ({ page }) => {
+  await page.goto(`file://${htmlPath}`);
+
+  await page.evaluate(() => {
+    window.__vpEvents = [];
+    window.__vpMsgs   = [];
+    document.querySelector('.puzzle-main').addEventListener('varietypack:complete', e => {
+      window.__vpEvents.push(JSON.parse(JSON.stringify(e.detail)));
+    });
+    window.addEventListener('message', e => {
+      if (e.data?.type === 'varietypack:complete') window.__vpMsgs.push(e.data);
+    });
+  });
+
+  const totalCells = await page.evaluate(() => window.PUZZLE_DATA.cells.length);
+  const letters    = await page.evaluate(() => window.PUZZLE_DATA.letters);
+  for (let i = 0; i < totalCells; i++) {
+    await page.keyboard.press(`Key${letters[i].toUpperCase()}`);
+  }
+
+  await page.waitForFunction(() => window.__vpMsgs.length > 0);
+
+  const [events, msgs] = await page.evaluate(() => [window.__vpEvents, window.__vpMsgs]);
+
+  assert.strictEqual(events.length, 1, 'exactly one varietypack:complete event');
+  const detail = events[0];
+  assert.ok(typeof detail.boardHash === 'string' && detail.boardHash.length === 64);
+  assert.strictEqual(detail.kind, 'spiral');
+  assert.ok(typeof detail.timeMs === 'number' && detail.timeMs >= 0);
+  assert.ok(typeof detail.solution === 'string' && detail.solution.length > 0);
+
+  const computedHash = await page.evaluate((sol) => sha256hex(sol), detail.solution);
+  assert.strictEqual(computedHash, detail.boardHash, 'sha256hex(solution) === boardHash');
+
+  assert.strictEqual(msgs.length, 1);
+  assert.strictEqual(msgs[0].type,     'varietypack:complete');
+  assert.strictEqual(msgs[0].solution, undefined);
 });
