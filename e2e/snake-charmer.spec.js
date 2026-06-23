@@ -170,11 +170,28 @@ test('? button and ? key open keyboard-shortcuts modal; Esc closes it', async ({
   await page.keyboard.press('Escape');
   await expect(overlay).toBeHidden();
 
-  // ? key opens; backdrop click closes.
+  // ? key opens; backdrop click closes. The native dialog centers as a card, so the
+  // backdrop is the dimmed area around it — click a viewport corner to hit it.
   await page.keyboard.press('?');
   await expect(overlay).toBeVisible();
-  await overlay.click({ position: { x: 5, y: 5 } });
+  await page.mouse.click(5, 5);
   await expect(overlay).toBeHidden();
+});
+
+test('the open shortcuts modal keeps Tab focus off the grid input (native dialog)', async ({ page }) => {
+  await page.goto(`file://${htmlPath}`);
+  await page.evaluate(() => document.getElementById('hidden-input').focus());
+
+  await page.click('#keys-btn');
+  await expect(page.locator('#keys-overlay')).toBeVisible();
+
+  // showModal() makes the background inert, so Tab can't walk focus into the grid's
+  // hidden input — the property the old non-modal <div> overlay didn't guarantee.
+  for (let i = 0; i < 8; i++) {
+    await page.keyboard.press('Tab');
+    const onInput = await page.evaluate(() => document.activeElement.id === 'hidden-input');
+    expect(onInput, `focus must not reach the grid input after Tab #${i + 1}`).toBe(false);
+  }
 });
 
 test('keystrokes are suppressed while the shortcuts modal is open', async ({ page }) => {
@@ -196,6 +213,69 @@ test('keystrokes are suppressed while the shortcuts modal is open', async ({ pag
   await expect(page.locator('#keys-overlay')).toBeHidden();
   await page.keyboard.type('A');
   await expect(firstCell).toHaveText('A');
+});
+
+test('board is locked after solve — letter input is ignored', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+
+  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
+  for (const ch of letters) await page.keyboard.type(ch);
+  await expect(page.locator('#congrats-dialog')).toBeVisible();
+
+  // Close dialog without play-again so the board stays locked
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#congrats-dialog')).toBeHidden();
+
+  // Snapshot all cell letters — position-independent, safe across all tools
+  const before = await page.locator('.cell-letter').allTextContents();
+  await page.keyboard.type('ZZZZZ');
+  expect(await page.locator('.cell-letter').allTextContents()).toEqual(before);
+});
+
+test('congrats dialog opens on solve with solve time and action buttons', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+
+  await expect(page.locator('#congrats-dialog')).toBeHidden();
+
+  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
+  for (const ch of letters) await page.keyboard.type(ch);
+
+  await expect(page.locator('#congrats-dialog')).toBeVisible();
+  await expect(page.locator('#congrats-time')).toBeVisible();
+  const timeText = await page.locator('#congrats-time').textContent();
+  expect(timeText).toMatch(/^Solved in \d+:\d{2}$/);
+  await expect(page.locator('#congrats-copy-btn')).toBeVisible();
+  await expect(page.locator('#congrats-play-btn')).toBeVisible();
+});
+
+test('Play again button resets the board and re-enables input', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+
+  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
+  for (const ch of letters) await page.keyboard.type(ch);
+  await expect(page.locator('#congrats-dialog')).toBeVisible();
+
+  await page.click('#congrats-play-btn');
+  await expect(page.locator('#congrats-dialog')).toBeHidden();
+
+  // All cells empty after reset — position-independent
+  const afterReset = await page.locator('.cell-letter').allTextContents();
+  expect(afterReset.every(t => t === '')).toBe(true);
+
+  // Focus returns to the grid after play-again — verify before typing.
+  await expect(page.locator('#hidden-input')).toBeFocused();
+  // Input re-enabled — exactly one cell fills after a single keystroke.
+  // Use fill() rather than keyboard.type(): after clicking a button inside a
+  // showModal() dialog, Playwright's synthetic key dispatch doesn't fire input
+  // events on background elements even though focus is correct. fill() uses CDP's
+  // value-set mechanism and fires the input event the engine listens to directly.
+  await page.locator('#hidden-input').fill('A');
+  const afterType = await page.locator('.cell-letter').allTextContents();
+  expect(afterType.filter(t => t !== '').length).toBe(1);
+  expect(afterType.some(t => t === 'A')).toBe(true);
 });
 
 test('completion event fires with correct payload on solve', async ({ page }) => {

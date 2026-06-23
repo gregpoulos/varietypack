@@ -64,7 +64,6 @@ function prevRingPos(pos, total) {
     // ── State ─────────────────────────────────────────────────────────────────
     let activeRingPos = 0;
     let activeLoop = 0;
-    let congratsDismissed = false;
 
     // ── Logic functions ───────────────────────────────────────────────────────
     const letterState = new Array(ringSize).fill('');
@@ -166,7 +165,6 @@ function prevRingPos(pos, total) {
       const allFilled = letterState.every(l => l !== '');
       const everyCellCorrect = isSolved();
 
-      if (!congratsDismissed) congratsOverlay.hidden = !everyCellCorrect;
       doneWrong.hidden = !(allFilled && !everyCellCorrect);
 
       if (!data.hashed) {
@@ -198,21 +196,28 @@ function prevRingPos(pos, total) {
     });
 
     const timer = setupTimer({ onPause: () => saveState() });
-    const puzzleRoot = document.querySelector('.puzzle-main');
+
+    const congratsDialog = setupCongratsDialog({
+      title: data.title,
+      date: data.date,
+      onPlayAgain: () => resetBoard(),
+    });
+
     const latch = makeCompletionLatch({
-      puzzleRoot,
+      puzzleRoot: document.querySelector('.puzzle-main'),
       kind:         data.kind,
       title:        data.title,
       date:         data.date,
       getBoardHash: () => data.boardHash,
       getSolution,
       getElapsedMs: () => timer.getElapsedMs(),
+      onComplete: (timeMs) => congratsDialog.open(timeMs),
     });
 
     // ── Build SVG ─────────────────────────────────────────────────────────────
     document.querySelector('.puzzle-main').classList.add(`layout-${data.shape}`);
 
-    const SVG_NS = 'http://www.w3.org/2000/svg';
+    // svgEl() is provided by shared/engine-chrome.js (inlined into the bundle).
     const svg = document.getElementById('ring-svg');
     svg.setAttribute('width', svgWidth);
     svg.setAttribute('height', svgHeight);
@@ -223,19 +228,15 @@ function prevRingPos(pos, total) {
 
     // Five explicit layers: cells < circles < flash < letters < labels.
     // flashLayer holds wrong-guess flash overlays (see flashWrong) above the cells.
-    const cellsLayer   = document.createElementNS(SVG_NS, 'g');
-    const circlesLayer = document.createElementNS(SVG_NS, 'g');
-    const flashLayer   = document.createElementNS(SVG_NS, 'g');
-    const lettersLayer = document.createElementNS(SVG_NS, 'g');
-    const labelsLayer  = document.createElementNS(SVG_NS, 'g');
+    const cellsLayer   = svgEl('g');
+    const circlesLayer = svgEl('g');
+    const flashLayer   = svgEl('g');
+    const lettersLayer = svgEl('g');
+    const labelsLayer  = svgEl('g');
     svg.append(cellsLayer, circlesLayer, flashLayer, lettersLayer, labelsLayer);
 
     for (let i = 0; i < ringSize; i++) {
-      const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('class', 'cell');
-      path.setAttribute('id', `cell-${i}`);
-      path.setAttribute('data-pos', i);
-      path.setAttribute('d', cellPath(i));
+      const path = svgEl('path', { class: 'cell', id: `cell-${i}`, 'data-pos': i, d: cellPath(i) });
       path.addEventListener('click', () => {
         const alreadyActive = i === activeRingPos && document.activeElement === hiddenInput;
         focusCell(i, alreadyActive ? (activeLoop + 1) % data.loops : activeLoop);
@@ -250,23 +251,13 @@ function prevRingPos(pos, total) {
         const ringPos = ringPosByEntry[ei][posInEntry];
         if (ringPos === undefined) return;
         const { tx, ty } = letterCenter(ringPos);
-        const circ = document.createElementNS(SVG_NS, 'circle');
-        circ.setAttribute('class', 'style-circle');
-        circ.setAttribute('cx', tx);
-        circ.setAttribute('cy', ty);
-        circ.setAttribute('r', 17);
-        circlesLayer.appendChild(circ);
+        circlesLayer.appendChild(svgEl('circle', { class: 'style-circle', cx: tx, cy: ty, r: 17 }));
       });
     });
 
     for (let i = 0; i < ringSize; i++) {
       const { tx, ty } = letterCenter(i);
-      const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('class', 'cell-letter');
-      text.setAttribute('id', `letter-${i}`);
-      text.setAttribute('data-pos', i);
-      text.setAttribute('x', tx);
-      text.setAttribute('y', ty);
+      const text = svgEl('text', { class: 'cell-letter', id: `letter-${i}`, 'data-pos': i, x: tx, y: ty });
       lettersLayer.appendChild(text);
       letterTexts.push(text);
     }
@@ -274,10 +265,7 @@ function prevRingPos(pos, total) {
     entriesStartingAt.forEach((startEntries, i) => {
       if (startEntries.length === 0) return;
       const { lx, ly } = labelPos(i);
-      const numText = document.createElementNS(SVG_NS, 'text');
-      numText.setAttribute('class', 'cell-num');
-      numText.setAttribute('x', lx);
-      numText.setAttribute('y', ly);
+      const numText = svgEl('text', { class: 'cell-num', x: lx, y: ly });
       numText.textContent = startEntries.map(ei => ei + 1).join('/');
       labelsLayer.appendChild(numText);
     });
@@ -310,7 +298,6 @@ function prevRingPos(pos, total) {
     const checkBtn = document.getElementById('check-btn');
     if (data.hashed) checkBtn.hidden = true;
 
-    const congratsOverlay = document.getElementById('congrats-overlay');
     const doneWrong = document.getElementById('done-wrong');
     const keysOverlay = setupKeysOverlay(
       [
@@ -349,6 +336,7 @@ function prevRingPos(pos, total) {
     })();
 
     setupKeydown(e => {
+      if (latch.solved) return;
       const ringPos = activeRingPos;
       if (e.key === 'Backspace') {
         e.preventDefault();
@@ -396,7 +384,7 @@ function prevRingPos(pos, total) {
       const ringPos = activeRingPos;
       const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
       hiddenInput.value = '';
-      if (!letter) return;
+      if (latch.solved || !letter) return;
       timer.onFirstInput();
       setCellLetter(ringPos, letter);
       // Advance before the hash check — awaiting the check first causes keystroke lag.
@@ -444,7 +432,6 @@ function prevRingPos(pos, total) {
       }
       Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
       while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
-      congratsDismissed = false;
       clearState();
       timer.reset();
       latch.reset();
@@ -456,11 +443,6 @@ function prevRingPos(pos, total) {
       resetBoard,
       () => hiddenInput.focus({ preventScroll: true })
     );
-
-    setupCongratsOverlay(congratsOverlay, () => {
-      congratsDismissed = true;
-      hiddenInput.focus({ preventScroll: true });
-    });
 
     // ── Restore & focus ─────────────────────────────────────────────────────────
     restoreState();

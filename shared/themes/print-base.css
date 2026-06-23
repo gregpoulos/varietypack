@@ -9,7 +9,7 @@
   /* Hide interaction chrome */
   #active-clue-bar,
   #controls,
-  #congrats-overlay,
+  #congrats-dialog,
   #keys-overlay,
   #keys-btn,
   #done-wrong { display: none !important; }

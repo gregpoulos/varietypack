@@ -9,7 +9,6 @@
     const numBands = Math.floor(N / 2);
     const CELL_SIZE = 34;
     const BAND_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const ns = 'http://www.w3.org/2000/svg';
 
     // ── Geometry & index maps ─────────────────────────────────────────────────
     function cellId(row, col)  { return (row - 1) * N + col; }
@@ -45,7 +44,6 @@
     // ── State ─────────────────────────────────────────────────────────────────
     let mode = 'row';    // 'row' | 'band'
     let activeN = rowCellsMap[0][0]; // first non-center cell of row 0
-    let congratsDismissed = false;
 
     // ── Logic functions ───────────────────────────────────────────────────────
     const cellLetters = {};
@@ -194,7 +192,6 @@
       // Congrats / done-wrong banners are derived purely from board state.
       const allFilled = isBoardFilled();
       const solved    = isSolved();
-      if (!congratsDismissed) document.getElementById('congrats-overlay').hidden = !solved;
       document.getElementById('done-wrong').hidden = !(allFilled && !solved);
 
       // Scroll active clue cluster into view
@@ -291,15 +288,22 @@
     });
 
     const timer = setupTimer({ onPause: () => saveState() });
-    const puzzleRoot = document.querySelector('.puzzle-main');
+
+    const congratsDialog = setupCongratsDialog({
+      title: data.title,
+      date: data.date,
+      onPlayAgain: () => resetBoard(),
+    });
+
     const latch = makeCompletionLatch({
-      puzzleRoot,
+      puzzleRoot: document.querySelector('.puzzle-main'),
       kind:         data.kind,
       title:        data.title,
       date:         data.date,
       getBoardHash: () => data.boardHash,
       getSolution,
       getElapsedMs: () => timer.getElapsedMs(),
+      onComplete: (timeMs) => congratsDialog.open(timeMs),
     });
 
     // ── Build SVG ─────────────────────────────────────────────────────────────
@@ -312,17 +316,13 @@
     svg.setAttribute('height',  svgSize);
     svg.setAttribute('viewBox', `0 0 ${svgSize} ${svgSize}`);
 
-    function makeSvgEl(tag, attrs) {
-      const el = document.createElementNS(ns, tag);
-      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-      return el;
-    }
+    // svgEl() is provided by shared/engine-chrome.js (inlined into the bundle).
 
-    const cellsLayer   = makeSvgEl('g', { id: 'cells-layer' });
-    const circlesLayer = makeSvgEl('g', { id: 'circles-layer' });
-    const flashLayer   = makeSvgEl('g', { id: 'flash-layer' });
-    const lettersLayer = makeSvgEl('g', { id: 'letters-layer' });
-    const labelsLayer  = makeSvgEl('g', { id: 'labels-layer' });
+    const cellsLayer   = svgEl('g', { id: 'cells-layer' });
+    const circlesLayer = svgEl('g', { id: 'circles-layer' });
+    const flashLayer   = svgEl('g', { id: 'flash-layer' });
+    const lettersLayer = svgEl('g', { id: 'letters-layer' });
+    const labelsLayer  = svgEl('g', { id: 'labels-layer' });
     svg.append(cellsLayer, circlesLayer, flashLayer, lettersLayer, labelsLayer);
 
     for (let n = 1; n <= N * N; n++) {
@@ -330,7 +330,7 @@
       const x = (c - 1) * CELL_SIZE, y = (r - 1) * CELL_SIZE;
 
       if (n === CENTER_N) {
-        const rect = makeSvgEl('rect', {
+        const rect = svgEl('rect', {
           id: 'cell-center', x, y,
           width: CELL_SIZE, height: CELL_SIZE,
           class: 'cell-center',
@@ -341,7 +341,7 @@
 
       const bIdx = bandOf(n);
       const bandClass = bIdx % 2 === 0 ? 'band-even' : 'band-odd';
-      const rect = makeSvgEl('rect', {
+      const rect = svgEl('rect', {
         id: `cell-${n}`, x, y,
         width: CELL_SIZE, height: CELL_SIZE,
         class: `cell ${bandClass}`,
@@ -351,7 +351,7 @@
       cellRects[n] = rect;
 
       const cx = x + CELL_SIZE / 2, cy = y + CELL_SIZE / 2;
-      const text = makeSvgEl('text', {
+      const text = svgEl('text', {
         id: `letter-${n}`,
         x: cx, y: cy,
         class: 'cell-letter',
@@ -367,7 +367,7 @@
       const r = rowOf(n), c = colOf(n);
       const x = (c-1) * CELL_SIZE + 2;
       const y = (r-1) * CELL_SIZE + 9;
-      const label = makeSvgEl('text', { x, y, 'font-size': '8', class: 'band-label' });
+      const label = svgEl('text', { x, y, 'font-size': '8', class: 'band-label' });
       label.textContent = BAND_LETTERS[k];
       labelsLayer.appendChild(label);
     }
@@ -382,7 +382,7 @@
               if (n === undefined) return;
               const cx = (colOf(n) - 1) * CELL_SIZE + CELL_SIZE / 2;
               const cy = (rowOf(n) - 1) * CELL_SIZE + CELL_SIZE / 2;
-              circlesLayer.appendChild(makeSvgEl('circle', { class: 'style-circle', cx, cy, r: CELL_SIZE / 2 - 2 }));
+              circlesLayer.appendChild(svgEl('circle', { class: 'style-circle', cx, cy, r: CELL_SIZE / 2 - 2 }));
             });
           }
           offset += entry.length;
@@ -478,6 +478,7 @@
       () => focusCell(activeN)
     );
     setupKeydown(e => {
+      if (latch.solved) return;
       if (e.key === '.') {
         e.preventDefault();
         mode = mode === 'row' ? 'band' : 'row';
@@ -545,7 +546,7 @@
     document.getElementById('hidden-input').addEventListener('input', e => {
       const letter = normalize(e.target.value).slice(-1).toUpperCase();
       e.target.value = '';
-      if (!letter) return;
+      if (latch.solved || !letter) return;
       timer.onFirstInput();
       setCellLetter(activeN, letter);
       focusCell(nextCell(activeN));
@@ -570,7 +571,6 @@
         if (rect) { delete rect.dataset.correct; rect.classList.remove('correct'); }
       }
       while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
-      congratsDismissed = false;
       mode = 'row';
       clearState();
       timer.reset();
@@ -583,13 +583,6 @@
       resetBoard,
       () => focusCell(activeN)
     );
-
-    const congratsOverlay = document.getElementById('congrats-overlay');
-
-    setupCongratsOverlay(congratsOverlay, () => {
-      congratsDismissed = true;
-      focusCell(activeN);
-    });
 
     // ── Restore & focus ───────────────────────────────────────────────────────
     restoreState();

@@ -8,14 +8,7 @@
     const totalCells = data.cells.length;
 
     // ── Geometry & index maps ────────────────────────────────────────────────
-    const NS = 'http://www.w3.org/2000/svg';
-
-    function svgEl(tag, attrs) {
-      const el = document.createElementNS(NS, tag);
-      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-      return el;
-    }
-
+    // svgEl() is provided by shared/engine-chrome.js (inlined into the bundle).
     function polar(r, a) { return [r * Math.cos(a), r * Math.sin(a)]; }
     function f(n) { return n.toFixed(3); }
 
@@ -61,7 +54,6 @@
     // ── State ────────────────────────────────────────────────────────────────
     let activeCell = 1;
     let direction  = 'inward';
-    let congratsDismissed = false;
 
     // ── Logic functions ──────────────────────────────────────────────────────
     function entryFirstCell(dir, entryIndex) {
@@ -296,7 +288,6 @@
 
       const solved = isSolved();
       const allFilled = data.cells.every(c => getCellLetter(c.cell_number) !== '');
-      if (!congratsDismissed) congratsOverlay.hidden = !solved;
       doneWrong.hidden = !(allFilled && !solved);
       latch.check(solved);
     }
@@ -327,15 +318,22 @@
     });
 
     const timer = setupTimer({ onPause: () => saveState() });
-    const puzzleRoot = document.querySelector('.puzzle-main');
+
+    const congratsDialog = setupCongratsDialog({
+      title: data.title,
+      date: data.date,
+      onPlayAgain: () => resetBoard(),
+    });
+
     const latch = makeCompletionLatch({
-      puzzleRoot,
+      puzzleRoot: document.querySelector('.puzzle-main'),
       kind:         data.kind,
       title:        data.title,
       date:         data.date,
       getBoardHash: () => data.boardHash,
       getSolution,
       getElapsedMs: () => timer.getElapsedMs(),
+      onComplete: (timeMs) => congratsDialog.open(timeMs),
     });
 
     // ── Build SVG ────────────────────────────────────────────────────────────
@@ -454,10 +452,9 @@
     const barSecondaryNum  = document.querySelector('#active-clue-secondary .active-clue-num');
     const barSecondaryText = document.querySelector('#active-clue-secondary .active-clue-text');
 
-    const toggleOpts      = Array.from(document.querySelectorAll('.toggle-opt'));
-    const checkBtn        = document.getElementById('check-btn');
-    const congratsOverlay = document.getElementById('congrats-overlay');
-    const doneWrong       = document.getElementById('done-wrong');
+    const toggleOpts = Array.from(document.querySelectorAll('.toggle-opt'));
+    const checkBtn   = document.getElementById('check-btn');
+    const doneWrong  = document.getElementById('done-wrong');
 
     // ── Header & clues ───────────────────────────────────────────────────────
     renderByline(data);
@@ -487,7 +484,6 @@
       });
       document.querySelectorAll('.clue-item').forEach(li => li.classList.remove('correct'));
       while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
-      congratsDismissed = false;
       direction = 'inward';
       clearState();
       timer.reset();
@@ -500,11 +496,6 @@
       resetBoard,
       () => document.getElementById('hidden-input').focus({ preventScroll: true })
     );
-
-    setupCongratsOverlay(congratsOverlay, () => {
-      congratsDismissed = true;
-      document.getElementById('hidden-input').focus({ preventScroll: true });
-    });
 
     const hiddenInput = document.getElementById('hidden-input');
     const keysOverlay = setupKeysOverlay(
@@ -520,6 +511,7 @@
     );
 
     setupKeydown(e => {
+      if (latch.solved) return;
       if (e.key === '.') {
         e.preventDefault();
         direction = direction === 'inward' ? 'outward' : 'inward';
@@ -578,7 +570,7 @@
     hiddenInput.addEventListener('input', () => {
       const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
       hiddenInput.value = '';
-      if (!letter) return;
+      if (latch.solved || !letter) return;
       timer.onFirstInput();
       setCellLetter(activeCell, letter);
       if (data.hashed) {

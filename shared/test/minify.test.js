@@ -17,7 +17,30 @@ body { color: red; }
   const out = minifyHtml(input);
   assert.ok(!out.includes('/* this is a comment */'));
   assert.ok(!out.includes('/* another'));
-  assert.ok(out.includes('body { color: red; }'));
+  // clean-css minifies the surviving rule (whitespace collapsed)
+  assert.ok(out.includes('body{color:red}'));
+});
+
+// ── CSS minification of <style> blocks ────────────────────────────────────────
+
+test('minifyHtml: minifies <style> CSS (collapses whitespace, not just comments)', () => {
+  const css = `body {\n  color: red;\n  margin: 0;\n}`;
+  const input = `<style>${css}</style>`;
+  const out = minifyHtml(input);
+  const m = out.match(/<style>([\s\S]*?)<\/style>/);
+  assert.ok(m, 'style block present');
+  assert.ok(m[1].length < css.length, 'CSS shortened by minification');
+  assert.ok(m[1].includes('body{color:red'),
+    `selector/declaration whitespace collapsed; got: ${m[1]}`);
+});
+
+test('minifyHtml: preserves /* */ inside a CSS string value (clean-css is CSS-aware)', () => {
+  // simplePass is string-unaware and would delete this; clean-css parses CSS and
+  // keeps string tokens intact — the headline win over the regex pass.
+  const input = `<style>.x::before { content: "/* not a comment */"; }</style>`;
+  const out = minifyHtml(input);
+  assert.ok(out.includes('/* not a comment */'),
+    `comment-like sequence inside a CSS string must survive; got: ${out}`);
 });
 
 // ── line-only // comment stripping ───────────────────────────────────────────

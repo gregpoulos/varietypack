@@ -93,19 +93,6 @@ button:disabled { opacity: 0.4; cursor: default; }
 .puzzle-toggle .toggle-opt { border-radius: 0; border: none; flex: 1; white-space: nowrap; }
 .toggle-opt { user-select: none; cursor: pointer; }
 
-#congrats-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-/* The `hidden` attribute is UA-origin `display: none`, which the author
-   `display: flex` above overrides — restate the hide at higher specificity. */
-#congrats-overlay[hidden] { display: none; }
-
 #keys-btn {
   position: fixed;
   bottom: 20px;
@@ -123,16 +110,29 @@ button:disabled { opacity: 0.4; cursor: default; }
   justify-content: center;
 }
 
+/* Native <dialog>: raised to the top layer by showModal() and dimmed via
+   ::backdrop — no positioning or z-index needed. The dialog is a transparent
+   frame; #keys-modal (inside it) is the visible card. `margin: auto` restores the
+   UA modal centering that the global `* { margin: 0 }` reset above would otherwise
+   defeat (the UA `dialog:modal { inset: 0 }` is still in effect). */
 #keys-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: 100vw;
+  max-height: 100vh;
 }
-#keys-overlay[hidden] { display: none; }
+
+/* Native <dialog> congrats modal — same transparent-frame pattern as #keys-overlay. */
+#congrats-dialog {
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: 100vw;
+  max-height: 100vh;
+}
 
 @keyframes flash-wrong {
   0%   { opacity: 1; }

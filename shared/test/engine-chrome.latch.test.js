@@ -16,6 +16,7 @@ function makeLatch(opts = {}) {
     getBoardHash: opts.getBoardHash ?? (() => 'abc123'),
     getSolution:  opts.getSolution  ?? (() => 'solution'),
     getElapsedMs: opts.getElapsedMs ?? (() => 1234),
+    onComplete:   opts.onComplete,
     _postMessage: (msg) => msgs.push(msg),
   });
   return { latch, events, msgs };
@@ -136,4 +137,54 @@ test('CustomEvent options: bubbles and composed are true', () => {
     if (OriginalCustomEvent) global.CustomEvent = OriginalCustomEvent;
     else delete global.CustomEvent;
   }
+});
+
+test('latch.solved is false initially and true after check fires', () => {
+  const { latch } = makeLatch();
+  assert.strictEqual(latch.solved, false);
+  latch.check(true);
+  assert.strictEqual(latch.solved, true);
+});
+
+test('latch.solved becomes false again after reset()', () => {
+  const { latch } = makeLatch();
+  latch.check(true);
+  latch.reset();
+  assert.strictEqual(latch.solved, false);
+});
+
+test('onComplete is called with timeMs on first solve', () => {
+  const calls = [];
+  const { latch } = makeLatch({
+    getElapsedMs: () => 5000,
+    onComplete: (ms) => calls.push(ms),
+  });
+  latch.check(true);
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0], 5000);
+});
+
+test('onComplete is not called a second time without reset', () => {
+  const calls = [];
+  const { latch } = makeLatch({ onComplete: (ms) => calls.push(ms) });
+  latch.check(true);
+  latch.check(true);
+  assert.strictEqual(calls.length, 1);
+});
+
+test('onComplete is called again after reset() then check(true)', () => {
+  const calls = [];
+  const { latch } = makeLatch({ onComplete: (ms) => calls.push(ms) });
+  latch.check(true);
+  latch.reset();
+  latch.check(true);
+  assert.strictEqual(calls.length, 2);
+});
+
+test('sealIfSolved(true) sets latch.solved without calling onComplete', () => {
+  const calls = [];
+  const { latch } = makeLatch({ onComplete: (ms) => calls.push(ms) });
+  latch.sealIfSolved(true);
+  assert.strictEqual(latch.solved, true);
+  assert.strictEqual(calls.length, 0);
 });

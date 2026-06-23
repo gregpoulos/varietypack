@@ -57,7 +57,7 @@ These are supported by every tool:
 | `--muddle` | off | Build a hashed (answer-obscured) HTML from a source YAML — no `hashed:` field needed. Muddled YAMLs (which carry `boardHash:`) build hashed automatically without this flag. |
 | `--theme <name>` | `broadsheet` | Visual theme. All tools ship `broadsheet` and `skeleton`; the exact list may vary per tool. Themes with custom fonts (e.g. `skeleton`) require `--font`. |
 | `--font <mode>` | — | Font delivery for custom-font themes: `embed` inlines fonts as base64 (self-contained output) or `link` references a CDN via `@import` (needs network at solve time). Required when the theme uses custom fonts; silently ignored for system-font themes. |
-| `--minify` | off | Minify the generated HTML: terser-minifies each `<script>`, strips comments, and trims trailing whitespace. |
+| `--minify` | off | Minify the generated HTML: terser-minifies each `<script>`, clean-css minifies each `<style>`, strips comments, and trims trailing whitespace. |
 | `-o <output.html>` | `<input-basename>.html` | Output path. Defaults to writing next to the input file. |
 | `-f`, `--force` | off | Overwrite the output file if it already exists. |
 

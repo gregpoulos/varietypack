@@ -100,19 +100,6 @@ button:disabled { opacity: 0.4; cursor: default; }
 .puzzle-toggle .toggle-opt { border-radius: 0; border: none; flex: 1; white-space: nowrap; }
 .toggle-opt { user-select: none; cursor: pointer; }
 
-#congrats-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-/* The `hidden` attribute is UA-origin `display: none`, which the author
-   `display: flex` above overrides — restate the hide at higher specificity. */
-#congrats-overlay[hidden] { display: none; }
-
 #keys-btn {
   position: fixed;
   bottom: 20px;
@@ -130,16 +117,29 @@ button:disabled { opacity: 0.4; cursor: default; }
   justify-content: center;
 }
 
+/* Native <dialog>: raised to the top layer by showModal() and dimmed via
+   ::backdrop — no positioning or z-index needed. The dialog is a transparent
+   frame; #keys-modal (inside it) is the visible card. `margin: auto` restores the
+   UA modal centering that the global `* { margin: 0 }` reset above would otherwise
+   defeat (the UA `dialog:modal { inset: 0 }` is still in effect). */
 #keys-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: 100vw;
+  max-height: 100vh;
 }
-#keys-overlay[hidden] { display: none; }
+
+/* Native <dialog> congrats modal — same transparent-frame pattern as #keys-overlay. */
+#congrats-dialog {
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: 100vw;
+  max-height: 100vh;
+}
 
 @keyframes flash-wrong {
   0%   { opacity: 1; }
@@ -440,8 +440,8 @@ h1.title {
 .cell-letter.correct { fill: var(--theme-color-correct-text); }
 .cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 
-/* Congrats modal (centered in the shared #congrats-overlay from base.css) */
-#congrats-overlay { background: var(--theme-color-overlay); }
+/* Congrats modal — backdrop handles the overlay dim; #congrats is the visible card */
+#congrats-dialog::backdrop { background: var(--theme-color-overlay); }
 
 /* Keys button (fixed bottom-right corner, created by setupKeysOverlay) */
 #keys-btn {
@@ -451,8 +451,8 @@ h1.title {
 }
 #keys-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
-/* Keys modal (centered in the shared #keys-overlay from base.css) */
-#keys-overlay { background: var(--theme-color-overlay); }
+/* Keys modal — the <dialog> dim is its ::backdrop (skeleton sets this transparent) */
+#keys-overlay::backdrop { background: var(--theme-color-overlay); }
 #keys-modal {
   background:    var(--theme-color-bg);
   color:         var(--theme-color-text);
@@ -507,12 +507,34 @@ kbd {
   border:         2px solid var(--theme-color-congrats-border);
   border-radius:  var(--theme-card-radius);
   padding:        28px 36px;
-  font-size:      1.2rem;
-  font-weight:    bold;
   text-align:     center;
-  letter-spacing: 0.04em;
   animation:      congrats-pop 200ms ease-out;
 }
+#congrats-msg {
+  font-size:      1.2rem;
+  font-weight:    bold;
+  letter-spacing: 0.04em;
+}
+#congrats-time {
+  font-size:      1rem;
+  font-weight:    normal;
+  margin-top:     8px;
+  letter-spacing: 0;
+  opacity:        0.85;
+}
+#congrats-actions {
+  display:         flex;
+  gap:             12px;
+  justify-content: center;
+  margin-top:      20px;
+}
+#congrats-copy-btn,
+#congrats-play-btn {
+  background:   var(--theme-color-btn2-bg);
+  border-color: var(--theme-color-btn2-border);
+  color:        var(--theme-color-text);
+}
+#congrats-play-btn { font-weight: bold; }
 
 #done-wrong {
   margin-top:     20px;
@@ -588,7 +610,7 @@ kbd {
   /* Hide interaction chrome */
   #active-clue-bar,
   #controls,
-  #congrats-overlay,
+  #congrats-dialog,
   #keys-overlay,
   #keys-btn,
   #done-wrong { display: none !important; }
@@ -675,9 +697,6 @@ kbd {
         <ol id="clues"></ol>
       </div>
     </div>
-  </div>
-  <div id="congrats-overlay" hidden>
-    <div id="congrats" aria-live="polite">Puzzle solved!</div>
   </div>
   <div id="done-wrong" hidden>
     <p>All cells filled — but something's not right yet.</p>
@@ -963,12 +982,23 @@ if (typeof module !== 'undefined') module.exports = isCellCorrect;
 // Shared browser-engine "chrome": the UI-surround logic that is identical across
 // every puzzle tool's engine.js — byline, instructions, the two-click Clear
 // button, scroll-key forwarding, the localStorage save/restore/clear scaffolding,
-// the shared keydown guard wrapper, and the congrats-overlay dismiss handlers.
+// the shared keydown guard wrapper, and the congrats dialog on solve.
 // Each engine calls these from inside its own init(); the tool-specific cores
 // (SVG rendering, navigation, syncUI, answer checking) stay in the engine.
 // Injected into the HTML bundle as browser globals by getSharedBundle(); the
 // dual-mode guard at the bottom keeps the pattern consistent with the other
 // shared/ files even though no Node code requires it.
+
+// Browser-only: create an SVG-namespaced element and apply an attribute map
+// (setAttribute coerces each value to a string). Replaces the per-engine svgEl /
+// makeSvgEl helpers and Snake Charmer's hand-rolled createElementNS + setAttribute
+// construction, so every engine builds SVG nodes the same way.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
 
 // author + date → `.byline`. Missing pieces are simply omitted; an empty result
 // leaves the element blank.
@@ -1100,7 +1130,7 @@ function setupStorage(key, { cellCount, getState, applyState }) {
 function setupKeydown(handler, { keysOverlay } = {}) {
   document.addEventListener('keydown', e => {
     if (!document.hasFocus()) return;
-    if (keysOverlay && !keysOverlay.hidden) return;
+    if (keysOverlay && keysOverlay.open) return;
     if (e.metaKey && e.key === 'ArrowLeft') { history.back(); return; }
     if (e.metaKey && e.key === 'ArrowRight') { history.forward(); return; }
     if (e.metaKey || e.ctrlKey) return;
@@ -1109,31 +1139,89 @@ function setupKeydown(handler, { keysOverlay } = {}) {
   });
 }
 
-// Wires the two congrats-overlay dismiss paths: backdrop click and Escape key.
-// Calls `onDismiss` on either; the engine sets its congratsDismissed flag and
-// restores focus there.
-function setupCongratsOverlay(overlay, onDismiss) {
-  function dismiss() {
-    overlay.hidden = true;
-    onDismiss();
+// Formats elapsed milliseconds as M:SS (e.g. 154321 → "2:34").
+function formatMs(ms) {
+  const s = Math.round(ms / 1000);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+// Builds the solve-celebration modal from the supplied callbacks and metadata.
+// Creates a native <dialog id="congrats-dialog"> appended to <body>, opened via
+// showModal() so the page is inert (matching the keys overlay pattern). Returns
+// { open(timeMs) } — called from makeCompletionLatch's onComplete on first solve.
+// Backdrop click and Escape close without resetting; Play again closes + resets.
+function setupCongratsDialog({ title, date, onPlayAgain }) {
+  const dialog = document.createElement('dialog');
+  dialog.id = 'congrats-dialog';
+  dialog.setAttribute('aria-label', 'Puzzle solved');
+
+  const card = document.createElement('div');
+  card.id = 'congrats';
+
+  const msg = document.createElement('p');
+  msg.id = 'congrats-msg';
+  msg.textContent = 'Puzzle solved!';
+
+  const timeEl = document.createElement('p');
+  timeEl.id = 'congrats-time';
+
+  const actions = document.createElement('div');
+  actions.id = 'congrats-actions';
+
+  const copyBtn = document.createElement('button');
+  copyBtn.id = 'congrats-copy-btn';
+  copyBtn.type = 'button';
+  copyBtn.textContent = 'Copy result';
+
+  const playBtn = document.createElement('button');
+  playBtn.id = 'congrats-play-btn';
+  playBtn.type = 'button';
+  playBtn.autofocus = true;
+  playBtn.textContent = 'Play again';
+
+  actions.append(copyBtn, playBtn);
+  card.append(msg, timeEl, actions);
+  dialog.appendChild(card);
+  document.body.appendChild(dialog);
+
+  // Backdrop click (target is the transparent dialog frame, not the card) closes.
+  dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
+
+  let copyText = '';
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard?.writeText(copyText).catch(() => {});
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = 'Copy result'; }, 1500);
+  });
+  playBtn.addEventListener('click', () => {
+    dialog.close();
+    onPlayAgain();
+  });
+
+  function open(timeMs) {
+    const timeStr = formatMs(timeMs);
+    timeEl.textContent = 'Solved in ' + timeStr;
+    const prefix = (title && date) ? title + ' · ' + String(date) + '\n' : '';
+    copyText = prefix + 'Solved in ' + timeStr;
+    if (!dialog.open) dialog.showModal();
   }
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) dismiss();
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !overlay.hidden) dismiss();
-  });
+
+  return { open };
 }
 
 // Builds and wires the keyboard-shortcuts modal from a list of [keys, description]
 // pairs (the only part that differs between tools). Creates the #keys-btn trigger
-// (fixed bottom-right corner) and the #keys-overlay > #keys-modal dialog, both
-// appended to <body>. Returns the overlay element for setupKeydown's keysOverlay
-// guard.
+// (fixed bottom-right corner) and a native <dialog id="keys-overlay"> holding the
+// #keys-modal card, both appended to <body>. Returns the <dialog> for setupKeydown's
+// keysOverlay guard (which checks .open).
 //
-// Opens on button click or ? keypress; closes on backdrop click, close-button
-// click, or Escape. Opening moves focus to the close button so keystrokes can't
-// leak into the grid while the modal is up; `refocus` restores puzzle focus on close.
+// Opens on button click or ? keypress via showModal(), which moves focus into the
+// dialog, traps Tab inside it, makes the rest of the page inert, and paints the
+// ::backdrop dim in the top layer — all behaviors the platform gives for free.
+// Closes on close-button click, backdrop click, or Escape (native). Puzzle focus
+// returns via the browser's native dialog focus-restoration: `open()` focuses the
+// grid input just before showModal(), making it the recorded restore target, so
+// every close path lands focus there with no explicit close handler.
 function setupKeysOverlay(shortcuts, refocus) {
   const btn = document.createElement('button');
   btn.id = 'keys-btn';
@@ -1142,15 +1230,14 @@ function setupKeysOverlay(shortcuts, refocus) {
   btn.textContent = '?';
   document.body.appendChild(btn);
 
-  const overlay = document.createElement('div');
-  overlay.id = 'keys-overlay';
-  overlay.hidden = true;
+  // <dialog> carries the dialog/aria-modal semantics implicitly when shown via
+  // showModal(); it is a transparent frame, and #keys-modal is the visible card.
+  const dialog = document.createElement('dialog');
+  dialog.id = 'keys-overlay';
+  dialog.setAttribute('aria-label', 'Keyboard shortcuts');
 
   const modal = document.createElement('div');
   modal.id = 'keys-modal';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-label', 'Keyboard shortcuts');
 
   const header = document.createElement('div');
   header.id = 'keys-modal-header';
@@ -1159,6 +1246,7 @@ function setupKeysOverlay(shortcuts, refocus) {
   const closeBtn = document.createElement('button');
   closeBtn.id = 'keys-close';
   closeBtn.type = 'button';
+  closeBtn.autofocus = true; // showModal() focuses this, parking keystrokes off the grid
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.textContent = '✕';
   header.append(heading, closeBtn);
@@ -1177,29 +1265,30 @@ function setupKeysOverlay(shortcuts, refocus) {
   }
 
   modal.append(header, table);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
+  dialog.appendChild(modal);
+  document.body.appendChild(dialog);
 
-  function open() {
-    overlay.hidden = false;
-    closeBtn.focus();
-  }
-  function close() {
-    overlay.hidden = true;
-    refocus();
-  }
-  btn.addEventListener('click', () => overlay.hidden ? open() : close());
+  // Focus the puzzle before opening so the input becomes the dialog's recorded
+  // focus-restore target; the browser's native restoration then returns focus
+  // there on every close path (Escape, ✕, backdrop, ? toggle). Without this,
+  // restoration would return focus to the trigger button, briefly stranding the
+  // next keystroke off the grid.
+  const open  = () => { refocus(); dialog.showModal(); };
+  const close = () => dialog.close();
+
+  btn.addEventListener('click', () => dialog.open ? close() : open());
   closeBtn.addEventListener('click', close);
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  // A click whose target is the dialog itself landed on the ::backdrop — clicks on
+  // the #keys-modal card target the card or its children, so they don't close.
+  dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
   document.addEventListener('keydown', e => {
     if (!document.hasFocus()) return;
-    if (e.key === 'Escape' && !overlay.hidden) { close(); return; }
     if (e.key === '?' && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
-      overlay.hidden ? open() : close();
+      dialog.open ? close() : open();
     }
   });
-  return overlay;
+  return dialog;
 }
 
 function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
@@ -1254,6 +1343,7 @@ function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
 
 function makeCompletionLatch({
   puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs,
+  onComplete,
   _postMessage,
 }) {
   let fired = false;
@@ -1276,16 +1366,17 @@ function makeCompletionLatch({
       bubbles: true, composed: true, detail,
     }));
     pm({ type: 'varietypack:complete', boardHash, kind, title, date, timeMs });
+    if (onComplete) onComplete(timeMs);
   }
 
-  return { check, sealIfSolved, reset };
+  return { check, sealIfSolved, reset, get solved() { return fired; } };
 }
 
 if (typeof module !== 'undefined') {
   module.exports = {
-    renderByline, renderInstructions, setupClearButton,
+    svgEl, renderByline, renderInstructions, setupClearButton,
     scrollByKey, storageKey, setupStorage, flashWrong,
-    setupKeydown, setupCongratsOverlay, setupKeysOverlay, setupTimer,
+    setupKeydown, setupCongratsDialog, setupKeysOverlay, setupTimer,
     makeCompletionLatch,
   };
 }
@@ -1813,7 +1904,6 @@ function prevRingPos(pos, total) {
     // ── State ─────────────────────────────────────────────────────────────────
     let activeRingPos = 0;
     let activeLoop = 0;
-    let congratsDismissed = false;
 
     // ── Logic functions ───────────────────────────────────────────────────────
     const letterState = new Array(ringSize).fill('');
@@ -1915,7 +2005,6 @@ function prevRingPos(pos, total) {
       const allFilled = letterState.every(l => l !== '');
       const everyCellCorrect = isSolved();
 
-      if (!congratsDismissed) congratsOverlay.hidden = !everyCellCorrect;
       doneWrong.hidden = !(allFilled && !everyCellCorrect);
 
       if (!data.hashed) {
@@ -1947,21 +2036,28 @@ function prevRingPos(pos, total) {
     });
 
     const timer = setupTimer({ onPause: () => saveState() });
-    const puzzleRoot = document.querySelector('.puzzle-main');
+
+    const congratsDialog = setupCongratsDialog({
+      title: data.title,
+      date: data.date,
+      onPlayAgain: () => resetBoard(),
+    });
+
     const latch = makeCompletionLatch({
-      puzzleRoot,
+      puzzleRoot: document.querySelector('.puzzle-main'),
       kind:         data.kind,
       title:        data.title,
       date:         data.date,
       getBoardHash: () => data.boardHash,
       getSolution,
       getElapsedMs: () => timer.getElapsedMs(),
+      onComplete: (timeMs) => congratsDialog.open(timeMs),
     });
 
     // ── Build SVG ─────────────────────────────────────────────────────────────
     document.querySelector('.puzzle-main').classList.add(`layout-${data.shape}`);
 
-    const SVG_NS = 'http://www.w3.org/2000/svg';
+    // svgEl() is provided by shared/engine-chrome.js (inlined into the bundle).
     const svg = document.getElementById('ring-svg');
     svg.setAttribute('width', svgWidth);
     svg.setAttribute('height', svgHeight);
@@ -1972,19 +2068,15 @@ function prevRingPos(pos, total) {
 
     // Five explicit layers: cells < circles < flash < letters < labels.
     // flashLayer holds wrong-guess flash overlays (see flashWrong) above the cells.
-    const cellsLayer   = document.createElementNS(SVG_NS, 'g');
-    const circlesLayer = document.createElementNS(SVG_NS, 'g');
-    const flashLayer   = document.createElementNS(SVG_NS, 'g');
-    const lettersLayer = document.createElementNS(SVG_NS, 'g');
-    const labelsLayer  = document.createElementNS(SVG_NS, 'g');
+    const cellsLayer   = svgEl('g');
+    const circlesLayer = svgEl('g');
+    const flashLayer   = svgEl('g');
+    const lettersLayer = svgEl('g');
+    const labelsLayer  = svgEl('g');
     svg.append(cellsLayer, circlesLayer, flashLayer, lettersLayer, labelsLayer);
 
     for (let i = 0; i < ringSize; i++) {
-      const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('class', 'cell');
-      path.setAttribute('id', `cell-${i}`);
-      path.setAttribute('data-pos', i);
-      path.setAttribute('d', cellPath(i));
+      const path = svgEl('path', { class: 'cell', id: `cell-${i}`, 'data-pos': i, d: cellPath(i) });
       path.addEventListener('click', () => {
         const alreadyActive = i === activeRingPos && document.activeElement === hiddenInput;
         focusCell(i, alreadyActive ? (activeLoop + 1) % data.loops : activeLoop);
@@ -1999,23 +2091,13 @@ function prevRingPos(pos, total) {
         const ringPos = ringPosByEntry[ei][posInEntry];
         if (ringPos === undefined) return;
         const { tx, ty } = letterCenter(ringPos);
-        const circ = document.createElementNS(SVG_NS, 'circle');
-        circ.setAttribute('class', 'style-circle');
-        circ.setAttribute('cx', tx);
-        circ.setAttribute('cy', ty);
-        circ.setAttribute('r', 17);
-        circlesLayer.appendChild(circ);
+        circlesLayer.appendChild(svgEl('circle', { class: 'style-circle', cx: tx, cy: ty, r: 17 }));
       });
     });
 
     for (let i = 0; i < ringSize; i++) {
       const { tx, ty } = letterCenter(i);
-      const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('class', 'cell-letter');
-      text.setAttribute('id', `letter-${i}`);
-      text.setAttribute('data-pos', i);
-      text.setAttribute('x', tx);
-      text.setAttribute('y', ty);
+      const text = svgEl('text', { class: 'cell-letter', id: `letter-${i}`, 'data-pos': i, x: tx, y: ty });
       lettersLayer.appendChild(text);
       letterTexts.push(text);
     }
@@ -2023,10 +2105,7 @@ function prevRingPos(pos, total) {
     entriesStartingAt.forEach((startEntries, i) => {
       if (startEntries.length === 0) return;
       const { lx, ly } = labelPos(i);
-      const numText = document.createElementNS(SVG_NS, 'text');
-      numText.setAttribute('class', 'cell-num');
-      numText.setAttribute('x', lx);
-      numText.setAttribute('y', ly);
+      const numText = svgEl('text', { class: 'cell-num', x: lx, y: ly });
       numText.textContent = startEntries.map(ei => ei + 1).join('/');
       labelsLayer.appendChild(numText);
     });
@@ -2059,7 +2138,6 @@ function prevRingPos(pos, total) {
     const checkBtn = document.getElementById('check-btn');
     if (data.hashed) checkBtn.hidden = true;
 
-    const congratsOverlay = document.getElementById('congrats-overlay');
     const doneWrong = document.getElementById('done-wrong');
     const keysOverlay = setupKeysOverlay(
       [
@@ -2098,6 +2176,7 @@ function prevRingPos(pos, total) {
     })();
 
     setupKeydown(e => {
+      if (latch.solved) return;
       const ringPos = activeRingPos;
       if (e.key === 'Backspace') {
         e.preventDefault();
@@ -2145,7 +2224,7 @@ function prevRingPos(pos, total) {
       const ringPos = activeRingPos;
       const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
       hiddenInput.value = '';
-      if (!letter) return;
+      if (latch.solved || !letter) return;
       timer.onFirstInput();
       setCellLetter(ringPos, letter);
       // Advance before the hash check — awaiting the check first causes keystroke lag.
@@ -2193,7 +2272,6 @@ function prevRingPos(pos, total) {
       }
       Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
       while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
-      congratsDismissed = false;
       clearState();
       timer.reset();
       latch.reset();
@@ -2205,11 +2283,6 @@ function prevRingPos(pos, total) {
       resetBoard,
       () => hiddenInput.focus({ preventScroll: true })
     );
-
-    setupCongratsOverlay(congratsOverlay, () => {
-      congratsDismissed = true;
-      hiddenInput.focus({ preventScroll: true });
-    });
 
     // ── Restore & focus ─────────────────────────────────────────────────────────
     restoreState();

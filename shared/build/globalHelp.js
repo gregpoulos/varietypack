@@ -7,7 +7,7 @@ const GLOBAL_OPTIONS = `\
   --muddle          Build a hashed (answer-obscured) HTML without needing hashed: in the YAML
   --theme <name>    Visual theme: ${VALID_THEMES.join(', ')} (default: broadsheet)
   --font <mode>     Font delivery for custom-font themes: embed (self-contained) or link (CDN, requires network on every solve)
-  --minify          Minify the output HTML (terser-minifies scripts; strips comments + trailing whitespace)
+  --minify          Minify the output HTML (terser-minifies scripts, clean-css minifies styles; strips comments + trailing whitespace)
   -o <output.html>  Output path (default: <input-basename>.html next to input)
   -f, --force       Overwrite output file if it already exists
   -h, --help        Show this help`;

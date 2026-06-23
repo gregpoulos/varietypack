@@ -97,9 +97,9 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 **Applies to:** all tool `cli.js` files; builders take it as `options.minify` and apply `minifyHtml()` to the composed HTML just before `fs.writeFileSync`.
 
-**What it does:** terser-minifies the body of each `<script>` block (compress + mangle), and strips comments / trailing whitespace / runs of blank lines from the surrounding HTML and CSS.
+**What it does:** terser-minifies the body of each `<script>` block (compress + mangle), clean-css-minifies the body of each `<style>` block, and strips comments / trailing whitespace / runs of blank lines from the surrounding HTML.
 
-**Implementation gotcha:** the comment/whitespace pass is string-unaware, so it runs *only* on the non-`<script>` segments. Running it over `<script>`/`PUZZLE_DATA` content would delete `/* … */` or `//` sequences that appear inside string literals (author text can contain anything), corrupting data or breaking the document. terser owns comment removal inside scripts. CSS rule bodies are not otherwise minified (their internal whitespace is preserved).
+**Implementation gotcha:** the comment/whitespace pass is string-unaware, so it runs *only* on the segments outside `<script>`/`<style>` blocks. Running it over `<script>`/`PUZZLE_DATA` content or a CSS string value (e.g. `content: "…"`) would delete `/* … */` or `//` sequences that appear inside string literals (author text can contain anything), corrupting data or breaking the document. terser and clean-css own comment/whitespace removal inside their own blocks, parsing the language so string tokens survive.
 
 ---
 
@@ -119,19 +119,19 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 ## Keyboard shortcuts modal
 
-**Rule:** Every tool exposes a keyboard-shortcuts reference via a fixed `?` button and the `?` key. Both are wired by `setupKeysOverlay(shortcuts, refocus)` from `shared/engine-chrome.js` — each engine calls it with a tool-specific `[[keys, description], …]` array and the same `refocus` function it passes to `setupClearButton`. The return value (the overlay element) is passed to `setupKeydown` as `{ keysOverlay }`.
+**Rule:** Every tool exposes a keyboard-shortcuts reference via a fixed `?` button and the `?` key. Both are wired by `setupKeysOverlay(shortcuts, refocus)` from `shared/engine-chrome.js` — each engine calls it with a tool-specific `[[keys, description], …]` array and the same `refocus` function it passes to `setupClearButton`. The return value (the `<dialog>` element) is passed to `setupKeydown` as `{ keysOverlay }`.
 
 **Creation:** `setupKeysOverlay` appends two elements to `<body>`:
 1. `#keys-btn` — a fixed bottom-right corner button labelled `?`.
-2. `#keys-overlay` — a full-viewport backdrop wrapping `#keys-modal` (a `role="dialog"` card listing the shortcuts as a table of `<kbd>` + description rows).
+2. `#keys-overlay` — a native `<dialog>` holding `#keys-modal` (the visible card listing the shortcuts as a table of `<kbd>` + description rows). The dialog supplies the dialog/modal ARIA semantics implicitly when opened with `showModal()`; its dim is the `::backdrop` pseudo-element, not a wrapper div.
 
 **Opening and closing:**
-- Clicking `#keys-btn`, or pressing `?` (without Meta/Ctrl), opens the modal and moves focus to `#keys-close` so keystrokes can't leak into the grid.
-- Pressing `?` again, pressing Escape, clicking the backdrop, or clicking `#keys-close` all close the modal and call `refocus()` to restore puzzle focus.
+- Clicking `#keys-btn`, or pressing `?` (without Meta/Ctrl), focuses the puzzle and then calls `dialog.showModal()`. `showModal()` moves focus to the `autofocus` `#keys-close` button, traps Tab inside the dialog, makes the rest of the page inert, and paints the `::backdrop` in the top layer — so keystrokes and Tab can't reach the grid while it is up.
+- Pressing `?` again, pressing Escape (native), clicking the backdrop (a click whose `target` is the dialog itself), or clicking `#keys-close` all close the dialog. Focus returns to the puzzle via the browser's native dialog focus-restoration: because the input is focused immediately *before* `showModal()`, the dialog's recorded restore target is the grid input, so every close path lands focus there with no explicit close handler and no race against the trigger button.
 
-**Keystroke guard:** `setupKeydown` has a `keysOverlay` option; when the overlay is visible, the tool's keydown handler returns immediately, so no puzzle key fires while the modal is up.
+**Keystroke guard:** `setupKeydown` has a `keysOverlay` option; when the dialog is open (`keysOverlay.open`), the tool's keydown handler returns immediately, so no puzzle key fires while the modal is up.
 
-**CSS:** `#keys-btn` layout (fixed position, size, z-index) lives in `shared/base.css`. All colour/font styling for `#keys-btn`, `#keys-overlay`, `#keys-modal`, `#keys-modal-header`, `#keys-close`, and `kbd` lives in `shared/themes/theme-components.css` using the standard `--theme-*` variables (`--theme-color-bg`, `--theme-color-text`, `--theme-color-soft-border`, `--theme-color-btn2-*`). No per-theme overrides are required; the neutral page-level vars give the right contrast for every theme.
+**CSS:** `#keys-btn` layout (fixed position, size, z-index) lives in `shared/base.css`, alongside the `#keys-overlay` `<dialog>` reset — transparent frame, `margin: auto` to restore the UA modal centering that the global `* { margin: 0 }` reset would otherwise defeat, and the `::backdrop` dim. All colour/font styling for `#keys-btn`, the `#keys-overlay` backdrop, `#keys-modal`, `#keys-modal-header`, `#keys-close`, and `kbd` lives in `shared/themes/theme-components.css` using the standard `--theme-*` variables (`--theme-color-overlay` for the `::backdrop`, plus `--theme-color-bg`, `--theme-color-text`, `--theme-color-soft-border`, `--theme-color-btn2-*`). No per-theme overrides are required; the neutral page-level vars give the right contrast for every theme.
 
 **Print:** `#keys-overlay` and `#keys-btn` are both hidden in `@media print` (see `shared/themes/print-base.css`).
 
@@ -157,7 +157,7 @@ All tools use these element names for equivalent concepts — use them exactly a
 | Controls wrapper | `#controls` |
 | Clear progress button | `#clear-btn` |
 | Keyboard-shortcuts trigger button | `#keys-btn` |
-| Keyboard-shortcuts backdrop | `#keys-overlay` |
+| Keyboard-shortcuts dialog (native `<dialog>`; dim is its `::backdrop`) | `#keys-overlay` |
 | Keyboard-shortcuts modal card | `#keys-modal` |
 | Keyboard-shortcuts modal header | `#keys-modal-header` |
 | Keyboard-shortcuts close button | `#keys-close` |

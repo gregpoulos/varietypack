@@ -110,8 +110,8 @@ h1.title {
 .cell-letter.correct { fill: var(--theme-color-correct-text); }
 .cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 
-/* Congrats modal (centered in the shared #congrats-overlay from base.css) */
-#congrats-overlay { background: var(--theme-color-overlay); }
+/* Congrats modal — backdrop handles the overlay dim; #congrats is the visible card */
+#congrats-dialog::backdrop { background: var(--theme-color-overlay); }
 
 /* Keys button (fixed bottom-right corner, created by setupKeysOverlay) */
 #keys-btn {
@@ -121,8 +121,8 @@ h1.title {
 }
 #keys-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
-/* Keys modal (centered in the shared #keys-overlay from base.css) */
-#keys-overlay { background: var(--theme-color-overlay); }
+/* Keys modal — the <dialog> dim is its ::backdrop (skeleton sets this transparent) */
+#keys-overlay::backdrop { background: var(--theme-color-overlay); }
 #keys-modal {
   background:    var(--theme-color-bg);
   color:         var(--theme-color-text);
@@ -177,12 +177,34 @@ kbd {
   border:         2px solid var(--theme-color-congrats-border);
   border-radius:  var(--theme-card-radius);
   padding:        28px 36px;
-  font-size:      1.2rem;
-  font-weight:    bold;
   text-align:     center;
-  letter-spacing: 0.04em;
   animation:      congrats-pop 200ms ease-out;
 }
+#congrats-msg {
+  font-size:      1.2rem;
+  font-weight:    bold;
+  letter-spacing: 0.04em;
+}
+#congrats-time {
+  font-size:      1rem;
+  font-weight:    normal;
+  margin-top:     8px;
+  letter-spacing: 0;
+  opacity:        0.85;
+}
+#congrats-actions {
+  display:         flex;
+  gap:             12px;
+  justify-content: center;
+  margin-top:      20px;
+}
+#congrats-copy-btn,
+#congrats-play-btn {
+  background:   var(--theme-color-btn2-bg);
+  border-color: var(--theme-color-btn2-border);
+  color:        var(--theme-color-text);
+}
+#congrats-play-btn { font-weight: bold; }
 
 #done-wrong {
   margin-top:     20px;

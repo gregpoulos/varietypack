@@ -1,12 +1,23 @@
 // Shared browser-engine "chrome": the UI-surround logic that is identical across
 // every puzzle tool's engine.js — byline, instructions, the two-click Clear
 // button, scroll-key forwarding, the localStorage save/restore/clear scaffolding,
-// the shared keydown guard wrapper, and the congrats-overlay dismiss handlers.
+// the shared keydown guard wrapper, and the congrats dialog on solve.
 // Each engine calls these from inside its own init(); the tool-specific cores
 // (SVG rendering, navigation, syncUI, answer checking) stay in the engine.
 // Injected into the HTML bundle as browser globals by getSharedBundle(); the
 // dual-mode guard at the bottom keeps the pattern consistent with the other
 // shared/ files even though no Node code requires it.
+
+// Browser-only: create an SVG-namespaced element and apply an attribute map
+// (setAttribute coerces each value to a string). Replaces the per-engine svgEl /
+// makeSvgEl helpers and Snake Charmer's hand-rolled createElementNS + setAttribute
+// construction, so every engine builds SVG nodes the same way.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
 
 // author + date → `.byline`. Missing pieces are simply omitted; an empty result
 // leaves the element blank.
@@ -138,7 +149,7 @@ function setupStorage(key, { cellCount, getState, applyState }) {
 function setupKeydown(handler, { keysOverlay } = {}) {
   document.addEventListener('keydown', e => {
     if (!document.hasFocus()) return;
-    if (keysOverlay && !keysOverlay.hidden) return;
+    if (keysOverlay && keysOverlay.open) return;
     if (e.metaKey && e.key === 'ArrowLeft') { history.back(); return; }
     if (e.metaKey && e.key === 'ArrowRight') { history.forward(); return; }
     if (e.metaKey || e.ctrlKey) return;
@@ -147,31 +158,89 @@ function setupKeydown(handler, { keysOverlay } = {}) {
   });
 }
 
-// Wires the two congrats-overlay dismiss paths: backdrop click and Escape key.
-// Calls `onDismiss` on either; the engine sets its congratsDismissed flag and
-// restores focus there.
-function setupCongratsOverlay(overlay, onDismiss) {
-  function dismiss() {
-    overlay.hidden = true;
-    onDismiss();
+// Formats elapsed milliseconds as M:SS (e.g. 154321 → "2:34").
+function formatMs(ms) {
+  const s = Math.round(ms / 1000);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+// Builds the solve-celebration modal from the supplied callbacks and metadata.
+// Creates a native <dialog id="congrats-dialog"> appended to <body>, opened via
+// showModal() so the page is inert (matching the keys overlay pattern). Returns
+// { open(timeMs) } — called from makeCompletionLatch's onComplete on first solve.
+// Backdrop click and Escape close without resetting; Play again closes + resets.
+function setupCongratsDialog({ title, date, onPlayAgain }) {
+  const dialog = document.createElement('dialog');
+  dialog.id = 'congrats-dialog';
+  dialog.setAttribute('aria-label', 'Puzzle solved');
+
+  const card = document.createElement('div');
+  card.id = 'congrats';
+
+  const msg = document.createElement('p');
+  msg.id = 'congrats-msg';
+  msg.textContent = 'Puzzle solved!';
+
+  const timeEl = document.createElement('p');
+  timeEl.id = 'congrats-time';
+
+  const actions = document.createElement('div');
+  actions.id = 'congrats-actions';
+
+  const copyBtn = document.createElement('button');
+  copyBtn.id = 'congrats-copy-btn';
+  copyBtn.type = 'button';
+  copyBtn.textContent = 'Copy result';
+
+  const playBtn = document.createElement('button');
+  playBtn.id = 'congrats-play-btn';
+  playBtn.type = 'button';
+  playBtn.autofocus = true;
+  playBtn.textContent = 'Play again';
+
+  actions.append(copyBtn, playBtn);
+  card.append(msg, timeEl, actions);
+  dialog.appendChild(card);
+  document.body.appendChild(dialog);
+
+  // Backdrop click (target is the transparent dialog frame, not the card) closes.
+  dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
+
+  let copyText = '';
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard?.writeText(copyText).catch(() => {});
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = 'Copy result'; }, 1500);
+  });
+  playBtn.addEventListener('click', () => {
+    dialog.close();
+    onPlayAgain();
+  });
+
+  function open(timeMs) {
+    const timeStr = formatMs(timeMs);
+    timeEl.textContent = 'Solved in ' + timeStr;
+    const prefix = (title && date) ? title + ' · ' + String(date) + '\n' : '';
+    copyText = prefix + 'Solved in ' + timeStr;
+    if (!dialog.open) dialog.showModal();
   }
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) dismiss();
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !overlay.hidden) dismiss();
-  });
+
+  return { open };
 }
 
 // Builds and wires the keyboard-shortcuts modal from a list of [keys, description]
 // pairs (the only part that differs between tools). Creates the #keys-btn trigger
-// (fixed bottom-right corner) and the #keys-overlay > #keys-modal dialog, both
-// appended to <body>. Returns the overlay element for setupKeydown's keysOverlay
-// guard.
+// (fixed bottom-right corner) and a native <dialog id="keys-overlay"> holding the
+// #keys-modal card, both appended to <body>. Returns the <dialog> for setupKeydown's
+// keysOverlay guard (which checks .open).
 //
-// Opens on button click or ? keypress; closes on backdrop click, close-button
-// click, or Escape. Opening moves focus to the close button so keystrokes can't
-// leak into the grid while the modal is up; `refocus` restores puzzle focus on close.
+// Opens on button click or ? keypress via showModal(), which moves focus into the
+// dialog, traps Tab inside it, makes the rest of the page inert, and paints the
+// ::backdrop dim in the top layer — all behaviors the platform gives for free.
+// Closes on close-button click, backdrop click, or Escape (native). Puzzle focus
+// returns via the browser's native dialog focus-restoration: `open()` focuses the
+// grid input just before showModal(), making it the recorded restore target, so
+// every close path lands focus there with no explicit close handler.
 function setupKeysOverlay(shortcuts, refocus) {
   const btn = document.createElement('button');
   btn.id = 'keys-btn';
@@ -180,15 +249,14 @@ function setupKeysOverlay(shortcuts, refocus) {
   btn.textContent = '?';
   document.body.appendChild(btn);
 
-  const overlay = document.createElement('div');
-  overlay.id = 'keys-overlay';
-  overlay.hidden = true;
+  // <dialog> carries the dialog/aria-modal semantics implicitly when shown via
+  // showModal(); it is a transparent frame, and #keys-modal is the visible card.
+  const dialog = document.createElement('dialog');
+  dialog.id = 'keys-overlay';
+  dialog.setAttribute('aria-label', 'Keyboard shortcuts');
 
   const modal = document.createElement('div');
   modal.id = 'keys-modal';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-label', 'Keyboard shortcuts');
 
   const header = document.createElement('div');
   header.id = 'keys-modal-header';
@@ -197,6 +265,7 @@ function setupKeysOverlay(shortcuts, refocus) {
   const closeBtn = document.createElement('button');
   closeBtn.id = 'keys-close';
   closeBtn.type = 'button';
+  closeBtn.autofocus = true; // showModal() focuses this, parking keystrokes off the grid
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.textContent = '✕';
   header.append(heading, closeBtn);
@@ -215,29 +284,30 @@ function setupKeysOverlay(shortcuts, refocus) {
   }
 
   modal.append(header, table);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
+  dialog.appendChild(modal);
+  document.body.appendChild(dialog);
 
-  function open() {
-    overlay.hidden = false;
-    closeBtn.focus();
-  }
-  function close() {
-    overlay.hidden = true;
-    refocus();
-  }
-  btn.addEventListener('click', () => overlay.hidden ? open() : close());
+  // Focus the puzzle before opening so the input becomes the dialog's recorded
+  // focus-restore target; the browser's native restoration then returns focus
+  // there on every close path (Escape, ✕, backdrop, ? toggle). Without this,
+  // restoration would return focus to the trigger button, briefly stranding the
+  // next keystroke off the grid.
+  const open  = () => { refocus(); dialog.showModal(); };
+  const close = () => dialog.close();
+
+  btn.addEventListener('click', () => dialog.open ? close() : open());
   closeBtn.addEventListener('click', close);
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  // A click whose target is the dialog itself landed on the ::backdrop — clicks on
+  // the #keys-modal card target the card or its children, so they don't close.
+  dialog.addEventListener('click', e => { if (e.target === dialog) close(); });
   document.addEventListener('keydown', e => {
     if (!document.hasFocus()) return;
-    if (e.key === 'Escape' && !overlay.hidden) { close(); return; }
     if (e.key === '?' && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
-      overlay.hidden ? open() : close();
+      dialog.open ? close() : open();
     }
   });
-  return overlay;
+  return dialog;
 }
 
 function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
@@ -292,6 +362,7 @@ function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
 
 function makeCompletionLatch({
   puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs,
+  onComplete,
   _postMessage,
 }) {
   let fired = false;
@@ -314,16 +385,17 @@ function makeCompletionLatch({
       bubbles: true, composed: true, detail,
     }));
     pm({ type: 'varietypack:complete', boardHash, kind, title, date, timeMs });
+    if (onComplete) onComplete(timeMs);
   }
 
-  return { check, sealIfSolved, reset };
+  return { check, sealIfSolved, reset, get solved() { return fired; } };
 }
 
 if (typeof module !== 'undefined') {
   module.exports = {
-    renderByline, renderInstructions, setupClearButton,
+    svgEl, renderByline, renderInstructions, setupClearButton,
     scrollByKey, storageKey, setupStorage, flashWrong,
-    setupKeydown, setupCongratsOverlay, setupKeysOverlay, setupTimer,
+    setupKeydown, setupCongratsDialog, setupKeysOverlay, setupTimer,
     makeCompletionLatch,
   };
 }
