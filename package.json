@@ -12,11 +12,11 @@
     "watch:mb-fixtures": "node marching-bands/watch-fixtures.js"
   },
   "dependencies": {
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^5.2.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.61.1",
     "clean-css": "^5.3.3",
-    "terser": "^5.48.0"
+    "terser": "^5.49.0"
   }
 }
