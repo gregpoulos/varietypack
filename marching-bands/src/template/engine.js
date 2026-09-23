@@ -11,24 +11,19 @@
     const BAND_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
     // ── Geometry & index maps ─────────────────────────────────────────────────
+    // bandIndexOf/bandCells/centerN come from src/layout.js, concatenated ahead of this
+    // file by the builder — the same functions the validator and hasher use, so the
+    // engine's band traversal cannot drift from theirs.
     function cellId(row, col)  { return (row - 1) * N + col; }
     function rowOf(n)          { return Math.ceil(n / N); }
     function colOf(n)          { return ((n - 1) % N) + 1; }
-    function bandOf(n)         { const r = rowOf(n), c = colOf(n); return Math.min(r-1, c-1, N-r, N-c); }
+    function bandOf(n)         { return bandIndexOf(rowOf(n), colOf(n), N); }
 
     // 1-indexed center cell ID (odd N only, -1 for even N)
-    const CENTER_N = (N % 2 === 1) ? Math.floor(N / 2) * N + Math.ceil(N / 2) : -1;
+    const CENTER_N = (N % 2 === 1) ? centerN(N) : -1;
 
     // bandCellsMap[k]: clockwise-ordered 1-indexed cell IDs for band k
-    const bandCellsMap = [];
-    for (let k = 0; k < numBands; k++) {
-      const cells = [];
-      for (let col = k+1; col <= N-k; col++)          cells.push(cellId(k+1, col));
-      for (let row = k+2; row <= N-k; row++)           cells.push(cellId(row, N-k));
-      for (let col = N-k-1; col >= k+1; col--)        cells.push(cellId(N-k, col));
-      for (let row = N-k-1; row >= k+2; row--)        cells.push(cellId(row, k+1));
-      bandCellsMap.push(cells);
-    }
+    const bandCellsMap = Array.from({ length: numBands }, (_, k) => bandCells(k, N));
 
     // rowCellsMap[r]: left-to-right 1-indexed cell IDs for row r (0-indexed), skipping center
     const rowCellsMap = [];
@@ -46,60 +41,99 @@
     let activeN = rowCellsMap[0][0]; // first non-center cell of row 0
 
     // ── Logic functions ───────────────────────────────────────────────────────
+    // #hidden-input is static markup, present regardless of when this runs, so this can be
+    // declared up front rather than waiting for a local hiddenInput const (MB has none).
+    const refocus = () => document.getElementById('hidden-input').focus({ preventScroll: true });
+
     const cellLetters = {};
     function getCellLetter(n) { return cellLetters[n] || ''; }
+
+    // Marks (or unmarks) cell n's correct state on its rect and its letter element
+    // together, so the two can never drift. The `.correct` class is the marker every
+    // other site reads — matching Snake Charmer and Spiral.
+    function setCorrect(n, on) {
+      cellRects[n].classList.toggle('correct', on);
+      letterTexts[n].classList.toggle('correct', on);
+    }
+
+    function isCorrect(n) { return cellRects[n].classList.contains('correct'); }
+
     function setCellLetter(n, letter) {
       if (letter) cellLetters[n] = letter;
       else delete cellLetters[n];
-      const el = letterTexts[n];
-      if (el) {
-        el.textContent = letter;
-        el.classList.remove('correct');
-      }
-      const rect = cellRects[n];
-      if (rect) {
-        delete rect.dataset.correct;
-        rect.classList.remove('correct');
-      }
+      setLetterText(letterTexts[n], letter);
+      setCorrect(n, false);
     }
+
+    // Multi-letter (rebus) entry state. Commit is wired at exactly one place — the top
+    // of focusCell — which covers every cursor move because activeN is assigned
+    // nowhere else.
+    const composer = makeComposer({
+      getContent: n => getCellLetter(n),
+      setContent: (n, s) => setCellLetter(n, s),
+      getCellEl:  n => cellRects[n],
+      onCommit:   () => { syncUI(); checker.checkIfFilled(); saveState(); },
+    });
+
+    // Row-major order skipping the black centre — the canonical board string order.
+    // The centre contributes nothing to the string, not an empty segment.
+    const CELL_IDS = [];
+    for (let n = 1; n <= N * N; n++) if (n !== CENTER_N) CELL_IDS.push(n);
+
+    // Board state and answer checking. Marching Bands marks no clue items in either
+    // mode — its clue groups deliberately hide entry boundaries — so it is already
+    // mode-symmetric and markSolved stays cells-and-letters only.
+    const checker = makeBoardChecker({
+      cellIds:             CELL_IDS,
+      getContent:          n => getCellLetter(n),
+      isCellFilled:        n => composer.isCellFilled(n),
+      isCellMarkedCorrect: isCorrect,
+      hashed:              !!data.hashed,
+      getExpected:         n => data.letters && data.letters[n - 1],
+      getBoardHash:        () => data.boardHash,
+      markSolved:          () => markAllCorrect(),
+      syncUI:              () => syncUI(),
+    });
 
     function activeRowIndex()  { return rowOf(activeN) - 1; }   // 0-indexed
     function activeBandIndex() { return bandOf(activeN); }       // 0-indexed
 
+    // Clue-group <li> elements by row/band index, filled by buildClues below (declared
+    // here so MODES can hold them).
+    const rowClueGroups  = [];
+    const bandClueGroups = [];
+
+    // Everything that differs between the two modes, in one table: the cells of each
+    // row/band, which one the cursor is in, how many there are, their clue groups, and
+    // the other mode's name. Every `mode === 'row' ? … : …` in this engine reads from
+    // here instead. activeRowIndex/activeBandIndex are hoisted function declarations.
+    const MODES = {
+      row:  { cells: rowCellsMap,  index: activeRowIndex,  count: N,        groups: rowClueGroups,  other: 'band' },
+      band: { cells: bandCellsMap, index: activeBandIndex, count: numBands, groups: bandClueGroups, other: 'row'  },
+    };
+
     function activeContextCells() {
-      return mode === 'row'
-        ? rowCellsMap[activeRowIndex()]
-        : bandCellsMap[activeBandIndex()];
+      const { cells, index } = MODES[mode];
+      return cells[index()];
     }
 
     function nextCell(n) {
       const cells = activeContextCells();
       const pos = cells.indexOf(n);
       if (pos < cells.length - 1) return cells[pos + 1];
-      // Wrap to first cell of next row or band
-      if (mode === 'row') {
-        const nextRow = (activeRowIndex() + 1) % N;
-        return rowCellsMap[nextRow][0];
-      } else {
-        const nextBand = (activeBandIndex() + 1) % numBands;
-        return bandCellsMap[nextBand][0];
-      }
+      // Wrap to the first cell of the next row or band.
+      const m = MODES[mode];
+      return m.cells[(m.index() + 1) % m.count][0];
     }
 
     function prevCell(n) {
       const cells = activeContextCells();
       const pos = cells.indexOf(n);
       if (pos > 0) return cells[pos - 1];
-      // Wrap to last cell of previous row or band
-      if (mode === 'row') {
-        const prevRow = (activeRowIndex() - 1 + N) % N;
-        const rc = rowCellsMap[prevRow];
-        return rc[rc.length - 1];
-      } else {
-        const prevBand = (activeBandIndex() - 1 + numBands) % numBands;
-        const bc = bandCellsMap[prevBand];
-        return bc[bc.length - 1];
-      }
+      // Wrap to the last cell of the previous row or band.
+      const m = MODES[mode];
+      const prev = m.cells[(m.index() - 1 + m.count) % m.count];
+      return prev[prev.length - 1];
     }
 
     function arrowTarget(n, dr, dc) {
@@ -114,69 +148,56 @@
     }
 
     function focusCell(n) {
+      composer.commitIfMoved(n);
       activeN = n;
       syncUI();
-      document.getElementById('hidden-input').focus({ preventScroll: true });
+      refocus();
     }
 
-    function isBoardFilled() {
-      for (let n = 1; n <= N * N; n++) {
-        if (n === CENTER_N) continue;
-        if (!getCellLetter(n)) return false;
-      }
-      return true;
+    // The one rebus toggle, shared by the Enter key and #rebus-btn. Both entry points must
+    // behave identically, so neither gets its own copy of the composer call. Committing
+    // does not advance the cursor — only an explicit move (arrow, Tab, click) does.
+    function toggleRebus() {
+      composer.enter(activeN);
+      syncUI();
     }
-    // True when every active cell carries the .correct marker.
-    function isSolved() {
-      for (let n = 1; n <= N * N; n++) {
-        if (n === CENTER_N) continue;
-        if (!cellRects[n]?.dataset.correct) return false;
-      }
-      return true;
-    }
-    // True when every active cell's letter matches the answer (non-hashed only).
-    function allCellsCorrect() {
-      for (let n = 1; n <= N * N; n++) {
-        if (n === CENTER_N) continue;
-        if (!isCellCorrect(getCellLetter(n), data.letters[n - 1])) return false;
-      }
-      return true;
-    }
+
+    // Declared above syncUI (which calls rebusBtn.sync()) — see docs/CROSS_TOOL_SPEC.md →
+    // "Enter / Rebus button" for the TDZ rationale. Never hidden and never disabled —
+    // unlike #check-btn. See setupRebusButton.
+    const rebusBtn = setupRebusButton(document.getElementById('rebus-btn'), {
+      onToggle:    toggleRebus,
+      isComposing: () => composer.isComposing(activeN),
+      isSolved:    () => latch.solved,
+      refocus,
+    });
 
     function syncUI() {
+      // Composition also ends on any cursor move, which never touches the button.
+      rebusBtn.sync();
+
       // Clear transient highlight classes — band-even/band-odd and correct never change here
-      for (let n = 1; n <= N * N; n++) {
-        if (n === CENTER_N) continue;
-        cellRects[n]?.classList.remove('active-entry', 'active-cell');
-      }
+      for (const n of CELL_IDS) cellRects[n].classList.remove('active-entry', 'active-cell');
 
       // Highlight active row or band (all its cells)
-      const contextCells = activeContextCells();
-      for (const n of contextCells) {
-        const rect = cellRects[n];
-        if (rect && !rect.dataset.correct) rect.classList.add('active-entry');
-      }
+      for (const n of activeContextCells()) cellRects[n].classList.add('active-entry');
 
       // Mark active cell
       const activeRect = cellRects[activeN];
-      if (activeRect) {
-        activeRect.classList.remove('active-entry');
-        activeRect.classList.add('active-cell');
-        cellsLayer.appendChild(activeRect); // paint on top so stroke is uniform on all four sides
-      }
+      activeRect.classList.remove('active-entry');
+      activeRect.classList.add('active-cell');
+      cellsLayer.appendChild(activeRect); // paint on top so stroke is uniform on all four sides
 
       // Clear all clue highlights
-      for (const group of rowClueGroups)  { group.classList.remove('active-clue'); group.classList.remove('secondary-entry'); }
-      for (const group of bandClueGroups) { group.classList.remove('active-clue'); group.classList.remove('secondary-entry'); }
-
-      // Highlight active row/band clue cluster; secondary-highlight the cross-direction cluster
-      if (mode === 'row') {
-        rowClueGroups[activeRowIndex()].classList.add('active-clue');
-        bandClueGroups[activeBandIndex()].classList.add('secondary-entry');
-      } else {
-        bandClueGroups[activeBandIndex()].classList.add('active-clue');
-        rowClueGroups[activeRowIndex()].classList.add('secondary-entry');
+      for (const m of Object.values(MODES)) {
+        for (const group of m.groups) group.classList.remove('active-clue', 'secondary-entry');
       }
+
+      // Highlight active row/band clue cluster; secondary-highlight the cross-mode cluster
+      const activeMode = MODES[mode];
+      const crossMode  = MODES[activeMode.other];
+      activeMode.groups[activeMode.index()].classList.add('active-clue');
+      crossMode.groups[crossMode.index()].classList.add('secondary-entry');
 
       // Mode toggle active segment
       document.querySelectorAll('#mode-toggle .toggle-opt').forEach(btn => {
@@ -186,108 +207,71 @@
       // Check button: enable only if active cell has a letter and is not already correct (non-hashed mode)
       if (!data.hashed) {
         document.getElementById('check-btn').disabled =
-          !getCellLetter(activeN) || !!activeRect?.dataset.correct;
+          !composer.isCellFilled(activeN) || isCorrect(activeN);
       }
 
       // Congrats / done-wrong banners are derived purely from board state.
-      const allFilled = isBoardFilled();
-      const solved    = isSolved();
+      const allFilled = checker.isBoardFilled();
+      const solved    = checker.isSolved();
       document.getElementById('done-wrong').hidden = !(allFilled && !solved);
 
       // Scroll active clue cluster into view
-      const activeClueGroup = mode === 'row'
-        ? rowClueGroups[activeRowIndex()]
-        : bandClueGroups[activeBandIndex()];
-      activeClueGroup?.scrollIntoView({ block: 'nearest' });
+      activeMode.groups[activeMode.index()]?.scrollIntoView({ block: 'nearest' });
       latch.check(solved);
     }
 
     function markAllCorrect() {
-      for (let n = 1; n <= N * N; n++) {
-        if (n === CENTER_N) continue;
-        const rect = cellRects[n];
-        if (rect) { rect.dataset.correct = '1'; rect.classList.add('correct'); }
-        letterTexts[n]?.classList.add('correct');
-      }
+      for (const n of CELL_IDS) setCorrect(n, true);
     }
 
     function checkCell() {
       const n = activeN;
-      const rect = cellRects[n];
-      if (rect?.dataset.correct) { syncUI(); document.getElementById('hidden-input').focus({ preventScroll: true }); return; }
-      const letter = getCellLetter(n);
-      if (!letter) { syncUI(); document.getElementById('hidden-input').focus({ preventScroll: true }); return; }
-      if (!isCellCorrect(letter, data.letters[n - 1])) {
-        if (rect) flashWrong(rect, flashLayer);
-        syncUI();
-        document.getElementById('hidden-input').focus({ preventScroll: true });
-        return;
+      // The focus call is required on every path out: the button holds focus here, and the
+      // document keydown listener's BUTTON guard would swallow the next navigation key.
+      // The already-correct guard skips a redundant re-save; setCellLetter clears the flag
+      // on any content change, so a flagged cell always still holds correct content.
+      if (!isCorrect(n) && composer.isCellFilled(n)) {
+        if (isCellCorrect(getCellLetter(n), data.letters[n - 1])) {
+          setCorrect(n, true);
+          saveState();          // only this branch mutates persisted state
+        } else {
+          flashWrong(cellRects[n], flashLayer);
+        }
       }
-      if (rect) { rect.dataset.correct = '1'; rect.classList.add('correct'); }
-      letterTexts[n]?.classList.add('correct');
-      saveState();
       syncUI();
-      document.getElementById('hidden-input').focus({ preventScroll: true });
+      refocus();
     }
 
-    // Non-hashed: once the board is full, reveal correctness only if the WHOLE board
-    // is correct. A full-but-wrong board reveals nothing automatically — syncUI() then
-    // shows the done-wrong banner (matches Spiral/Snake Charmer).
-    function checkAllCellsIfFilled() {
-      if (!isBoardFilled()) return;
-      if (!allCellsCorrect()) { syncUI(); return; }
-      markAllCorrect();
-      syncUI();
-    }
-
-    function getSolution() {
-      const p = [];
-      for (let n = 1; n <= N * N; n++) {
-        if (n === CENTER_N) continue;
-        p.push(getCellLetter(n).toLowerCase());
-      }
-      return p.join('');
-    }
-
-    // Hashed: once the board is full, hash it and compare to boardHash. On a match,
-    // mark everything correct; otherwise syncUI() shows the done-wrong banner.
-    function checkBoardIfFilled() {
-      if (!isBoardFilled()) return;
-      if (sha256hex(getSolution()) !== data.boardHash) { syncUI(); return; }
-      markAllCorrect();
-      syncUI();
-    }
-
-    const { saveState, restoreState, clearState } = setupStorage(storageKey('mb', data), {
+    const saveKey = storageKey('mb', data);
+    const { saveState, restoreState, clearState } = setupStorage(saveKey, {
       cellCount: N * N - (N % 2),
       getState() {
         const letters = {};
         const correct = [];
-        for (let n = 1; n <= N * N; n++) {
-          if (n === CENTER_N) continue;
+        for (const n of CELL_IDS) {
           const l = getCellLetter(n);
           if (l) letters[n] = l;
-          if (cellRects[n]?.dataset.correct) correct.push(n);
+          if (isCorrect(n)) correct.push(n);
         }
-        return { letters, correct, activeMs: timer.getElapsedMs() };
+        return {
+          letters, correct, activeMs: timer.getElapsedMs(),
+          composing: composer.getComposing(),
+        };
       },
       applyState(saved) {
-        for (const [nStr, letter] of Object.entries(saved.letters || {})) {
-          const n = Number(nStr);
-          if (n === CENTER_N) continue;
+        for (const n of CELL_IDS) {
+          const letter = saved.letters?.[n];
+          if (!letter) continue;
           cellLetters[n] = letter;
-          if (letterTexts[n]) letterTexts[n].textContent = letter;
+          setLetterText(letterTexts[n], letter);
         }
-        for (const n of (saved.correct || [])) {
-          const rect = cellRects[n];
-          if (rect) { rect.dataset.correct = '1'; rect.classList.add('correct'); }
-          letterTexts[n]?.classList.add('correct');
-        }
+        for (const n of (saved.correct || [])) setCorrect(n, true);
         timer.restoreMs(saved.activeMs);
+        // After the letters are painted, so the composing cell shows its partial content.
+        // Absent in saves predating this field; composer.restore treats that as null.
+        composer.restore(saved.composing);
       },
     });
-
-    const timer = setupTimer({ onPause: () => saveState() });
 
     const congratsDialog = setupCongratsDialog({
       title: data.title,
@@ -295,15 +279,12 @@
       onPlayAgain: () => resetBoard(),
     });
 
-    const latch = makeCompletionLatch({
-      puzzleRoot: document.querySelector('.puzzle-main'),
-      kind:         data.kind,
-      title:        data.title,
-      date:         data.date,
-      getBoardHash: () => data.boardHash,
-      getSolution,
-      getElapsedMs: () => timer.getElapsedMs(),
-      onComplete: (timeMs) => congratsDialog.open(timeMs),
+    const { timer, latch } = setupSolveTracking({
+      puzzleRoot:  document.querySelector('.puzzle-main'),
+      data,
+      getSolution: () => checker.getSolution(),
+      saveState,
+      onComplete:  (timeMs) => congratsDialog.open(timeMs),
     });
 
     // ── Build SVG ─────────────────────────────────────────────────────────────
@@ -315,8 +296,6 @@
     svg.setAttribute('width',   svgSize);
     svg.setAttribute('height',  svgSize);
     svg.setAttribute('viewBox', `0 0 ${svgSize} ${svgSize}`);
-
-    // svgEl() is provided by shared/engine-chrome.js (inlined into the bundle).
 
     const cellsLayer   = svgEl('g', { id: 'cells-layer' });
     const circlesLayer = svgEl('g', { id: 'circles-layer' });
@@ -356,7 +335,6 @@
         x: cx, y: cy,
         class: 'cell-letter',
       });
-      text.textContent = '';
       lettersLayer.appendChild(text);
       letterTexts[n] = text;
     }
@@ -404,10 +382,6 @@
     const rowsCluesList  = document.getElementById('rows-clues');
     const bandsCluesList = document.getElementById('bands-clues');
 
-    // clue group elements indexed by [row/band index] — one <li class="clue-group"> per row/band
-    const rowClueGroups  = [];
-    const bandClueGroups = [];
-
     // Builds a clue cluster for one row/band. parentLabel is the row number or band
     // letter, shown only on the first entry; subsequent entries get a blank parent so
     // entry boundaries within the row/band are not revealed. onGroupClick(gi) is called
@@ -416,7 +390,13 @@
       groups.forEach((group, gi) => {
         const groupLi = document.createElement('li');
         groupLi.className = 'clue-group';
-        groupLi.addEventListener('click', () => onGroupClick(gi));
+        groupLi.addEventListener('click', e => {
+          // A clue can render a real link (see docs/CROSS_TOOL_SPEC.md ->
+          // Markdown formatting) — let it open on its own rather than also
+          // treating the click as navigating to this row/band.
+          if (e.target.closest('a')) return;
+          onGroupClick(gi);
+        });
         const innerUl = document.createElement('ul');
         group.entries.forEach((entry, i) => {
           const li = document.createElement('li');
@@ -432,7 +412,7 @@
           labelEl.append(parentEl, letterEl);
           const textEl = document.createElement('span');
           textEl.className = 'clue-text';
-          textEl.textContent = entry.clue;
+          textEl.innerHTML = entry.clue; // pre-rendered markdown HTML — see shared/build/renderMarkdown.js
           li.append(labelEl, textEl);
           innerUl.appendChild(li);
         });
@@ -459,11 +439,9 @@
 
     function onCellClick(n) {
       if (n === activeN) {
-        mode = mode === 'row' ? 'band' : 'row';
-        focusCell(n);
-      } else {
-        focusCell(n);
+        mode = MODES[mode].other;
       }
+      focusCell(n);
     }
 
     const keysOverlay = setupKeysOverlay(
@@ -473,37 +451,41 @@
         ['↑ ↓ ← →',   'Move one cell'],
         ['⌫',         'Clear current cell'],
         ['Space',     'Clear and advance'],
+        ['Enter',     'Multi-letter cell'],
         ['.',         'Toggle row / band mode'],
       ],
-      () => focusCell(activeN)
+      refocus
     );
     setupKeydown(e => {
       if (latch.solved) return;
       if (e.key === '.') {
         e.preventDefault();
-        mode = mode === 'row' ? 'band' : 'row';
+        mode = MODES[mode].other;
         focusCell(activeN);
         return;
       }
 
       if (e.key === 'Tab') {
         e.preventDefault();
-        if (mode === 'row') {
-          const nextRow = e.shiftKey
-            ? (activeRowIndex() - 1 + N) % N
-            : (activeRowIndex() + 1) % N;
-          focusCell(rowCellsMap[nextRow][0]);
-        } else {
-          const nextBand = e.shiftKey
-            ? (activeBandIndex() - 1 + numBands) % numBands
-            : (activeBandIndex() + 1) % numBands;
-          focusCell(bandCellsMap[nextBand][0]);
-        }
+        const m = MODES[mode];
+        const step = e.shiftKey ? -1 : 1;
+        focusCell(m.cells[(m.index() + step + m.count) % m.count][0]);
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        toggleRebus();
         return;
       }
 
       if (e.key === 'Backspace') {
         e.preventDefault();
+        if (composer.backspace(activeN)) {
+          syncUI();
+          saveState();
+          return;
+        }
         if (getCellLetter(activeN)) {
           setCellLetter(activeN, '');
           syncUI();
@@ -544,50 +526,51 @@
     }, { keysOverlay });
 
     document.getElementById('hidden-input').addEventListener('input', e => {
-      const letter = normalize(e.target.value).slice(-1).toUpperCase();
+      const typed = normalize(e.target.value).toUpperCase();
       e.target.value = '';
-      if (latch.solved || !letter) return;
+      if (latch.solved || !typed) return;
       timer.onFirstInput();
-      setCellLetter(activeN, letter);
-      focusCell(nextCell(activeN));
-      if (data.hashed) checkBoardIfFilled();
-      else checkAllCellsIfFilled();
+      // typeLetter applies the slice(-1) rule on the non-composing path; advance only
+      // when it says so, so capacity never triggers an advance.
+      if (composer.typeLetter(activeN, typed)) focusCell(nextCell(activeN));
+      else syncUI();
+
+      // One checker call for both modes — advance first, then check, so the cursor
+      // never lags a keystroke behind the hash comparison.
+      checker.checkIfFilled();
       saveState();
     });
 
-    if (data.hashed) {
-      document.getElementById('check-btn').hidden = true;
-    } else {
-      document.getElementById('check-btn').addEventListener('click', checkCell);
-    }
 
     function resetBoard() {
-      for (let n = 1; n <= N * N; n++) {
-        if (n === CENTER_N) continue;
-        delete cellLetters[n];
-        const text = letterTexts[n];
-        if (text) { text.textContent = ''; text.classList.remove('correct'); }
-        const rect = cellRects[n];
-        if (rect) { delete rect.dataset.correct; rect.classList.remove('correct'); }
-      }
-      while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
-      mode = 'row';
-      clearState();
-      timer.reset();
-      latch.reset();
-      focusCell(rowCellsMap[0][0]);
+      resetAndRefocus({
+        composer, clearState, timer, latch,
+        clearBoard() {
+          for (const n of CELL_IDS) {
+            delete cellLetters[n];
+            setLetterText(letterTexts[n], '');
+            setCorrect(n, false);
+          }
+          flashLayer.replaceChildren();
+          mode = 'row';
+        },
+        focusInitial: () => focusCell(rowCellsMap[0][0]),
+      });
     }
 
-    setupClearButton(
-      document.getElementById('clear-btn'),
-      resetBoard,
-      () => focusCell(activeN)
-    );
+    setupControls({
+      checkBtn: document.getElementById('check-btn'), hashed: data.hashed, onCheck: checkCell,
+      onClear: resetBoard, refocus, key: saveKey,
+    });
 
     // ── Restore & focus ───────────────────────────────────────────────────────
-    restoreState();
-    latch.sealIfSolved(isSolved());
-    focusCell(activeN);
+    // Structurally a no-op here — markAllCorrect() paints exactly what applyState
+    // restored, and MB marks no clue items — but the epilogue stays identical across
+    // all four engines so the shared restore contract has one shape, not two.
+    const resumeCell = restoreAndSeal({ restoreState, checker, latch, composer });
+    // Resume on the restored composing cell — see docs/CROSS_TOOL_SPEC.md → "Composition
+    // is saved state" for why this is load-bearing, not a convenience.
+    focusCell(resumeCell === null ? activeN : resumeCell);
   }
 
   document.addEventListener('DOMContentLoaded', init);

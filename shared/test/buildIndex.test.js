@@ -37,3 +37,35 @@ test('buildIndex: shows a placeholder when there are no puzzles', () => {
   const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
   assert.match(html, /No puzzles built yet/);
 });
+
+// $-pattern injection in the replacement value passed to replaceAll: a
+// plain-string replacement reinterprets $$, $&, $`, $' in the (already
+// HTML-escaped) title. These must survive verbatim post-escaping.
+
+test('buildIndex: title containing $$ survives verbatim post-escaping', () => {
+  const dir = tmpDir();
+  buildIndex([{ name: 'a.html', title: 'Demo $$ Title' }], dir, 'Heading');
+  const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+  assert.ok(html.includes('Demo $$ Title'));
+});
+
+test('buildIndex: title containing $& survives verbatim post-escaping', () => {
+  const dir = tmpDir();
+  buildIndex([{ name: 'a.html', title: 'Demo $& Title' }], dir, 'Heading');
+  const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+  assert.ok(html.includes('Demo $&amp; Title'));
+});
+
+test('buildIndex: title containing $` survives verbatim post-escaping', () => {
+  const dir = tmpDir();
+  buildIndex([{ name: 'a.html', title: 'Demo $` Title' }], dir, 'Heading');
+  const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+  assert.ok(html.includes('Demo $` Title'));
+});
+
+test("buildIndex: title containing $' survives verbatim post-escaping", () => {
+  const dir = tmpDir();
+  buildIndex([{ name: 'a.html', title: "Demo $' Title" }], dir, 'Heading');
+  const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+  assert.ok(html.includes("Demo $&#39; Title"));
+});

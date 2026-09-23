@@ -4,7 +4,10 @@
 const { buildPuzzle } = require('./src/builder');
 const { runToolCli }  = require('../shared/build/toolCli');
 const { GLOBAL_OPTIONS } = require('../shared/build/globalHelp');
-const { TOOL_OPTIONS }   = require('./cliHelp');
+
+const TOOL_OPTIONS =
+  '  --shape <name>    Ring shape: circle, stadium, turn, double-turn\n' +
+  '                    Default: auto (tries double-turn, falls back to stadium)\n';
 
 const HELP = `Build a Snake Charmer puzzle HTML from a YAML definition.
 
@@ -19,18 +22,12 @@ Examples:
   snakecharmer puzzle.yaml --shape stadium --theme skeleton -o out/puzzle.html
 `;
 
-runToolCli({
+const code = runToolCli({
   helpText:       HELP,
   usageLine:      'snakecharmer <input.yaml> [options]',
   extraFlagSpecs: [
     { flag: '--shape', name: 'shape', values: ['circle', 'stadium', 'turn', 'double-turn'] },
   ],
   buildPuzzle,
-  buildOptions: (flags) => ({
-    shape:  flags.shape,
-    theme:  flags.theme,
-    font:   flags.font,
-    minify: flags.minify,
-    muddle: flags.muddle,
-  }),
 });
+process.exit(code);

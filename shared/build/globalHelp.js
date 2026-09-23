@@ -25,4 +25,13 @@ const GLOBAL_FLAG_SPECS = [
   { flag: '--muddle',        name: 'muddle', boolean: true },
 ];
 
-module.exports = { GLOBAL_OPTIONS, GLOBAL_FLAG_SPECS };
+// Every subcommand's help check: no args writes helpText and returns 1, a leading
+// -h/--help writes it and returns 0, anything else writes nothing and returns
+// null so the caller carries on. Only a *leading* flag counts as a help request.
+function writeHelpIfRequested(args, helpText, stdout) {
+  if (args.length === 0) { stdout.write(helpText); return 1; }
+  if (args[0] === '--help' || args[0] === '-h') { stdout.write(helpText); return 0; }
+  return null;
+}
+
+module.exports = { GLOBAL_OPTIONS, GLOBAL_FLAG_SPECS, writeHelpIfRequested };

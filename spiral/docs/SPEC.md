@@ -2,58 +2,28 @@
 
 A Spiral puzzle file is a YAML file describing a circular spiral grid filled by two sets of entries: one winding inward from the outer edge to the center, the other winding outward from the center to the outer edge. Every cell in the spiral is shared between exactly one inward entry and one outward entry.
 
+Common header fields (`kind`, `title`, `author`, `date`, `instructions`),
+common entry fields (`clue`, `answer`, `styles`), markdown syntax,
+normalization, cell styles, rebus bracket grammar, muddling, and themes are
+all covered in `docs/AUTHORING.md` — this file covers only what's specific
+to Spiral.
+
 ## Fields
 
 | Field | Required | Type | Description |
 |---|---|---|---|
 | `kind` | yes | string | Must be `"spiral"` |
-| `title` | yes | string | Displayed in the puzzle header and browser tab |
-| `author` | no | string | Displayed in the puzzle header |
-| `date` | no | string | Displayed in the puzzle header |
 | `inward` | yes | array | Entries that read from cell 1 (outer edge) toward the center, in order |
 | `outward` | yes | array | Entries that read from the center outward, in order (first entry is innermost) |
-| `instructions` | no | string | Puzzle instructions shown between the header and the grid; supports multiple paragraphs separated by blank lines |
 
-## Entry fields
+## Rebus cells (multi-letter cells)
 
-| Field | Required | Type | Description |
-|---|---|---|---|
-| `clue` | yes | string | The clue text shown to the solver |
-| `answer` | yes | string | The answer in plain text; may include spaces or hyphens for multi-word answers |
-| `styles` | no | object | Cell decorations: keys are style names, values are arrays of 0-indexed cell positions |
+See `docs/AUTHORING.md` → "Rebus cells" for the bracket syntax, grammar,
+and how to solve a rebus cell.
 
-### Cell styles
+**Spiral's rule — outward repeats each rebus cell in forward order.** The reversal constraint reverses the *order* of the cells, never the letters inside one — a picture can't be read backwards. Inward `S[HAR]ON` pairs with outward `NO[HAR]S`, never `NO[RAH]S`.
 
-`styles` is a map from style name to a list of positions within the answer's stripped (no-space) letter sequence.
-
-```yaml
-inward:
-  - clue: "Indian flatbread"
-    answer: "ROTI"
-    styles:
-      circle: [0, 3]    # circles R (position 0) and I (position 3)
-  - clue: "Guitar pedal"
-    answer: "WAH-WAH"
-    styles:
-      circle: [3]        # stripped sequence is W=0 A=1 H=2 W=3 A=4 H=5; circles second W
-```
-
-Recognized style names:
-
-| Name | Meaning |
-|---|---|
-| `circle` | Draw a circle around the cell |
-
-Unrecognized style names produce a build warning but are not an error — they are reserved for future use. Positions must be non-negative integers within the stripped answer length; out-of-range positions are a validation error.
-
-## Normalization
-
-Answers are normalized before cell-counting and validation: strip all non-alphabetic characters (spaces, hyphens, apostrophes, punctuation), then lowercase. Only A–Z count toward cell length. Examples:
-
-- `"WAH-WAH"` → `"wahwah"` (6 cells)
-- `"TRACEY EMIN"` → `"traceyemin"` (10 cells)
-- `"EDWARD IV"` → `"edwardiv"` (8 cells)
-- `"DON'T"` → `"dont"` (4 cells)
+Bracket grammar, error and warning conditions, and how cell counts feed the validation rules: see `docs/CROSS_TOOL_SPEC.md` → "Rebus cells".
 
 ## Validation rules
 
@@ -61,10 +31,10 @@ Answers are normalized before cell-counting and validation: strip all non-alphab
 - `title` must be a non-empty string
 - Both `inward` and `outward` must have at least 2 entries each
 - Every entry must have a non-empty `clue` and non-empty `answer`
-- Sum of normalized inward answer lengths must equal sum of normalized outward answer lengths
-- The normalized-and-concatenated inward string must be the reverse of the normalized-and-concatenated outward string — this ensures every cell letter satisfies both the inward and outward entry it belongs to
+- Sum of inward entry cell counts must equal sum of outward entry cell counts
+- The inward cells, in order, must be the reverse of the outward cells — this ensures every cell satisfies both the inward and outward entry it belongs to. For a rebus cell this is bracket-group equality (see "Rebus cells" above), not letter equality
 - Total cell count must be at least 40
-- `styles`, if present on an entry, must be an object; each value must be an array of non-negative integers within the stripped answer length — out-of-range positions are an error
+- `styles`, if present on an entry, must be an object; each value must be an array of non-negative integers within the answer's cell count — out-of-range positions are an error
 - Unrecognized style names (anything other than `circle`) produce a warning, not an error
 
 ## Grid layout
@@ -94,7 +64,8 @@ outward:
 
 ## Notes
 
-- **Multi-word and hyphenated answers**: Include spaces or hyphens in the `answer` field for readability (`"WAH-WAH"`, `"TRACEY EMIN"`). The build step strips them when placing letters in cells and when hashing.
+Multi-word/hyphenated answers and answer security are covered in
+`docs/AUTHORING.md`.
+
 - **Outward entry order**: List outward entries from center outward — `outward[0]` is the innermost entry (closest to the center), and the last outward entry ends at the outermost cell.
-- **Answer security**: Build with `varietypack build --muddle` (or from a pre-muddled YAML) to produce an answer-obscured HTML. Plain-text answers are never included; only a single SHA-256 hash of the complete board is stored. Individual answers cannot be recovered by viewing source.
-- **The reversal constraint**: The concatenated inward string (outside → center) must be the exact reverse of the concatenated outward string (center → outside). This is what makes every cell satisfy both the inward entry it belongs to and the outward entry it belongs to.
+- **The reversal constraint**: The inward cells (outside → center) must be the exact reverse of the outward cells (center → outside). This is what makes every cell satisfy both the inward entry it belongs to and the outward entry it belongs to. See "Rebus cells" above for how this applies when a cell holds a bracketed group.

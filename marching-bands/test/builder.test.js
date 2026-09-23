@@ -110,9 +110,9 @@ test('buildPuzzle: --muddle HTML contains boardHash, no letters, no plaintext an
   }
 });
 
-test('buildPuzzle: returns { title }', () => {
-  withTmpFiles((yamlPath, htmlPath) => {
-    const result = buildPuzzle(yamlPath, htmlPath);
-    assert.equal(result.title, 'Builder Test');
-  });
-});
+// "buildPuzzle returns { title }" is a pure composition of two facts each
+// tested elsewhere: preparePuzzle sets .title from the puzzle metadata
+// (test/hasher.test.js's "preparePuzzle: includes metadata fields") and
+// runBuildPuzzle returns { title: prepared.title } verbatim
+// (shared/test/runBuildPuzzle.test.js) — no marching-bands-specific wiring
+// to fail without one of those also failing.

@@ -4,6 +4,11 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const normalize = require('../normalize');
+const sha256hex = require('../sha256hex');
+const { joinCells } = require('../boardString');
+const { renderClueMarkdown, renderInstructionsMarkdown } = require('./renderMarkdown');
+const injectTemplate = require('./injectTemplate');
+const { THEME_REGISTRY, VALID_THEMES } = require('./themeRegistry');
 
 function loadPuzzle(yamlPath) {
   let raw;
@@ -109,8 +114,25 @@ function getSharedBundle() {
   const normalizeJs     = fs.readFileSync(path.join(SHARED_DIR, 'normalize.js'),      'utf8');
   const sha256hexJs     = fs.readFileSync(path.join(SHARED_DIR, 'sha256hex.js'),      'utf8');
   const isCellCorrectJs = fs.readFileSync(path.join(SHARED_DIR, 'isCellCorrect.js'),  'utf8');
+  const boardStringJs   = fs.readFileSync(path.join(SHARED_DIR, 'boardString.js'),    'utf8');
+  const engineStateJs   = fs.readFileSync(path.join(SHARED_DIR, 'engine-state.js'),   'utf8');
   const engineChromeJs  = fs.readFileSync(path.join(SHARED_DIR, 'engine-chrome.js'),  'utf8');
-  return normalizeJs + '\n' + sha256hexJs + '\n' + isCellCorrectJs + '\n' + engineChromeJs;
+  return normalizeJs + '\n' + sha256hexJs + '\n' + isCellCorrectJs + '\n' + boardStringJs + '\n'
+    + engineStateJs + '\n' + engineChromeJs;
+}
+
+// Shared skeleton for every tool's buildHtml(): read the tool's index.html
+// template, compose its theme CSS, concatenate the shared browser bundle
+// with the tool's own JS files, and inject title/css/js/puzzleData into the
+// template. jsFiles is an ordered list of absolute paths (tool-specific JS,
+// engine.js last) — callers own everything about *which* fields end up in
+// puzzleData (commonPuzzleData(prepared) plus tool fields); this only owns
+// the file I/O and injection that is byte-for-byte identical across tools.
+function buildToolHtml(templateDir, { title, theme, font, jsFiles, puzzleData }) {
+  const template = fs.readFileSync(path.join(templateDir, 'index.html'), 'utf8');
+  const css = composeThemeCss(templateDir, theme, font);
+  const js  = getSharedBundle() + '\n' + jsFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+  return injectTemplate(template, { title, css, js, puzzleData });
 }
 
 function defaultOutputPath(inputPath) {
@@ -123,8 +145,8 @@ const KNOWN_STYLES = new Set(['circle']);
 
 // Validates entry.styles in place, pushing to errors/warnings.
 // entryLabel: e.g. "inward[0]" or "entries[3]" — used as error message prefix.
-// normLength: normalized answer length (for position bounds checking).
-function validateEntryStyles(entry, entryLabel, normLength, errors, warnings) {
+// cellCount: the entry's cell count (for position bounds checking).
+function validateEntryStyles(entry, entryLabel, cellCount, errors, warnings) {
   if (entry.styles === undefined) return;
   if (!entry.styles || typeof entry.styles !== 'object' || Array.isArray(entry.styles)) {
     errors.push(`${entryLabel}.styles must be an object`);
@@ -138,9 +160,9 @@ function validateEntryStyles(entry, entryLabel, normLength, errors, warnings) {
       errors.push(`${entryLabel}.styles["${styleName}"] must be an array`);
     } else {
       positions.forEach((pos, j) => {
-        if (!Number.isInteger(pos) || pos < 0 || pos >= normLength) {
+        if (!Number.isInteger(pos) || pos < 0 || pos >= cellCount) {
           errors.push(
-            `${entryLabel}.styles["${styleName}"][${j}]: position ${pos} is out of range (answer has ${normLength} cells)`
+            `${entryLabel}.styles["${styleName}"][${j}]: position ${pos} is out of range (answer has ${cellCount} cells)`
           );
         }
       });
@@ -169,6 +191,17 @@ function validateCommonHeader(puzzle, kind, errors, warnings) {
   if (puzzle.hashed !== undefined && puzzle.boardHash === undefined) {
     errors.push('"hashed:" is not valid in source puzzles; use \'varietypack build --muddle\' to produce a hashed build');
   }
+  // format: 2 — see root CLAUDE.md -> "Muddled YAML format" for the full rule.
+  const isMuddled = puzzle.boardHash !== undefined;
+  if (puzzle.format !== undefined && !isMuddled) {
+    errors.push('"format:" is not valid in source puzzles; it is written by \'varietypack muddle\'');
+  }
+  if (isMuddled && puzzle.format !== 2) {
+    errors.push(
+      'Muddled file is missing "format: 2". It was produced by an older version whose ' +
+      'boardHash cannot be verified — re-run \'varietypack muddle\' on the source puzzle.'
+    );
+  }
   if (puzzle.instructions !== undefined &&
       (typeof puzzle.instructions !== 'string' || !puzzle.instructions.trim())) {
     errors.push('"instructions" must be a non-empty string');
@@ -183,38 +216,137 @@ function validateCommonHeader(puzzle, kind, errors, warnings) {
   return true;
 }
 
-// Routes reading an entry's length: source entries (which have `answer:`) compute from
-// it, muddled entries fall back to the `length:` field. Keyed on `answer` presence — not
-// `length` presence — so it stays consistent with entryNorm and with the validator when a
-// stray `length` accompanies an `answer`.
-function entryLength(entry) {
-  return entry.answer !== undefined ? normalize(entry.answer).length : entry.length;
+// Parses an answer string into normalized per-cell strings using bracket notation:
+// unmarked characters are one cell each; a [...] group is exactly one cell.
+// A BARE character that normalizes to empty is dropped (this is what preserves the
+// pre-rebus behavior of spaces, hyphens and apostrophes). A BRACKETED group that
+// normalizes to empty is an error — the author explicitly marked a cell there.
+// Returns { cells, error }; exactly one is non-null.
+function parseAnswerCells(answer) {
+  if (typeof answer !== 'string') {
+    throw new TypeError(`parseAnswerCells: answer must be a string, got ${JSON.stringify(answer)}`);
+  }
+  const cells = [];
+  let i = 0;
+  while (i < answer.length) {
+    const ch = answer[i];
+    if (ch === '[') {
+      const end = answer.indexOf(']', i + 1);
+      if (end === -1) return { cells: null, error: 'unclosed "[" in answer' };
+      const inner = answer.slice(i + 1, end);
+      if (inner.includes('[')) return { cells: null, error: 'nested "[" in answer' };
+      const norm = normalize(inner);
+      if (!norm) return { cells: null, error: `bracketed group "[${inner}]" contains no letters` };
+      cells.push(norm);
+      i = end + 1;
+    } else if (ch === ']') {
+      return { cells: null, error: 'unmatched "]" in answer' };
+    } else {
+      const norm = normalize(ch);
+      if (norm) cells.push(norm);
+      i++;
+    }
+  }
+  return { cells, error: null };
 }
 
-// Routes reading an entry's normalized answer to either null for muddled entries
-// (which have no plaintext) or returns the normalized form for source entries.
-function entryNorm(entry) {
-  return entry.answer !== undefined ? normalize(entry.answer) : null;
+// An entry's normalized per-cell strings, or null for a muddled entry (no plaintext)
+// and for invalid bracket grammar. validateEntry rejects bad grammar at validate time;
+// the null here, and cellsOrThrow's throw below, only matter for callers that reach a
+// hasher without validating first (e.g. hand-built objects in tests).
+function entryCells(entry) {
+  if (entry.answer === undefined) return null;
+  return parseAnswerCells(entry.answer).cells;
+}
+
+// Parses an answer's cells or throws on invalid bracket grammar — strictly better than
+// silently hashing an empty board. `caller` names the function in the error message.
+function cellsOrThrow(answer, caller) {
+  const cells = parseAnswerCells(answer).cells;
+  if (cells === null) {
+    throw new TypeError(`${caller}: answer has invalid bracket grammar: ${JSON.stringify(answer)}`);
+  }
+  return cells;
+}
+
+// An entry's length — ALWAYS a cell count, never a letter count. Keyed on `answer`
+// presence, not `length`, so it agrees with entryCells when a stray `length`
+// accompanies an `answer`.
+function entryLength(entry) {
+  if (entry.answer === undefined) return entry.length;
+  return cellsOrThrow(entry.answer, 'entryLength').length;
 }
 
 // Normalizes a list of YAML entries into the shape every hasher needs:
-// { clue, length, _norm } plus styles passed through verbatim when present.
-// `_norm` (the normalized answer) is retained for callers that need the letters
-// (e.g. building a letters array or hashing); strip it before it reaches PUZZLE_DATA.
-// styles is included on presence (`!== undefined`), never by truthiness.
+// { clue, length, _cells } plus styles, passed through on presence (`!== undefined`).
+// `_cells` is for hashing/letters and must be stripped before it reaches PUZZLE_DATA.
+// clue is rendered as inline markdown here — the one place every tool's entries funnel
+// through — and a muddled entry still has clue text, so this runs unconditionally.
 function processEntries(entries) {
   return entries.map(entry => {
-    const norm = entryNorm(entry);
-    const out  = { clue: entry.clue, length: entryLength(entry), _norm: norm };
+    let cells, length;
+    if (entry.answer === undefined) {
+      cells = null;
+      length = entry.length;
+    } else {
+      cells = cellsOrThrow(entry.answer, 'processEntries');
+      length = cells.length;
+    }
+    const out = { clue: renderClueMarkdown(entry.clue), length, _cells: cells };
     if (entry.styles !== undefined) out.styles = entry.styles;
     return out;
   });
+}
+
+// The optional `instructions` field for a hasher's prepared object, rendered as
+// block-level markdown (blank-line paragraphs become separate <p>s — see
+// shared/build/renderMarkdown.js). Returns {} when absent, so hashers spread it
+// and never emit the key as undefined.
+function instructionsField(puzzle) {
+  return puzzle.instructions !== undefined
+    ? { instructions: renderInstructionsMarkdown(puzzle.instructions) }
+    : {};
+}
+
+// Shared board-computation guard + metadata header, called once per hasher's
+// preparePuzzle(). A muddled puzzle (puzzle.boardHash !== undefined) passes
+// its boardHash through untouched and computeBoard is never invoked — this
+// is what keeps entryCells' "null for a muddled entry" contract safe: nothing
+// downstream of computeBoard (processEntries' _cells, entryCells itself) ever
+// runs for a muddled puzzle, because computeBoard simply isn't called. For a
+// source puzzle, computeBoard() runs and returns { boardCells, letters }:
+// boardCells is joined (joinCells) and hashed to produce boardHash; letters
+// is the array assigned to PUZZLE_DATA.letters when the puzzle isn't hashed.
+// The two differ when a tool's letters array carries positions boardCells
+// omits (e.g. marching-bands' odd-N center cell, which is null in letters
+// but absent from boardCells and thus from the hash preimage).
+function prepareCommon(puzzle, kind, computeBoard) {
+  const hashed = puzzle.hashed ?? false;
+  const prepared = {
+    title:  puzzle.title,
+    kind,
+    author: puzzle.author,
+    date:   puzzle.date,
+    hashed,
+    ...instructionsField(puzzle),
+  };
+
+  if (puzzle.boardHash !== undefined) {
+    prepared.boardHash = puzzle.boardHash;
+    return prepared;
+  }
+
+  const { boardCells, letters } = computeBoard();
+  prepared.boardHash = sha256hex(joinCells(boardCells));
+  if (!hashed) prepared.letters = letters;
+  return prepared;
 }
 
 // Returns the fields common to every tool's PUZZLE_DATA object.
 // Required fields (title, kind, hashed) are always included.
 // Optional fields (author, date, instructions, letters, boardHash) are
 // included only when !== undefined, so JSON.stringify never emits them as null.
+// instructions arrives already rendered to HTML (instructionsField, at prepare time).
 function commonPuzzleData(prepared) {
   const data = {
     title:  prepared.title,
@@ -229,6 +361,4 @@ function commonPuzzleData(prepared) {
   return data;
 }
 
-const { THEME_REGISTRY, VALID_THEMES } = require('./themeRegistry');
-
-module.exports = { loadPuzzle, validatePuzzle, composeThemeCss, buildFontCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm, commonPuzzleData };
+module.exports = { loadPuzzle, validatePuzzle, composeThemeCss, buildFontCss, getSharedBundle, buildToolHtml, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, parseAnswerCells, entryCells, cellsOrThrow, commonPuzzleData, instructionsField, prepareCommon };

@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { makeCompletionLatch } = require('../../shared/engine-chrome');
+const { makeCompletionLatch } = require('../../shared/engine-state');
 
 function makeLatch(opts = {}) {
   const events = [];

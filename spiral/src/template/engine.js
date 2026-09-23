@@ -51,113 +51,115 @@
       }
     });
 
+    // Everything that differs between the two reading directions, in one table:
+    // the cell→entry map, the entry list, each entry's cells, the step to the next
+    // cell (inward counts up, outward counts down), the clue list's element id, the
+    // range label, the bar's direction label, and the other direction's name.
+    // inwardRange/outwardRange are function declarations below, hoisted into scope here.
+    const DIRS = {
+      inward: {
+        map: inwardMap,  entries: data.inward,  entryCells: inwardEntryCells,
+        step: 1,  listId: 'inward-clues',  range: inwardRange,  label: 'Inward',  opposite: 'outward',
+      },
+      outward: {
+        map: outwardMap, entries: data.outward, entryCells: outwardEntryCells,
+        step: -1, listId: 'outward-clues', range: outwardRange, label: 'Outward', opposite: 'inward',
+      },
+    };
+
     // ── State ────────────────────────────────────────────────────────────────
     let activeCell = 1;
     let direction  = 'inward';
 
     // ── Logic functions ──────────────────────────────────────────────────────
+    // #hidden-input is static markup, present regardless of when this runs, so declaring
+    // this ahead of the hiddenInput const (Event wiring) is safe.
+    const refocus = () => document.getElementById('hidden-input').focus({ preventScroll: true });
+
     function entryFirstCell(dir, entryIndex) {
-      return dir === 'inward'
-        ? inwardEntryCells[entryIndex][0]
-        : outwardEntryCells[entryIndex][0];
+      return DIRS[dir].entryCells[entryIndex][0];
     }
 
     function entryLastCell(dir, entryIndex) {
-      const arr = dir === 'inward' ? inwardEntryCells[entryIndex] : outwardEntryCells[entryIndex];
-      return arr[arr.length - 1];
+      const cells = DIRS[dir].entryCells[entryIndex];
+      return cells[cells.length - 1];
     }
 
     function nextInDir(cellNum, dir) {
-      const map     = dir === 'inward' ? inwardMap : outwardMap;
-      const entries = dir === 'inward' ? data.inward : data.outward;
+      const { map, entries, step } = DIRS[dir];
       const { entryIndex, posInEntry } = map[cellNum];
-      if (posInEntry < entries[entryIndex].length - 1) {
-        return dir === 'inward' ? cellNum + 1 : cellNum - 1;
-      }
-      const next = (entryIndex + 1) % entries.length;
-      return entryFirstCell(dir, next);
+      if (posInEntry < entries[entryIndex].length - 1) return cellNum + step;
+      return entryFirstCell(dir, (entryIndex + 1) % entries.length);
     }
 
     function prevInDir(cellNum, dir) {
-      const map     = dir === 'inward' ? inwardMap : outwardMap;
-      const entries = dir === 'inward' ? data.inward : data.outward;
+      const { map, entries, step } = DIRS[dir];
       const { entryIndex, posInEntry } = map[cellNum];
-      if (posInEntry > 0) {
-        return dir === 'inward' ? cellNum - 1 : cellNum + 1;
-      }
-      const prev = (entryIndex - 1 + entries.length) % entries.length;
-      return entryLastCell(dir, prev);
-    }
-
-    function nextEntryFirstCell(dir, cellNum) {
-      const map     = dir === 'inward' ? inwardMap : outwardMap;
-      const entries = dir === 'inward' ? data.inward : data.outward;
-      const next    = (map[cellNum].entryIndex + 1) % entries.length;
-      return entryFirstCell(dir, next);
+      if (posInEntry > 0) return cellNum - step;
+      return entryLastCell(dir, (entryIndex - 1 + entries.length) % entries.length);
     }
 
     const cellLetters = new Map();
 
     function getCellLetter(n) { return cellLetters.get(n) || ''; }
 
+    // Marks (or unmarks) cell n's correct state on both its cell and letter elements
+    // together, so the two can never drift out of sync.
+    function setCorrect(n, on) {
+      cellPaths[n].classList.toggle('correct', on);
+      letterTexts[n].classList.toggle('correct', on);
+    }
+
     function setCellLetter(n, letter) {
       if (letter) cellLetters.set(n, letter);
       else cellLetters.delete(n);
-      letterTexts[n].textContent = letter;
-      cellPaths[n].classList.remove('correct');
-      letterTexts[n].classList.remove('correct');
+      setLetterText(letterTexts[n], letter);
+      setCorrect(n, false);
     }
+
+    // Multi-letter (rebus) entry state. Commit is wired at exactly one place — the top
+    // of focusCell — which covers every cursor move because activeCell is assigned
+    // nowhere else.
+    const composer = makeComposer({
+      getContent: n => getCellLetter(n),
+      setContent: (n, s) => setCellLetter(n, s),
+      getCellEl:  n => cellPaths[n],
+      onCommit:   () => { syncUI(); checker.checkIfFilled(); saveState(); },
+    });
+
+    // Board state and answer checking. inwardEntryCells.flat() is cells 1→N — the
+    // canonical board string order. markSolved marks clue items in *both* modes, per
+    // the mode-symmetry rule in docs/CROSS_TOOL_SPEC.md → Answer checking.
+    const checker = makeBoardChecker({
+      cellIds:             inwardEntryCells.flat(),
+      getContent:          n => getCellLetter(n),
+      isCellFilled:        n => composer.isCellFilled(n),
+      isCellMarkedCorrect: n => cellPaths[n].classList.contains('correct'),
+      hashed:              !!data.hashed,
+      getExpected:         n => data.letters && data.letters[n - 1],
+      getBoardHash:        () => data.boardHash,
+      markSolved: () => {
+        data.cells.forEach(c => setCorrect(c.cell_number, true));
+        document.querySelectorAll('.clue-item').forEach(li => li.classList.add('correct'));
+      },
+      syncUI: () => syncUI(),
+    });
 
     function checkCell() {
       const n = activeCell;
-      if (isCellCorrect(getCellLetter(n), data.letters[n - 1])) {
-        cellPaths[n].classList.add('correct');
-        letterTexts[n].classList.add('correct');
-      } else {
-        flashWrong(cellPaths[n], flashLayer);
+      // The focus call is required on every path out: the button holds focus here, and the
+      // document keydown listener's BUTTON guard would swallow the next navigation key.
+      // The already-correct guard skips a redundant re-save.
+      if (!cellPaths[n].classList.contains('correct') && composer.isCellFilled(n)) {
+        if (isCellCorrect(getCellLetter(n), data.letters[n - 1])) {
+          setCorrect(n, true);
+          saveState();          // only this branch mutates persisted state
+        } else {
+          flashWrong(cellPaths[n], flashLayer);
+        }
       }
       syncUI();
-      saveState();
-      document.getElementById('hidden-input').focus({ preventScroll: true });
-    }
-
-    function checkAllCellsIfFilled() {
-      if (!data.cells.every(c => getCellLetter(c.cell_number) !== '')) return;
-      if (!data.cells.every(c => isCellCorrect(getCellLetter(c.cell_number), data.letters[c.cell_number - 1]))) {
-        syncUI();
-        return;
-      }
-      data.cells.forEach(c => {
-        cellPaths[c.cell_number].classList.add('correct');
-        letterTexts[c.cell_number].classList.add('correct');
-      });
-      syncUI();
-    }
-
-    function checkBoardIfFilled() {
-      if (!data.cells.every(c => getCellLetter(c.cell_number) !== '')) return;
-      if (sha256hex(getSolution()) !== data.boardHash) { syncUI(); return; }
-      data.cells.forEach(c => {
-        cellPaths[c.cell_number].classList.add('correct');
-        letterTexts[c.cell_number].classList.add('correct');
-      });
-      data.inward.forEach((_, i) => {
-        document.querySelector(`[data-direction="inward"][data-entry-index="${i}"]`)
-          ?.classList.add('correct');
-      });
-      data.outward.forEach((_, i) => {
-        document.querySelector(`[data-direction="outward"][data-entry-index="${i}"]`)
-          ?.classList.add('correct');
-      });
-      syncUI();
-    }
-
-    function getSolution() {
-      return inwardEntryCells.flat().map(n => getCellLetter(n)).join('').toLowerCase();
-    }
-
-    function isSolved() {
-      return data.cells.every(c => cellPaths[c.cell_number].classList.contains('correct'));
+      refocus();
     }
 
     function inwardRange(i) {
@@ -170,107 +172,77 @@
       return `${Math.min(...cells)}–${Math.max(...cells)}`;
     }
 
-    function renderClues() {
-      const inwardList  = document.getElementById('inward-clues');
-      const outwardList = document.getElementById('outward-clues');
+    // Builds one direction's <li class="clue-item"> list. Inward and outward differ only in
+    // which list/entries/range-fn/cell-array they read and which direction they set on click —
+    // folded into one function parameterized by `dir` rather than two copy-pasted blocks.
+    function renderCluesFor(dir) {
+      const { listId, entries, range: rangeFor, entryCells: entryCellsFor } = DIRS[dir];
+      const list = document.getElementById(listId);
 
-      data.inward.forEach((entry, i) => {
+      entries.forEach((entry, i) => {
         const li = document.createElement('li');
         li.className = 'clue-item';
-        li.dataset.direction  = 'inward';
+        li.dataset.direction  = dir;
         li.dataset.entryIndex = i;
         const rangeSpan = document.createElement('span');
         rangeSpan.className = 'clue-range';
-        rangeSpan.textContent = inwardRange(i) + '.';
+        rangeSpan.textContent = rangeFor(i) + '.';
         const textSpan = document.createElement('span');
         textSpan.className = 'clue-text';
-        textSpan.textContent = entry.clue;
+        textSpan.innerHTML = entry.clue; // pre-rendered markdown HTML — see shared/build/renderMarkdown.js
         li.append(rangeSpan, textSpan);
-        li.addEventListener('click', () => {
-          direction  = 'inward';
-          focusCell(inwardEntryCells[i][0]);
+        li.addEventListener('click', e => {
+          // A clue can render a real link (see docs/CROSS_TOOL_SPEC.md ->
+          // Markdown formatting) — let it open on its own rather than also
+          // treating the click as selecting this entry.
+          if (e.target.closest('a')) return;
+          direction = dir;
+          focusCell(entryCellsFor[i][0]);
         });
-        inwardList.appendChild(li);
-      });
-
-      data.outward.forEach((entry, i) => {
-        const li = document.createElement('li');
-        li.className = 'clue-item';
-        li.dataset.direction  = 'outward';
-        li.dataset.entryIndex = i;
-        const rangeSpan = document.createElement('span');
-        rangeSpan.className = 'clue-range';
-        rangeSpan.textContent = outwardRange(i) + '.';
-        const textSpan = document.createElement('span');
-        textSpan.className = 'clue-text';
-        textSpan.textContent = entry.clue;
-        li.append(rangeSpan, textSpan);
-        li.addEventListener('click', () => {
-          direction  = 'outward';
-          focusCell(outwardEntryCells[i][0]);
-        });
-        outwardList.appendChild(li);
+        list.appendChild(li);
       });
     }
 
+    function renderClues() {
+      renderCluesFor('inward');
+      renderCluesFor('outward');
+    }
+
     function focusCell(n) {
+      composer.commitIfMoved(n);
       activeCell = n;
-      document.getElementById('hidden-input').focus({ preventScroll: true });
+      refocus();
       syncUI();
     }
 
     function onCellClick(n) {
-      if (n === activeCell) direction = direction === 'inward' ? 'outward' : 'inward';
+      if (n === activeCell) direction = DIRS[direction].opposite;
       focusCell(n);
     }
 
-    function syncUI() {
-      toggleOpts.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.dir === direction);
-      });
+    // The one rebus toggle, shared by the Enter key and #rebus-btn. Both entry points must
+    // behave identically, so neither gets its own copy of the composer call. Committing
+    // does not advance the cursor — only an explicit move (arrow, Tab, click) does.
+    function toggleRebus() {
+      composer.enter(activeCell);
+      syncUI();
+    }
 
-      const curMap      = direction === 'inward' ? inwardMap : outwardMap;
-      const curEntryIdx = curMap[activeCell].entryIndex;
+    // Declared above syncUI (which calls rebusBtn.sync()) — see docs/CROSS_TOOL_SPEC.md →
+    // "Enter / Rebus button" for the TDZ rationale. Never hidden and never disabled —
+    // unlike checkBtn. See setupRebusButton.
+    const rebusBtn = setupRebusButton(document.getElementById('rebus-btn'), {
+      onToggle:    toggleRebus,
+      isComposing: () => composer.isComposing(activeCell),
+      isSolved:    () => latch.solved,
+      refocus,
+    });
 
-      data.cells.forEach(cell => {
-        const el  = cellPaths[cell.cell_number];
-        const cel = curMap[cell.cell_number];
-        el.classList.toggle('active-entry', !!cel && cel.entryIndex === curEntryIdx);
-        el.classList.toggle('active-cell',  cell.cell_number === activeCell);
-      });
-
-      const oppMap      = direction === 'inward' ? outwardMap : inwardMap;
-      const oppDir      = direction === 'inward' ? 'outward' : 'inward';
-      const oppEntryIdx = oppMap[activeCell].entryIndex;
-
-      document.querySelectorAll('.clue-item').forEach(item => {
-        const itemDir = item.dataset.direction;
-        const itemIdx = Number(item.dataset.entryIndex);
-        item.classList.toggle('active-clue',
-          itemDir === direction && itemIdx === curEntryIdx);
-        item.classList.toggle('secondary-entry',
-          itemDir === oppDir && itemIdx === oppEntryIdx);
-      });
-
-      const curEntries = direction === 'inward' ? data.inward : data.outward;
-      const oppEntries = direction === 'inward' ? data.outward : data.inward;
-      const curRange   = direction === 'inward' ? inwardRange(curEntryIdx) : outwardRange(curEntryIdx);
-      const oppRange   = oppDir === 'inward'    ? inwardRange(oppEntryIdx) : outwardRange(oppEntryIdx);
-      barPrimaryDir.textContent    = direction.charAt(0).toUpperCase() + direction.slice(1);
-      barPrimaryNum.textContent    = curRange + '.';
-      barPrimaryText.textContent   = curEntries[curEntryIdx].clue;
-      barSecondaryDir.textContent  = oppDir.charAt(0).toUpperCase() + oppDir.slice(1);
-      barSecondaryNum.textContent  = oppRange + '.';
-      barSecondaryText.textContent = oppEntries[oppEntryIdx].clue;
-
-      if (!data.hashed && checkBtn) {
-        checkBtn.disabled = !getCellLetter(activeCell) ||
-          cellPaths[activeCell].classList.contains('correct');
-      }
-
-      // Chevron on leading edge of active cell pointing in direction of travel
-      const ac        = data.cells[activeCell - 1];
-      const isInward  = direction === 'inward';
+    // Chevron geometry: a small stroke on the leading edge of the active cell,
+    // protruding toward the direction of travel. Split out of syncUI so the geometry
+    // math reads apart from the DOM/state sync it feeds into. `ac` is the active cell's
+    // data.cells entry; `isInward` is `direction === 'inward'` at call time.
+    function chevronPathD(ac, isInward) {
       const theta_e   = isInward ? ac.theta_end    : ac.theta_start;
       const r_inner_e = isInward ? ac.r_inner_end  : ac.r_inner_start;
       const r_outer_e = isInward ? ac.r_outer_end  : ac.r_outer_start;
@@ -281,18 +253,66 @@
       const [tex, tey] = polar((ac.r_inner_end   + ac.r_outer_end)   / 2, ac.theta_end);
       let tdx = tex - tsx, tdy = tey - tsy;
       if (!isInward) { tdx = -tdx; tdy = -tdy; }
-      const tlen      = Math.sqrt(tdx * tdx + tdy * tdy);
-      const prot      = (R_MAX - R_HOLE) / (N_TURNS + 1) * 0.15;
-      chevronEl.setAttribute('d',
-        `M${f(ix)},${f(iy)} L${f(mx + tdx/tlen*prot)},${f(my + tdy/tlen*prot)} L${f(ox)},${f(oy)}`);
+      const tlen = Math.sqrt(tdx * tdx + tdy * tdy);
+      const prot = BAND * 0.15;
+      return `M${f(ix)},${f(iy)} L${f(mx + tdx/tlen*prot)},${f(my + tdy/tlen*prot)} L${f(ox)},${f(oy)}`;
+    }
 
-      const solved = isSolved();
-      const allFilled = data.cells.every(c => getCellLetter(c.cell_number) !== '');
+    function syncUI() {
+      toggleOpts.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.dir === direction);
+      });
+      // Composition also ends on any cursor move, which never touches the button.
+      rebusBtn.sync();
+
+      const cur         = DIRS[direction];
+      const opp         = DIRS[cur.opposite];
+      const curMap      = cur.map;
+      const curEntryIdx = curMap[activeCell].entryIndex;
+
+      data.cells.forEach(cell => {
+        const el  = cellPaths[cell.cell_number];
+        const cel = curMap[cell.cell_number];
+        el.classList.toggle('active-entry', !!cel && cel.entryIndex === curEntryIdx);
+        el.classList.toggle('active-cell',  cell.cell_number === activeCell);
+      });
+
+      const oppDir      = cur.opposite;
+      const oppEntryIdx = opp.map[activeCell].entryIndex;
+
+      document.querySelectorAll('.clue-item').forEach(item => {
+        const itemDir = item.dataset.direction;
+        const itemIdx = Number(item.dataset.entryIndex);
+        item.classList.toggle('active-clue',
+          itemDir === direction && itemIdx === curEntryIdx);
+        item.classList.toggle('secondary-entry',
+          itemDir === oppDir && itemIdx === oppEntryIdx);
+      });
+
+      barPrimaryDir.textContent    = cur.label;
+      barPrimaryNum.textContent     = cur.range(curEntryIdx) + '.';
+      barPrimaryText.innerHTML      = cur.entries[curEntryIdx].clue; // pre-rendered markdown HTML — see shared/build/renderMarkdown.js
+      barSecondaryDir.textContent  = opp.label;
+      barSecondaryNum.textContent  = opp.range(oppEntryIdx) + '.';
+      barSecondaryText.innerHTML   = opp.entries[oppEntryIdx].clue; // pre-rendered markdown HTML
+
+      if (!data.hashed && checkBtn) {
+        checkBtn.disabled = !composer.isCellFilled(activeCell) ||
+          cellPaths[activeCell].classList.contains('correct');
+      }
+
+      // Chevron on leading edge of active cell pointing in direction of travel
+      const ac = data.cells[activeCell - 1];
+      chevronEl.setAttribute('d', chevronPathD(ac, direction === 'inward'));
+
+      const solved = checker.isSolved();
+      const allFilled = checker.isBoardFilled();
       doneWrong.hidden = !(allFilled && !solved);
       latch.check(solved);
     }
 
-    const { saveState, restoreState, clearState } = setupStorage(storageKey('sp', data), {
+    const saveKey = storageKey('sp', data);
+    const { saveState, restoreState, clearState } = setupStorage(saveKey, {
       cellCount: totalCells,
       getState() {
         const letters = {};
@@ -301,23 +321,24 @@
         data.cells.forEach(c => {
           if (cellPaths[c.cell_number].classList.contains('correct')) correct.push(c.cell_number);
         });
-        return { letters, correct, activeMs: timer.getElapsedMs() };
+        return {
+          letters, correct, activeMs: timer.getElapsedMs(),
+          composing: composer.getComposing(),
+        };
       },
       applyState(saved) {
         Object.entries(saved.letters).forEach(([k, v]) => {
           const n = Number(k);
           cellLetters.set(n, v);
-          letterTexts[n].textContent = v;
+          setLetterText(letterTexts[n], v);
         });
-        saved.correct.forEach(n => {
-          cellPaths[n].classList.add('correct');
-          letterTexts[n].classList.add('correct');
-        });
+        saved.correct.forEach(n => setCorrect(n, true));
         timer.restoreMs(saved.activeMs);
+        // After the letters are painted, so the composing cell shows its partial content.
+        // Absent in saves predating this field; composer.restore treats that as null.
+        composer.restore(saved.composing);
       },
     });
-
-    const timer = setupTimer({ onPause: () => saveState() });
 
     const congratsDialog = setupCongratsDialog({
       title: data.title,
@@ -325,15 +346,12 @@
       onPlayAgain: () => resetBoard(),
     });
 
-    const latch = makeCompletionLatch({
-      puzzleRoot: document.querySelector('.puzzle-main'),
-      kind:         data.kind,
-      title:        data.title,
-      date:         data.date,
-      getBoardHash: () => data.boardHash,
-      getSolution,
-      getElapsedMs: () => timer.getElapsedMs(),
-      onComplete: (timeMs) => congratsDialog.open(timeMs),
+    const { timer, latch } = setupSolveTracking({
+      puzzleRoot:  document.querySelector('.puzzle-main'),
+      data,
+      getSolution: () => checker.getSolution(),
+      saveState,
+      onComplete:  (timeMs) => congratsDialog.open(timeMs),
     });
 
     // ── Build SVG ────────────────────────────────────────────────────────────
@@ -469,35 +487,31 @@
       });
     });
 
-    if (!data.hashed) {
-      checkBtn.addEventListener('click', checkCell);
-    } else {
-      checkBtn.hidden = true;
-    }
 
     function resetBoard() {
-      cellLetters.clear();
-      data.cells.forEach(c => {
-        letterTexts[c.cell_number].textContent = '';
-        cellPaths[c.cell_number].classList.remove('correct');
-        letterTexts[c.cell_number].classList.remove('correct');
+      resetAndRefocus({
+        composer, clearState, timer, latch,
+        clearBoard() {
+          cellLetters.clear();
+          data.cells.forEach(c => {
+            setLetterText(letterTexts[c.cell_number], '');
+            setCorrect(c.cell_number, false);
+          });
+          document.querySelectorAll('.clue-item').forEach(li => li.classList.remove('correct'));
+          flashLayer.replaceChildren();
+          direction = 'inward';
+        },
+        focusInitial: () => focusCell(inwardEntryCells[0][0]),
       });
-      document.querySelectorAll('.clue-item').forEach(li => li.classList.remove('correct'));
-      while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
-      direction = 'inward';
-      clearState();
-      timer.reset();
-      latch.reset();
-      focusCell(inwardEntryCells[0][0]);
     }
 
-    setupClearButton(
-      document.getElementById('clear-btn'),
-      resetBoard,
-      () => document.getElementById('hidden-input').focus({ preventScroll: true })
-    );
+    setupControls({
+      checkBtn, hashed: data.hashed, onCheck: checkCell,
+      onClear: resetBoard, refocus, key: saveKey,
+    });
 
     const hiddenInput = document.getElementById('hidden-input');
+
     const keysOverlay = setupKeysOverlay(
       [
         ['Tab',       'Next entry'],
@@ -505,29 +519,26 @@
         ['← →',       'Move along entry'],
         ['⌫',         'Clear current cell'],
         ['Space',     'Clear and advance'],
+        ['Enter',     'Multi-letter cell'],
         ['.',         'Toggle inward / outward'],
       ],
-      () => hiddenInput.focus({ preventScroll: true })
+      refocus
     );
 
     setupKeydown(e => {
       if (latch.solved) return;
       if (e.key === '.') {
         e.preventDefault();
-        direction = direction === 'inward' ? 'outward' : 'inward';
+        direction = DIRS[direction].opposite;
         focusCell(activeCell);
         return;
       }
       if (e.key === 'Tab') {
         e.preventDefault();
-        const map     = direction === 'inward' ? inwardMap : outwardMap;
-        const entries = direction === 'inward' ? data.inward : data.outward;
-        if (e.shiftKey) {
-          const prev = (map[activeCell].entryIndex - 1 + entries.length) % entries.length;
-          focusCell(entryFirstCell(direction, prev));
-        } else {
-          focusCell(nextEntryFirstCell(direction, activeCell));
-        }
+        const { map, entries } = DIRS[direction];
+        const step = e.shiftKey ? -1 : 1;
+        const target = (map[activeCell].entryIndex + step + entries.length) % entries.length;
+        focusCell(entryFirstCell(direction, target));
         return;
       }
       if (e.key === 'ArrowRight') {
@@ -540,8 +551,18 @@
         focusCell(prevInDir(activeCell, direction));
         return;
       }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        toggleRebus();
+        return;
+      }
       if (e.key === 'Backspace') {
         e.preventDefault();
+        if (composer.backspace(activeCell)) {
+          syncUI();
+          saveState();
+          return;
+        }
         if (getCellLetter(activeCell)) {
           setCellLetter(activeCell, '');
           syncUI();
@@ -568,29 +589,30 @@
     }, { keysOverlay });
 
     hiddenInput.addEventListener('input', () => {
-      const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
+      const typed = normalize(hiddenInput.value).toUpperCase();
       hiddenInput.value = '';
-      if (latch.solved || !letter) return;
+      if (latch.solved || !typed) return;
       timer.onFirstInput();
-      setCellLetter(activeCell, letter);
-      if (data.hashed) {
-        focusCell(nextInDir(activeCell, direction));
-        checkBoardIfFilled();
-      } else {
-        focusCell(nextInDir(activeCell, direction));
-        checkAllCellsIfFilled();
-      }
+      // typeLetter applies the slice(-1) rule on the non-composing path; advance only
+      // when it says so, so capacity never triggers an advance.
+      if (composer.typeLetter(activeCell, typed)) focusCell(nextInDir(activeCell, direction));
+      else syncUI();
+
+      // One checker call for both modes — advance first, then check, so the cursor
+      // never lags a keystroke behind the hash comparison.
+      checker.checkIfFilled();
       saveState();
     });
 
     svg.addEventListener('click', e => {
-      if (e.target === svg) document.getElementById('hidden-input').focus();
+      if (e.target === svg) refocus();
     });
 
     // ── Restore & focus ──────────────────────────────────────────────────────
-    restoreState();
-    latch.sealIfSolved(isSolved());
-    focusCell(1);
+    const resumeCell = restoreAndSeal({ restoreState, checker, latch, composer });
+    // Resume on the restored composing cell — see docs/CROSS_TOOL_SPEC.md → "Composition
+    // is saved state" for why this is load-bearing, not a convenience.
+    focusCell(resumeCell === null ? 1 : resumeCell);
   }
 
   document.addEventListener('DOMContentLoaded', init);

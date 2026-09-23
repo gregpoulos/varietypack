@@ -4,8 +4,8 @@ const path = require('path');
 const fs = require('fs');
 const yaml = require('js-yaml');
 const { spawnSync } = require('child_process');
-const { TOOLS } = require('./toolRegistry');
-const { GLOBAL_OPTIONS } = require('./globalHelp');
+const { TOOLS, listYamlFiles } = require('./toolRegistry');
+const { GLOBAL_OPTIONS, writeHelpIfRequested } = require('./globalHelp');
 const buildIndex = require('./buildIndex');
 
 const HELP = `Build one or more puzzle files.
@@ -26,15 +26,15 @@ tool and documented in each tool's docs/SPEC.md.
 When given a directory, builds all YAML puzzle files found in it.
 `;
 
-function readYamlMeta(filePath) {
+function readYamlMeta(filePath, stderr) {
   const name = path.basename(filePath);
   let content;
   try {
     content = fs.readFileSync(filePath, 'utf8');
   } catch (err) {
     if (err.code === 'ENOENT') {
-      console.error(`File not found: "${filePath}"`);
-      process.exit(1);
+      stderr.write(`File not found: "${filePath}"\n`);
+      return null;
     }
     throw err;
   }
@@ -42,11 +42,11 @@ function readYamlMeta(filePath) {
   try {
     doc = yaml.load(content);
   } catch (err) {
-    console.error(`Could not parse "${name}" as YAML: ${err.message}`);
+    stderr.write(`Could not parse "${name}" as YAML: ${err.message}\n`);
     return null;
   }
   if (typeof doc?.kind !== 'string') {
-    console.error(`No "kind" field found in "${name}".`);
+    stderr.write(`No "kind" field found in "${name}".\n`);
     return null;
   }
   return {
@@ -55,22 +55,35 @@ function readYamlMeta(filePath) {
   };
 }
 
-function spawnTool(kind, toolArgs) {
+// Spawns the per-tool cli.js as a real subprocess. This is the one genuine
+// process boundary in the build pipeline (the root dispatcher hands off to a
+// tool's own CLI entry point) and is deliberately not folded into an
+// in-process call — see shared/test/toolCli.test.js and test/cli.test.js for
+// the subprocess coverage this specific boundary keeps.
+//
+// Captured (not 'inherit'), then relayed through the injected stdout/stderr:
+// with the default deps (real process.stdout/stderr) this reproduces
+// 'inherit' output faithfully; with injected test writers it lets in-process
+// callers observe the child's output instead of it leaking straight to the
+// real terminal.
+function spawnTool(kind, toolArgs, { stdout = process.stdout, stderr = process.stderr } = {}) {
   const result = spawnSync('node', [path.join(TOOLS[kind].dir, 'cli.js'), ...toolArgs], {
-    stdio: 'inherit',
+    encoding: 'utf8',
   });
+  if (result.stdout) stdout.write(result.stdout);
+  if (result.stderr) stderr.write(result.stderr);
   return result.status ?? 1;
 }
 
-function buildDirectory(dirPath, remainingArgs) {
+function buildDirectory(dirPath, remainingArgs, { stdout, stderr }) {
   let outputDir = null;
   let writeIndex = false;
   const forwardArgs = [];
   for (let i = 0; i < remainingArgs.length; i++) {
     if (remainingArgs[i] === '-o') {
       if (i + 1 >= remainingArgs.length) {
-        console.error('Error: -o requires a value.');
-        process.exit(1);
+        stderr.write('Error: -o requires a value.\n');
+        return 1;
       }
       outputDir = path.resolve(remainingArgs[++i]);
     } else if (remainingArgs[i] === '--build-index') {
@@ -80,14 +93,11 @@ function buildDirectory(dirPath, remainingArgs) {
     }
   }
 
-  const files = fs.readdirSync(dirPath)
-    .filter(f => /\.ya?ml$/i.test(f))
-    .sort()
-    .map(f => path.join(dirPath, f));
+  const files = listYamlFiles(dirPath);
 
   if (files.length === 0) {
-    console.error(`No YAML files found in "${dirPath}".`);
-    process.exit(1);
+    stderr.write(`No YAML files found in "${dirPath}".\n`);
+    return 1;
   }
 
   if (outputDir) fs.mkdirSync(outputDir, { recursive: true });
@@ -95,21 +105,21 @@ function buildDirectory(dirPath, remainingArgs) {
   let anyFailed = false;
   const puzzles = [];
   for (const file of files) {
-    const meta = readYamlMeta(file);
+    const meta = readYamlMeta(file, stderr);
     if (!meta) {
       anyFailed = true;
       continue;
     }
     const { kind, title } = meta;
     if (!TOOLS[kind]) {
-      console.error(`Skipping "${path.basename(file)}": unknown kind "${kind}".`);
+      stderr.write(`Skipping "${path.basename(file)}": unknown kind "${kind}".\n`);
       anyFailed = true;
       continue;
     }
     const outputName = path.basename(file).replace(/\.ya?ml$/i, '.html');
     const outFile = outputDir ? path.join(outputDir, outputName) : null;
     const toolArgs = [file, ...forwardArgs, ...(outFile ? ['-o', outFile] : [])];
-    const status = spawnTool(kind, toolArgs);
+    const status = spawnTool(kind, toolArgs, { stdout, stderr });
     if (status !== 0) {
       anyFailed = true;
     } else {
@@ -122,39 +132,52 @@ function buildDirectory(dirPath, remainingArgs) {
   // index with a "No puzzles built yet" placeholder while the HTML is still on disk.
   if (writeIndex && puzzles.length > 0) {
     const indexDir = outputDir ?? dirPath;
-    buildIndex(puzzles, indexDir, 'Puzzles');
+    buildIndex(puzzles, indexDir, 'Puzzles', { stdout });
   }
 
-  process.exit(anyFailed ? 1 : 0);
+  return anyFailed ? 1 : 0;
 }
 
-function buildCommand(args) {
-  if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
-    process.stdout.write(HELP);
-    process.exit(args.length === 0 ? 1 : 0);
-  }
+/**
+ * Pure: reads only `args`, writes only to the injected `stdout`/`stderr`,
+ * and returns an exit code rather than calling process.exit(). The root
+ * cli.js entry point is a thin wrapper that calls this with real
+ * process.argv/stdout/stderr and exits with the returned code.
+ *
+ * Note: this still spawns each per-tool cli.js as a real subprocess
+ * (spawnTool) — that boundary is deliberately real, not injected; see the
+ * comment above spawnTool().
+ *
+ * @param {string[]} args
+ * @param {object} [deps]
+ * @param {{write: Function}} [deps.stdout]
+ * @param {{write: Function}} [deps.stderr]
+ * @returns {number} exit code
+ */
+function buildCommand(args, { stdout = process.stdout, stderr = process.stderr } = {}) {
+  const helpCode = writeHelpIfRequested(args, HELP, stdout);
+  if (helpCode !== null) return helpCode;
 
   const first = args[0];
 
   if (fs.existsSync(first) && fs.statSync(first).isDirectory()) {
-    buildDirectory(path.resolve(first), args.slice(1));
-    return;
+    return buildDirectory(path.resolve(first), args.slice(1), { stdout, stderr });
   }
 
   if (/\.ya?ml$/i.test(first)) {
-    const meta = readYamlMeta(first);
-    if (!meta) process.exit(1);
+    const meta = readYamlMeta(first, stderr);
+    if (!meta) return 1;
     if (!TOOLS[meta.kind]) {
-      console.error(`Unknown kind "${meta.kind}" in "${path.basename(first)}".`);
-      console.error("Run 'varietypack build --help' for usage.");
-      process.exit(1);
+      stderr.write(`Unknown kind "${meta.kind}" in "${path.basename(first)}".\n`);
+      stderr.write("Run 'varietypack build --help' for usage.\n");
+      return 1;
     }
-    process.exit(spawnTool(meta.kind, args));
+    return spawnTool(meta.kind, args, { stdout, stderr });
   }
 
-  console.error(`Not a YAML file or directory: "${first}"`);
-  console.error("Run 'varietypack build --help' for usage.");
-  process.exit(1);
+  stderr.write(`Not a YAML file or directory: "${first}"\n`);
+  stderr.write("Run 'varietypack build --help' for usage.\n");
+  return 1;
 }
 
 module.exports = { buildCommand };

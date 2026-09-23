@@ -1,32 +1,25 @@
 'use strict';
 
-const sha256hex      = require('../../shared/sha256hex');
-const { processEntries } = require('../../shared/build/builderUtils');
+const { processEntries, prepareCommon } = require('../../shared/build/builderUtils');
 
 function preparePuzzle(puzzle) {
-  const loops  = puzzle.loops ?? 2;
-  const hashed = puzzle.hashed ?? false;
+  const loops = puzzle.loops ?? 2;
 
   const processed = processEntries(puzzle.entries);
-  const entries   = processed.map(({ _norm, ...e }) => e);
+  const entries    = processed.map(({ _cells, ...e }) => e);
 
-  const result = {
-    title: puzzle.title, kind: 'snake-charmer', author: puzzle.author, date: puzzle.date,
-    loops, hashed, entries,
-    ...(puzzle.instructions !== undefined ? { instructions: puzzle.instructions } : {}),
+  return {
+    ...prepareCommon(puzzle, 'snake-charmer', () => {
+      // All slicing happens in CELL space. Slicing a joined string would cut a
+      // multi-letter cell in half once the delimiter lands.
+      const cells    = processed.flatMap(e => e._cells);
+      const ringSize = cells.length / loops;
+      const ring     = cells.slice(0, ringSize);
+      return { boardCells: ring, letters: ring };
+    }),
+    loops,
+    entries,
   };
-
-  if (puzzle.boardHash !== undefined) {
-    result.boardHash = puzzle.boardHash;
-  } else {
-    const concat   = processed.map(e => e._norm).join('');
-    const ringSize = concat.length / loops;
-    const ring     = concat.slice(0, ringSize);
-    result.boardHash = sha256hex(ring);
-    if (!hashed) result.letters = ring.split('');
-  }
-
-  return result;
 }
 
 module.exports = { preparePuzzle };

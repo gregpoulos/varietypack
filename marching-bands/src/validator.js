@@ -1,8 +1,7 @@
 'use strict';
 
-const normalize = require('../../shared/normalize');
-const { validateCommonHeader } = require('../../shared/build/builderUtils');
-const { validateEntry, hasLengthWithoutHash } = require('../../shared/build/validateEntry');
+const { validateCommonHeader, entryCells } = require('../../shared/build/builderUtils');
+const { validateEntry, checkMuddledGuard } = require('../../shared/build/validateEntry');
 const { bandCells, centerFlatIndex } = require('./layout');
 
 function validate(puzzle) {
@@ -26,13 +25,10 @@ function validate(puzzle) {
   const isMuddled = puzzle.boardHash !== undefined;
   {
     const allEntries = [
-      ...(Array.isArray(puzzle.rows)  ? puzzle.rows.flatMap(r  => r?.entries ?? []) : []),
+      ...puzzle.rows.flatMap(r => r?.entries ?? []),
       ...(Array.isArray(puzzle.bands) ? puzzle.bands.flatMap(b => b?.entries ?? []) : []),
     ];
-    if (hasLengthWithoutHash(allEntries, isMuddled, errors)) return { errors, warnings };
-  }
-  if (isMuddled) {
-    warnings.push('note: entries are muddled; answer validation skipped');
+    if (checkMuddledGuard(allEntries, isMuddled, errors, warnings)) return { errors, warnings };
   }
 
   // Derive N from rows[0] using entryLength semantics (handles both source and muddled entries)
@@ -77,7 +73,7 @@ function validate(puzzle) {
     return { sum, anySkipped };
   }
 
-  for (let r = 0; r < Math.min(puzzle.rows.length, N); r++) {
+  for (let r = 1; r < Math.min(puzzle.rows.length, N); r++) {
     const row = puzzle.rows[r];
     const { sum, anySkipped } = validateEntries(row?.entries ?? [], `rows[${r}]`);
     const expected = (r === centerRowIndex) ? N - 1 : N;
@@ -104,12 +100,12 @@ function validate(puzzle) {
     }
   }
 
-  // Cross-check: row/band letter agreement — only possible with plaintext answers
+  // Cross-check: row/band cell agreement — only possible with plaintext answers
   if (!isMuddled && errors.length === 0) {
     const centerIdx = isOddN ? centerFlatIndex(N) : -1;
     const rowGrid   = {};
     for (let r = 0; r < N; r++) {
-      const rowLetters = puzzle.rows[r].entries.flatMap(e => normalize(e.answer).split(''));
+      const rowLetters = puzzle.rows[r].entries.flatMap(e => entryCells(e) ?? []);
       let li = 0;
       for (let c = 0; c < N; c++) {
         const flat0 = r * N + c;
@@ -118,7 +114,7 @@ function validate(puzzle) {
       }
     }
     for (let k = 0; k < puzzle.bands.length; k++) {
-      const bandLetters = puzzle.bands[k].entries.flatMap(e => normalize(e.answer).split(''));
+      const bandLetters = puzzle.bands[k].entries.flatMap(e => entryCells(e) ?? []);
       const cells = bandCells(k, N);
       for (let i = 0; i < cells.length; i++) {
         const id         = cells[i];

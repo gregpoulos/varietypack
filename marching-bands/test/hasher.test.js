@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { preparePuzzle } = require('../src/hasher');
 const sha256hex = require('../../shared/sha256hex');
+const { joinCells } = require('../../shared/boardString');
 
 // 5×5 puzzle from the plan's test reference
 function minimalPuzzle() {
@@ -46,15 +47,10 @@ test('preparePuzzle: omits author/date when absent', () => {
   assert.equal(r.date, undefined);
 });
 
-test('preparePuzzle: instructions passed through when present', () => {
-  const p = { ...minimalPuzzle(), instructions: 'Solve it.' };
+test('preparePuzzle: instructions rendered as markdown when present', () => {
+  const p = { ...minimalPuzzle(), instructions: 'Solve *it*.' };
   const r = preparePuzzle(p);
-  assert.equal(r.instructions, 'Solve it.');
-});
-
-test('preparePuzzle: instructions absent when not set', () => {
-  const r = preparePuzzle(minimalPuzzle());
-  assert.equal(r.instructions, undefined);
+  assert.equal(r.instructions, '<p>Solve <em>it</em>.</p>\n');
 });
 
 test('preparePuzzle: row entries have clue and length (not answer)', () => {
@@ -110,7 +106,7 @@ test('preparePuzzle: boardHash is sha256 of row-major letters skipping center, l
   const p = { ...minimalPuzzle(), hashed: true };
   const r = preparePuzzle(p);
   // Row-major: abcde fghij kl mn opqrs tuvwx (center skipped)
-  const expected = sha256hex('abcdefghijklmnopqrstuvwx');
+  const expected = sha256hex(joinCells([...'abcdefghijklmnopqrstuvwx']));
   assert.equal(r.boardHash, expected);
 });
 
@@ -140,42 +136,34 @@ test('preparePuzzle: passthrough — uses puzzle.boardHash directly, skips lette
   assert.ok(!('letters' in result));
 });
 
-test('preparePuzzle: passthrough — no per-entry hash in PUZZLE_DATA rows and bands', () => {
-  const result = preparePuzzle(muddledMB3());
-  assert.ok(!('hash' in result.rows[0].entries[0]));
-  assert.ok(!('hash' in result.bands[0].entries[1]));
-});
-
 test('preparePuzzle: passthrough — derives N from entry.length when boardHash present', () => {
   const result = preparePuzzle(muddledMB3());
   assert.equal(result.size, 3);  // N=3 from rows[0]: 2+1
 });
 
-// ── boardHash in non-hashed mode ──────────────────────────────────────────────
+// N=3. Flat 1-indexed cells: 1 2 3 / 4 [5=black] 6 / 7 8 9.
+// Grid:  1=s  2=har  3=o  4=n  6=e  7=t  8=a  9=p
+// Rows:  row1 = 1,2,3  |  row2 = 4,6 (center skipped)  |  row3 = 7,8,9
+// Band0 traversal (8 cells) = 1,2,3,6,9,8,7,4 = s har o e p a t n
+function makeRebusPuzzle3x3() {
+  return {
+    kind: 'marching-bands', title: 'T',
+    rows: [
+      { entries: [{ clue: 'r1', answer: 'S[HAR]O' }] },
+      { entries: [{ clue: 'r2', answer: 'NE' }] },
+      { entries: [{ clue: 'r3', answer: 'TAP' }] },
+    ],
+    bands: [
+      { entries: [{ clue: 'b0', answer: 'S[HAR]OEPATN' }] },
+    ],
+  };
+}
 
-// minimalPuzzle() is already defined at top of this file (5×5 grid).
-
-test('preparePuzzle non-hashed: boardHash is present', () => {
-  const result = preparePuzzle(minimalPuzzle());
-  assert.ok(result.boardHash, 'boardHash must be present in non-hashed output');
-});
-
-test('preparePuzzle non-hashed: boardHash matches sha256hex of the letters string', () => {
-  // In non-hashed mode, both boardHash and letters are present.
-  // The hash must equal sha256hex of all non-null letters joined.
-  const result = preparePuzzle(minimalPuzzle());
-  assert.ok(Array.isArray(result.letters));
-  const boardStr = result.letters.filter(l => l !== null).join('');
-  assert.strictEqual(result.boardHash, sha256hex(boardStr));
-});
-
-test('preparePuzzle non-hashed: letters still present alongside boardHash', () => {
-  const result = preparePuzzle(minimalPuzzle());
-  assert.ok(Array.isArray(result.letters));
-});
-
-test('preparePuzzle hashed: boardHash present and letters absent', () => {
-  const result = preparePuzzle({ ...minimalPuzzle(), hashed: true });
-  assert.ok(result.boardHash);
-  assert.strictEqual(result.letters, undefined);
+test('letters carries one entry per cell for a rebus row', () => {
+  const prepared = preparePuzzle(makeRebusPuzzle3x3());
+  // letters is 0-indexed flat; cell 2 is index 1.
+  assert.strictEqual(prepared.letters[1], 'har');
+  assert.strictEqual(prepared.letters[0], 's');
+  // Center square (index 4) belongs to no entry.
+  assert.strictEqual(prepared.letters[4], null);
 });

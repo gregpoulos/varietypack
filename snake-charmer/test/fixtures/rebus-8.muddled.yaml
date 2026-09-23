@@ -1,0 +1,22 @@
+kind: snake-charmer
+title: Rebus N=8 (circle)
+author: Fixtures
+date: '2026'
+shape: circle
+entries:
+  - clue: Two-letter rebus cell, then a circled plain cell
+    styles:
+      circle:
+        - 2
+    length: 3
+  - clue: Three-letter rebus cell opening the entry
+    length: 3
+  - clue: Four-letter rebus cell, and this entry straddles the loop boundary
+    length: 4
+  - clue: Second pass over the three-letter cell
+    length: 3
+  - clue: Second pass over the four-letter cell
+    length: 3
+hashed: true
+format: 2
+boardHash: ed090b079bdbdefb0b92799ee3344eda0268d7d2dce8d5849771d8cee8864018

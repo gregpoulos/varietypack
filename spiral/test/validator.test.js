@@ -28,67 +28,16 @@ test('validate: returns empty errors and warnings for valid puzzle', () => {
 
 // ── kind ──────────────────────────────────────────────────────────────────────
 
+// ── header (kind/title/hashed/instructions) ────────────────────────────────────
+// validateCommonHeader's own behavior (kind mismatch, missing title, hashed in
+// source vs muddled, instructions type/emptiness) is covered by shared/test/
+// builderUtils.test.js. This is the single wiring test proving spiral forwards
+// validateCommonHeader's errors and passes its own kind ('spiral').
+
 test('validate: error when kind is wrong', () => {
   const p = valid(); p.kind = 'crossword';
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('"kind"')));
-});
-
-test('validate: error when kind is missing', () => {
-  const p = valid(); delete p.kind;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"kind"')));
-});
-
-// ── title ─────────────────────────────────────────────────────────────────────
-
-test('validate: error when title is missing', () => {
-  const p = valid(); delete p.title;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"title"')));
-});
-
-test('validate: error when title is empty string', () => {
-  const p = valid(); p.title = '';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"title"')));
-});
-
-// ── hashed ────────────────────────────────────────────────────────────────────
-
-test('validate: hashed: in source puzzle is rejected', () => {
-  const p = valid(); p.hashed = true;
-  assert.ok(validate(p).errors.some(e => e.includes('"hashed:"')));
-});
-
-test('validate: hashed: in muddled puzzle does not produce a hashed: error', () => {
-  const p = valid(); p.hashed = true; p.boardHash = 'any';
-  assert.ok(!validate(p).errors.some(e => e.includes('"hashed:"')));
-});
-
-test('validate: error when hashed is present in source puzzle (any value)', () => {
-  const p = valid(); p.hashed = 'yes';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"hashed:"')));
-});
-
-// ── instructions ─────────────────────────────────────────────────────────────
-
-test('validate: instructions field is accepted when a non-empty string', () => {
-  const p = valid(); p.instructions = 'Solve the spiral.';
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: error when instructions is not a string', () => {
-  const p = valid(); p.instructions = 42;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"instructions"')));
-});
-
-test('validate: error when instructions is an empty string', () => {
-  const p = valid(); p.instructions = '   ';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"instructions"')));
 });
 
 // ── inward / outward arrays ───────────────────────────────────────────────────
@@ -142,61 +91,18 @@ test('validate: error when outward has fewer than 2 entries', () => {
 
 // ── entry fields ──────────────────────────────────────────────────────────────
 
+// validateEntry's own behavior (missing/empty clue, missing/empty/normalizes-to-
+// empty answer) is covered by shared/test/validateEntry.test.js. This is the
+// single wiring test proving spiral forwards validateEntry's errors and formats
+// its label as "inward[N]".
+
 test('validate: error when inward entry clue is missing', () => {
   const p = valid(); delete p.inward[0].clue;
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('clue')));
 });
 
-test('validate: error when inward entry clue is empty string', () => {
-  const p = valid(); p.inward[0].clue = '';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('clue')));
-});
-
-test('validate: error when outward entry clue is missing', () => {
-  const p = valid(); delete p.outward[1].clue;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('outward[1]') && e.includes('clue')));
-});
-
-test('validate: error when inward entry answer is missing', () => {
-  const p = valid(); delete p.inward[0].answer;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('answer')));
-});
-
-test('validate: error when outward entry answer is empty string', () => {
-  const p = valid(); p.outward[0].answer = '';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('outward[0]') && e.includes('answer')));
-});
-
-test('validate: error when inward entry answer normalizes to empty (only numbers/punctuation)', () => {
-  const p = valid(); p.inward[0].answer = '1984!';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('answer')));
-});
-
-test('validate: error when outward entry answer normalizes to empty (only numbers/punctuation)', () => {
-  const p = valid(); p.outward[0].answer = '---';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('outward[0]') && e.includes('answer')));
-});
-
 // ── normalization ─────────────────────────────────────────────────────────────
-
-test('validate: spaces in answers are stripped for cell counting', () => {
-  const p = valid();
-  p.inward[0].answer = 'A B C D E F G H I J K L M N O P Q R S T'; // 20 letters with spaces
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: hyphens in answers are stripped for cell counting', () => {
-  const p = valid();
-  p.inward[0].answer = 'A-B-C-D-E-F-G-H-I-J-K-L-M-N-O-P-Q-R-S-T'; // 20 letters with hyphens
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
 
 test('validate: reversal check uses normalized strings', () => {
   // Hyphen stripped before reversal check — "ABCDEFGHIJ-KLMNOPQRST" → "abcdefghijklmnopqrst"
@@ -234,6 +140,26 @@ test('validate: error when inward string is not the reverse of outward string', 
   assert.ok(errors.some(e => e.toLowerCase().includes('revers')));
 });
 
+test('outward answers repeat each rebus cell in forward order', () => {
+  const { errors } = validate({
+    kind: 'spiral', title: 'T',
+    inward:  [{ clue: 'a', answer: 'S[HAR]ON' }, { clue: 'b', answer: 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKL' }],
+    outward: [{ clue: 'c', answer: 'LKJIHGFEDCBAZYXWVUTSRQPONMLKJIHGFEDCBA' }, { clue: 'd', answer: 'NO[HAR]S' }],
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test('reversing a rebus cell internally is rejected with an explanation', () => {
+  const { errors } = validate({
+    kind: 'spiral', title: 'T',
+    inward:  [{ clue: 'a', answer: 'S[HAR]ON' }, { clue: 'b', answer: 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKL' }],
+    outward: [{ clue: 'c', answer: 'LKJIHGFEDCBAZYXWVUTSRQPONMLKJIHGFEDCBA' }, { clue: 'd', answer: 'NO[RAH]S' }],
+  });
+  assert.strictEqual(errors.length, 1);
+  assert.match(errors[0], /reverse/);
+  assert.match(errors[0], /picture/i);
+});
+
 // ── sample puzzle ─────────────────────────────────────────────────────────────
 
 test('validate: sample puzzle is valid', () => {
@@ -256,49 +182,11 @@ test('validate: multiple errors returned together', () => {
 });
 
 // ── styles ────────────────────────────────────────────────────────────────────
-
-test('validate: styles omitted on inward entry is valid', () => {
-  assert.deepEqual(validate(valid()), { errors: [], warnings: [] });
-});
-
-test('validate: circle style with valid positions accepted on inward entry', () => {
-  const p = valid();
-  p.inward[0].styles = { circle: [0, 1] };
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: circle style with valid positions accepted on outward entry', () => {
-  const p = valid();
-  p.outward[0].styles = { circle: [0, 3] };
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: empty styles object is accepted on inward entry', () => {
-  const p = valid();
-  p.inward[0].styles = {};
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: error when inward entry styles is not an object', () => {
-  const p = valid();
-  p.inward[0].styles = 'circle';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('styles')));
-});
-
-test('validate: error when inward entry styles is an array', () => {
-  const p = valid();
-  p.inward[0].styles = [0, 1];
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('styles')));
-});
-
-test('validate: error when outward entry styles value is not an array', () => {
-  const p = valid();
-  p.outward[0].styles = { circle: 0 };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('outward[0]') && e.includes('circle')));
-});
+// validateEntryStyles's own behavior (non-object styles, unrecognized names,
+// non-array values, out-of-range/negative/non-integer positions) is covered by
+// shared/test/builderUtils.test.js. This is the single wiring test proving
+// spiral forwards the correct cellCount (from the entry's answer length) and
+// label into validateEntryStyles.
 
 test('validate: error when inward entry style position is out of range (>= length)', () => {
   const p = valid();
@@ -306,43 +194,6 @@ test('validate: error when inward entry style position is out of range (>= lengt
   p.inward[0].styles = { circle: [20] };
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('circle')));
-});
-
-test('validate: error when outward entry style position is negative', () => {
-  const p = valid();
-  p.outward[1].styles = { circle: [-1] };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('outward[1]') && e.includes('circle')));
-});
-
-test('validate: error when style position is a non-integer float', () => {
-  const p = valid();
-  p.inward[0].styles = { circle: [0.5] };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('circle')));
-});
-
-test('validate: warning for unrecognized style name on inward entry', () => {
-  const p = valid();
-  p.inward[0].styles = { 'blue-shade': [0] };
-  const { warnings, errors } = validate(p);
-  assert.deepEqual(errors, []);
-  assert.ok(warnings.some(w => w.includes('inward[0]') && w.includes('blue-shade')));
-});
-
-test('validate: warning for unrecognized style name on outward entry', () => {
-  const p = valid();
-  p.outward[0].styles = { 'blue-shade': [0] };
-  const { warnings, errors } = validate(p);
-  assert.deepEqual(errors, []);
-  assert.ok(warnings.some(w => w.includes('outward[0]') && w.includes('blue-shade')));
-});
-
-test('validate: valid position at last index of entry (boundary check)', () => {
-  const p = valid();
-  // inward[1].answer is 'TSRQPONMLKJIHGFEDCBA' → length 20; position 19 is valid
-  p.inward[1].styles = { circle: [19] };
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
 });
 
 // ── muddled mode ──────────────────────────────────────────────────────────────
@@ -353,7 +204,7 @@ function validMuddledSpiral() {
     Array.from({ length: 9 }, (_, i) => ({ clue: `${prefix}${i}`, length: 5 }));
   return {
     kind: 'spiral', title: 'Muddled Spiral',
-    hashed: true, boardHash: 'any-hash',
+    hashed: true, format: 2, boardHash: 'any-hash',
     inward:  makeEntries('in'),
     outward: makeEntries('out'),
   };
@@ -377,7 +228,7 @@ test('validate: muddled spiral — below-40 total still caught', () => {
     Array.from({ length: 2 }, (_, i) => ({ clue: `${prefix}${i}`, length: 5 }));
   const p = {
     kind: 'spiral', title: 'T',
-    hashed: true, boardHash: 'h',
+    hashed: true, format: 2, boardHash: 'h',
     inward:  makeSmall('in'),   // total=10
     outward: makeSmall('out'),  // total=10 — both equal but <40
   };
@@ -402,7 +253,10 @@ test('validate: muddled spiral — answer: entry rejected with a use-length-not-
 
 test('validate: muddled entries without boardHash rejected for spiral', () => {
   const p = validMuddledSpiral();
+  // Drop format: 2 alongside boardHash — without it the puzzle is neither a source
+  // nor a muddled file, and trips the "format: in a source puzzle" error as well.
   delete p.boardHash;
+  delete p.format;
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('boardHash')));
 });

@@ -1,0 +1,17 @@
+kind: snake-charmer
+title: "Rebus N=8 (circle)"
+author: "Fixtures"
+date: "2026"
+shape: circle
+entries:
+  - clue: "Two-letter rebus cell, then a circled plain cell"
+    answer: "A[BB]C"
+    styles: { circle: [2] }
+  - clue: "Three-letter rebus cell opening the entry"
+    answer: "[DDD]EF"
+  - clue: "Four-letter rebus cell, and this entry straddles the loop boundary"
+    answer: "[GGGG]HA[BB]"
+  - clue: "Second pass over the three-letter cell"
+    answer: "C[DDD]E"
+  - clue: "Second pass over the four-letter cell"
+    answer: "F[GGGG]H"

@@ -1,0 +1,203 @@
+kind: crushword
+title: "Crushword"
+author: "Greg Poulos"
+date: "2026"
+instructions: "Like a standard crossword, except a cell can hold up to three letters instead of one — it's up to you to figure out how many go in each cell."
+grid:
+  - ".....#.....#....."
+  - ".....#.....#....."
+  - "....#...#....#..."
+  - "....#....##..#..."
+  - "###...........###"
+  - "...#..##....#...."
+  - "...#....#...#...."
+  - ".....#.....#....."
+  - ".....#.....#....."
+across:
+  1:
+    clue: "* Culinary philosophy that espouses eating the whole animal"
+    answer: "[SNO][UTT]OT[AIL]"
+  6:
+    clue: "* Restaurant chain named after *Turdus migratorius*"
+    answer: "[RE]D[RO][BI]N"
+  11:
+    clue: "* Cozy"
+    answer: "S[NU][GAS]A[BUG]"
+  16:
+    clue: "Experts in making connections"
+    answer: "WE[LD][ER]S"
+  17:
+    clue: "Home to many a \"Contact Us\" link"
+    answer: "FO[OT]ER"
+  18:
+    clue: "Aren't you sloppy?"
+    answer: "[AIN]TCHA"
+  19:
+    clue: "___ diem"
+    answer: "[CA]RPE"
+  20:
+    clue: "Commando's cap that may be green or red"
+    answer: "B[ERE]T"
+  21:
+    clue: "Follower of Jah"
+    answer: "RAS[TA]"
+  23:
+    clue: "Qty."
+    answer: "AMT"
+  24:
+    clue: "Pipe organ inputs"
+    answer: "P[ED][AL]S"
+  25:
+    clue: "Chicory cousin"
+    answer: "E[ND]I[VE]"
+  27:
+    clue: "Gaming news website"
+    answer: "[IG]N"
+  28:
+    clue: "Yogic practice of nasal irrigation"
+    answer: "NE[TI]"
+  29:
+    clue: "Play featuring the \"Rude Mechanicals\", each of which feature in this puzzle's starred clues"
+    answer: "A[MI][DS][UM][ME][RN]IG[HTS][DRE][AM]"
+  34:
+    clue: "It's the thing!"
+    answer: "NO[UN]"
+  37:
+    clue: "Andy's neighbor in _Toy Story_"
+    answer: "S[ID]"
+  38:
+    clue: "Photosynthesizers that may be green or red"
+    answer: "[AL]GAE"
+  39:
+    clue: "Abbr. for some nonbinary people"
+    answer: "AFAB"
+  43:
+    clue: "Every last one"
+    answer: "ALL"
+  44:
+    clue: "Danny's wife in _Ocean's Twelve_"
+    answer: "TESS"
+  47:
+    clue: "Felix from _The Odd Couple_"
+    answer: "U[NG][ER]"
+  48:
+    clue: "Aquatic race from _The Legend of Zelda_"
+    answer: "ZORA"
+  49:
+    clue: "\"That won't work for me\""
+    answer: "[NO]DICE"
+  51:
+    clue: "John and Denny of folk-rock fame, vis-à-vis Michelle and Cass"
+    answer: "PAPAS"
+  53:
+    clue: "Buenos ___"
+    answer: "AIRES"
+  54:
+    clue: "* Consumer of marine snow"
+    answer: "[BOT][TOM][FE][EDE]R"
+  55:
+    clue: "* Classical work which might feature James Galway, for example"
+    answer: "F[LUT][ESO][NA][TA]"
+  56:
+    clue: "* Common pairing with manchego cheese"
+    answer: "[QUI]N[CE][PAS][TE]"
+down:
+  1:
+    clue: "Hummingbird named for its white forehead"
+    answer: "[SNO]W[CA]P"
+  2:
+    clue: "Said"
+    answer: "[UTT]ER[ED]"
+  3:
+    clue: "Bosom buddy, perhaps"
+    answer: "O[LD]P[AL]"
+  4:
+    clue: "Saint of Ávila or Calcutta"
+    answer: "T[ER]ESA"
+  5:
+    clue: "Plagues"
+    answer: "[AIL]S"
+  6:
+    clue: "Plebiscite"
+    answer: "[RE]F[ERE][ND][UM]"
+  7:
+    clue: "Serve a sentence"
+    answer: "DOTI[ME]"
+  8:
+    clue: "Edible part of the ginseng plant"
+    answer: "[RO][OT]"
+  9:
+    clue: "Funeral stand"
+    answer: "[BI]ER"
+  10:
+    clue: "New Deal-era org. with a Blue Eagle"
+    answer: "NRA"
+  11:
+    clue: "French triple cream cheese with an apostolic name"
+    answer: "S[AIN][TA]N[DRE]"
+  12:
+    clue: "Filbert or acorn"
+    answer: "[NU]T"
+  13:
+    clue: "Fuel container"
+    answer: "[GAS]CAN"
+  14:
+    clue: "\"Alas and alack!\""
+    answer: "AHME"
+  15:
+    clue: "Manufacturer of the Chiron, which broke 300 mph in 2019"
+    answer: "[BUG]AT[TI]"
+  20:
+    clue: "Word before manner or lamp"
+    answer: "BE[DS][ID]E"
+  22:
+    clue: "Many a tourist"
+    answer: "S[IG][HTS]E[ER]"
+  26:
+    clue: "Like the march equinox (in the Northern Hemisphere, at least)"
+    answer: "[VE][RN][AL]"
+  30:
+    clue: "Title for Spock"
+    answer: "[MI]STER"
+  31:
+    clue: "Pet that is the most globally traded reptile"
+    answer: "IGUA[NA]"
+  32:
+    clue: "Rap subgenre"
+    answer: "GA[NG]S[TA]"
+  33:
+    clue: "Like the ’69 Mets, say"
+    answer: "[AM]AZIN"
+  34:
+    clue: "Teeny tiny machine"
+    answer: "NA[NO][BOT]"
+  35:
+    clue: "Englishman Parr who reportedly lived to 152"
+    answer: "OLD[TOM]"
+  36:
+    clue: "State of being for a vampire or zombie"
+    answer: "[UN]LI[FE]"
+  40:
+    clue: "Army"
+    answer: "FOR[CE]"
+  41:
+    clue: "Colombian comestibles"
+    answer: "ARE[PAS]"
+  42:
+    clue: "Tend a turkey, in a way"
+    answer: "BAS[TE]"
+  45:
+    clue: "The AAD recommends one of 30 or higher"
+    answer: "SPF"
+  46:
+    clue: "\"L'chaim!\" in Le Havre"
+    answer: "SA[LUT]"
+  50:
+    clue: "Let go"
+    answer: "C[EDE]"
+  52:
+    clue: "Mexican cheese"
+    answer: "P[ESO]"
+  53:
+    clue: "\"No Me Quiero Ir de ___\" (Bad Bunny concert residency)"
+    answer: "A[QUI]"

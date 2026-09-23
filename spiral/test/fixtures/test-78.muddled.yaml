@@ -78,4 +78,5 @@ outward:
   - clue: Emacs or vi, for example
     length: 6
 hashed: true
-boardHash: fe6d78f4e1901af8a8f9d373090f815dd2edd887147b0becdc37a0d484bdbc03
+format: 2
+boardHash: 6445f5ad75ae6582c1f606e9e96956061ed42bc8fc89a2ee9c4a0af785b47e76

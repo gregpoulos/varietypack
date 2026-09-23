@@ -24,28 +24,16 @@ test('validate: returns empty errors and warnings for valid puzzle', () => {
   assert.deepEqual(validate(valid()), { errors: [], warnings: [] });
 });
 
+// validateCommonHeader's own behavior (kind mismatch, missing title, hashed in
+// source vs muddled, instructions type/emptiness) is covered by shared/test/
+// builderUtils.test.js. This is the single wiring test proving snake-charmer
+// forwards validateCommonHeader's errors and passes its own kind
+// ('snake-charmer').
+
 test('validate: error when kind is wrong', () => {
   const p = valid(); p.kind = 'crossword';
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('"kind"')));
-});
-
-test('validate: error when kind is missing', () => {
-  const p = valid(); delete p.kind;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"kind"')));
-});
-
-test('validate: error when title is missing', () => {
-  const p = valid(); delete p.title;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"title"')));
-});
-
-test('validate: error when title is empty string', () => {
-  const p = valid(); p.title = '';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"title"')));
 });
 
 test('validate: error when entries is not an array', () => {
@@ -60,34 +48,15 @@ test('validate: error when fewer than 3 entries', () => {
   assert.ok(errors.some(e => e.includes('"entries"') && e.includes('3')));
 });
 
+// validateEntry's own behavior (missing/empty clue, missing/empty/normalizes-to-
+// empty answer) is covered by shared/test/validateEntry.test.js. This is the
+// single wiring test proving snake-charmer forwards validateEntry's errors and
+// formats its label as "entries[N]".
+
 test('validate: error when entry clue is missing', () => {
   const p = valid(); delete p.entries[0].clue;
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('clue')));
-});
-
-test('validate: error when entry clue is empty string', () => {
-  const p = valid(); p.entries[0].clue = '';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('clue')));
-});
-
-test('validate: error when entry answer is missing', () => {
-  const p = valid(); delete p.entries[0].answer;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('answer')));
-});
-
-test('validate: error when entry answer is empty string', () => {
-  const p = valid(); p.entries[0].answer = '';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('answer')));
-});
-
-test('validate: error when entry answer normalizes to empty (only numbers/punctuation)', () => {
-  const p = valid(); p.entries[0].answer = '1984!';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('answer')));
 });
 
 test('validate: error when ring size is less than 8', () => {
@@ -172,19 +141,6 @@ test('validate: error when shape is an unrecognized value', () => {
   assert.ok(errors.some(e => e.includes('"shape"')));
 });
 
-test('validate: hashed: in source puzzle is rejected', () => {
-  const p = valid();
-  p.hashed = true;
-  assert.ok(validate(p).errors.some(e => e.includes('"hashed:"')));
-});
-
-test('validate: hashed: in muddled puzzle does not produce a hashed: error', () => {
-  const p = valid();
-  p.hashed = true;
-  p.boardHash = 'any';
-  assert.ok(!validate(p).errors.some(e => e.includes('"hashed:"')));
-});
-
 test('validate: error when loops is less than 2', () => {
   const p = valid();
   p.loops = 1;
@@ -221,78 +177,17 @@ test('validate: multiple errors returned together', () => {
 });
 
 // ── styles ────────────────────────────────────────────────────────────────────
-
-test('validate: styles omitted is valid', () => {
-  assert.deepEqual(validate(valid()), { errors: [], warnings: [] });
-});
-
-test('validate: circle style with valid positions is accepted', () => {
-  const p = valid();
-  p.entries[0].styles = { circle: [0, 1] };  // AB → positions 0 and 1
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: empty styles object is accepted', () => {
-  const p = valid();
-  p.entries[0].styles = {};
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: error when styles is not an object', () => {
-  const p = valid();
-  p.entries[0].styles = 'circle';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('styles')));
-});
-
-test('validate: error when styles is an array', () => {
-  const p = valid();
-  p.entries[0].styles = [0, 1];
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('styles')));
-});
-
-test('validate: error when style positions is not an array', () => {
-  const p = valid();
-  p.entries[0].styles = { circle: 0 };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('circle')));
-});
+// validateEntryStyles's own behavior (non-object styles, unrecognized names,
+// non-array values, out-of-range/negative/non-integer positions) is covered by
+// shared/test/builderUtils.test.js. This is the single wiring test proving
+// snake-charmer forwards the correct cellCount (from the entry's answer
+// length) and label into validateEntryStyles.
 
 test('validate: error when position is out of range', () => {
   const p = valid();
   p.entries[0].styles = { circle: [2] };  // AB has length 2, position 2 is out of range
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('out of range')));
-});
-
-test('validate: error when position is negative', () => {
-  const p = valid();
-  p.entries[0].styles = { circle: [-1] };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('out of range')));
-});
-
-test('validate: error when position is a float', () => {
-  const p = valid();
-  p.entries[0].styles = { circle: [0.5] };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('out of range')));
-});
-
-test('validate: warning for unrecognized style name', () => {
-  const p = valid();
-  p.entries[0].styles = { 'blue-shade': [0] };
-  const { errors, warnings } = validate(p);
-  assert.equal(errors.length, 0);
-  assert.ok(warnings.some(w => w.includes('entries[0]') && w.includes('blue-shade')));
-});
-
-test('validate: positions count stripped letters, not raw characters', () => {
-  const p = valid();
-  // entries[1] answer is 'CDEFGH' (6 cells); position 5 is the last valid
-  p.entries[1].styles = { circle: [5] };
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
 });
 
 test('validate: multi-word answer positions ignore spaces', () => {
@@ -304,52 +199,13 @@ test('validate: multi-word answer positions ignore spaces', () => {
   assert.equal(errors.length, 0);
 });
 
-// ── instructions ──────────────────────────────────────────────────────────────
-
-test('validate: instructions omitted is valid', () => {
-  assert.deepEqual(validate(valid()), { errors: [], warnings: [] });
-});
-
-test('validate: instructions as a non-empty string is accepted', () => {
-  const p = valid();
-  p.instructions = 'Fill in the blanks.';
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: instructions with newlines is accepted', () => {
-  const p = valid();
-  p.instructions = 'Fill in the blanks.\n\nEnjoy the puzzle.';
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: error when instructions is not a string', () => {
-  const p = valid();
-  p.instructions = 42;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"instructions"')));
-});
-
-test('validate: error when instructions is an empty string', () => {
-  const p = valid();
-  p.instructions = '';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"instructions"')));
-});
-
-test('validate: error when instructions is whitespace only', () => {
-  const p = valid();
-  p.instructions = '   ';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"instructions"')));
-});
-
 // ── muddled mode ──────────────────────────────────────────────────────────────
 
 // Minimal valid muddled snake-charmer: 4 entries, total=16 cells, ringSize=8
 function validMuddled() {
   return {
     kind: 'snake-charmer', title: 'Muddled Puzzle',
-    hashed: true, boardHash: 'any-hash',
+    hashed: true, format: 2, boardHash: 'any-hash',
     entries: [
       { clue: 'One',   length: 2 },
       { clue: 'Two',   length: 6 },
@@ -388,7 +244,10 @@ test('validate: muddled — answer: entry rejected with a use-length-not-answer 
 
 test('validate: muddled entries without boardHash rejected', () => {
   const p = validMuddled();
+  // Drop format: 2 alongside boardHash — without it the puzzle is neither a source
+  // nor a muddled file, and trips the "format: in a source puzzle" error as well.
   delete p.boardHash;
+  delete p.format;
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('boardHash')));
 });
@@ -399,7 +258,7 @@ test('validate: ring-equality check skipped in muddled mode', () => {
   // (3 entries required by structural minimum; total=24, ringSize=8, all even/>=8.)
   const p = {
     kind: 'snake-charmer', title: 'T',
-    hashed: true, boardHash: 'h',
+    hashed: true, format: 2, boardHash: 'h',
     entries: [
       { clue: 'a', length: 8 },
       { clue: 'b', length: 8 },
@@ -408,4 +267,28 @@ test('validate: ring-equality check skipped in muddled mode', () => {
   };
   const { errors } = validate(p);
   assert.deepEqual(errors, []);
+});
+
+test('loops must bracket the same groups at the same cells', () => {
+  const { errors } = validate({
+    kind: 'snake-charmer', title: 'T', loops: 2,
+    entries: [
+      { clue: 'l0a', answer: 'A[BC]DE' },
+      { clue: 'l0b', answer: 'FGHI' },
+      { clue: 'l1',  answer: 'A[BC]DEFGHI' },
+    ],
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test('a loop whose bracketing differs is rejected', () => {
+  const { errors } = validate({
+    kind: 'snake-charmer', title: 'T', loops: 2,
+    entries: [
+      { clue: 'l0a', answer: 'A[BC]DE' },
+      { clue: 'l0b', answer: 'FGHI' },
+      { clue: 'l1',  answer: 'AB[CD]EFGHI' },   // a b cd e f g h i — same letters, different cells
+    ],
+  });
+  assert.ok(errors.some(e => /cells differ from loop 0/.test(e)));
 });

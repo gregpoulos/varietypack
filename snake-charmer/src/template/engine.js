@@ -66,52 +66,58 @@ function prevRingPos(pos, total) {
     let activeLoop = 0;
 
     // ── Logic functions ───────────────────────────────────────────────────────
+    // #hidden-input is static markup, present regardless of when this runs, so declaring
+    // this ahead of the hiddenInput const (Event wiring) is safe.
+    const refocus = () => document.getElementById('hidden-input').focus({ preventScroll: true });
+
     const letterState = new Array(ringSize).fill('');
+
+    // Marks (or unmarks) ring position rp's correct state on both its cell and letter
+    // elements together, so the two can never drift out of sync.
+    function setCorrect(rp, on) {
+      cellPaths[rp].classList.toggle('correct', on);
+      letterTexts[rp].classList.toggle('correct', on);
+    }
 
     function setCellLetter(ringPos, letter) {
       letterState[ringPos] = letter;
-      letterTexts[ringPos].textContent = letter;
-      cellPaths[ringPos].classList.remove('correct');
-      letterTexts[ringPos].classList.remove('correct');
+      setLetterText(letterTexts[ringPos], letter);
+      setCorrect(ringPos, false);
     }
 
+    // Multi-letter (rebus) entry state. Commit is wired at exactly one place — the top
+    // of focusCell — which covers every cursor move because activeRingPos is assigned
+    // nowhere else.
+    const composer = makeComposer({
+      getContent: rp => letterState[rp],
+      setContent: (rp, s) => setCellLetter(rp, s),
+      getCellEl:  rp => cellPaths[rp],
+      onCommit:   () => { syncUI(); checker.checkIfFilled(); saveState(); },
+    });
+
+    // Board state and answer checking. Ring positions 0..N-1 are the canonical board
+    // string order. markSolved marks clue items in *both* modes, per the mode-symmetry
+    // rule in docs/CROSS_TOOL_SPEC.md → Answer checking.
+    const checker = makeBoardChecker({
+      cellIds:             Array.from({ length: ringSize }, (_, rp) => rp),
+      getContent:          rp => letterState[rp],
+      isCellFilled:        rp => composer.isCellFilled(rp),
+      isCellMarkedCorrect: rp => cellPaths[rp].classList.contains('correct'),
+      hashed:              !!data.hashed,
+      getExpected:         rp => data.letters && data.letters[rp],
+      getBoardHash:        () => data.boardHash,
+      markSolved: () => {
+        letterState.forEach((_, rp) => setCorrect(rp, true));
+        data.entries.forEach((_, ei) => cluesList.children[ei].classList.add('correct'));
+      },
+      syncUI: () => syncUI(),
+    });
+
     function focusCell(ringPos, loop) {
+      composer.commitIfMoved(ringPos);
       activeRingPos = ringPos;
       activeLoop = loop;
-      const activeEntryIdx = entryAtCell[ringPos][loop];
-      const activeEntryPositions = new Set(
-        activeEntryIdx >= 0 ? ringPosByEntry[activeEntryIdx] : []
-      );
-
-      const otherLoop = (loop + 1) % data.loops;
-      const secondaryEntryIdx = entryAtCell[ringPos][otherLoop];
-      const secondaryPositions = new Set(
-        secondaryEntryIdx >= 0 && secondaryEntryIdx !== activeEntryIdx
-          ? ringPosByEntry[secondaryEntryIdx]
-          : []
-      );
-
-      cellPaths.forEach((p, rp) => {
-        const isActive = activeEntryPositions.has(rp);
-        const isSecondary = !isActive && secondaryPositions.has(rp);
-        p.classList.toggle('active-entry', isActive);
-        p.classList.toggle('secondary-entry', isSecondary);
-        p.classList.toggle('active-cell', rp === ringPos);
-      });
-      // Repaint active cell last within its layer so its border isn't covered by a neighbour's fill.
-      cellsLayer.appendChild(cellPaths[ringPos]);
-
-      Array.from(cluesList.children).forEach((li, i) => {
-        li.classList.toggle('active-clue', i === activeEntryIdx);
-        li.classList.toggle('secondary-entry', i === secondaryEntryIdx && i !== activeEntryIdx);
-      });
-
-      barPrimaryNum.textContent    = `${activeEntryIdx + 1}.`;
-      barPrimaryText.textContent   = data.entries[activeEntryIdx].clue;
-      barSecondaryNum.textContent  = `${secondaryEntryIdx + 1}.`;
-      barSecondaryText.textContent = data.entries[secondaryEntryIdx].clue;
-
-      hiddenInput.focus({ preventScroll: true });
+      refocus();
       syncUI();
     }
 
@@ -129,73 +135,100 @@ function prevRingPos(pos, total) {
       focusCell(prevPos, prevLoop);
     }
 
-    function checkAllCellsIfFilled() {
-      if (!letterState.every(l => l !== '')) return;
-      if (!letterState.every((l, rp) => isCellCorrect(l, data.letters[rp]))) { syncUI(); return; }
-      letterState.forEach((_, rp) => {
-        cellPaths[rp].classList.add('correct');
-        letterTexts[rp].classList.add('correct');
-      });
+    // The one rebus toggle, shared by the Enter key and #rebus-btn. Both entry points must
+    // behave identically, so neither gets its own copy of the composer call. Committing
+    // does not advance the cursor — only an explicit move (arrow, Tab, click) does.
+    function toggleRebus() {
+      composer.enter(activeRingPos);
       syncUI();
     }
 
-    function checkBoardIfFilled() {
-      if (!letterState.every(l => l !== '')) return;
-      if (sha256hex(getSolution()) !== data.boardHash) { syncUI(); return; }
-      letterState.forEach((_, rp) => {
-        cellPaths[rp].classList.add('correct');
-        letterTexts[rp].classList.add('correct');
-      });
-      data.entries.forEach((_, ei) => cluesList.children[ei].classList.add('correct'));
-      syncUI();
-    }
-
-    function getSolution() {
-      return letterState.join('').toLowerCase();
-    }
-
-    function isSolved() {
-      return cellPaths.every(p => p.classList.contains('correct'));
-    }
+    // Declared above syncUI (which calls rebusBtn.sync()) — see docs/CROSS_TOOL_SPEC.md →
+    // "Enter / Rebus button" for the TDZ rationale. Never hidden and never disabled —
+    // unlike checkBtn. See setupRebusButton.
+    const rebusBtn = setupRebusButton(document.getElementById('rebus-btn'), {
+      onToggle:    toggleRebus,
+      isComposing: () => composer.isComposing(activeRingPos),
+      isSolved:    () => latch.solved,
+      refocus,
+    });
 
     function syncUI() {
       // Loop toggle active segment (loopBtns is built in Event wiring; syncUI first runs in Restore & focus).
       loopBtns.forEach((btn, i) => btn.classList.toggle('active', i === activeLoop));
+      // Composition also ends on any cursor move, which never touches the button.
+      rebusBtn.sync();
 
-      const allFilled = letterState.every(l => l !== '');
-      const everyCellCorrect = isSolved();
+      // Active entry, plus the other loop's entry through the same cell as the
+      // secondary highlight (snake-charmer-specific — see CLAUDE.md → SVG ring rendering).
+      const activeEntryIdx = entryAtCell[activeRingPos][activeLoop];
+      const activeEntryPositions = new Set(
+        activeEntryIdx >= 0 ? ringPosByEntry[activeEntryIdx] : []
+      );
+      const otherLoop = (activeLoop + 1) % data.loops;
+      const secondaryEntryIdx = entryAtCell[activeRingPos][otherLoop];
+      const secondaryPositions = new Set(
+        secondaryEntryIdx >= 0 && secondaryEntryIdx !== activeEntryIdx
+          ? ringPosByEntry[secondaryEntryIdx]
+          : []
+      );
+
+      cellPaths.forEach((p, rp) => {
+        const isActive = activeEntryPositions.has(rp);
+        const isSecondary = !isActive && secondaryPositions.has(rp);
+        p.classList.toggle('active-entry', isActive);
+        p.classList.toggle('secondary-entry', isSecondary);
+        p.classList.toggle('active-cell', rp === activeRingPos);
+      });
+      // Repaint active cell last within its layer so its border isn't covered by a neighbour's fill.
+      cellsLayer.appendChild(cellPaths[activeRingPos]);
+
+      Array.from(cluesList.children).forEach((li, i) => {
+        li.classList.toggle('active-clue', i === activeEntryIdx);
+        li.classList.toggle('secondary-entry', i === secondaryEntryIdx && i !== activeEntryIdx);
+      });
+
+      barPrimaryNum.textContent    = `${activeEntryIdx + 1}.`;
+      barPrimaryText.innerHTML     = data.entries[activeEntryIdx].clue; // pre-rendered markdown HTML — see shared/build/renderMarkdown.js
+      barSecondaryNum.textContent  = `${secondaryEntryIdx + 1}.`;
+      barSecondaryText.innerHTML   = data.entries[secondaryEntryIdx].clue; // pre-rendered markdown HTML
+
+      const allFilled = checker.isBoardFilled();
+      const everyCellCorrect = checker.isSolved();
 
       doneWrong.hidden = !(allFilled && !everyCellCorrect);
 
       if (!data.hashed) {
-        checkBtn.disabled = !letterState[activeRingPos] ||
+        checkBtn.disabled = !composer.isCellFilled(activeRingPos) ||
           cellPaths[activeRingPos].classList.contains('correct');
       }
       latch.check(everyCellCorrect);
     }
 
-    const { saveState, restoreState, clearState } = setupStorage(storageKey('sc', data), {
+    const saveKey = storageKey('sc', data);
+    const { saveState, restoreState, clearState } = setupStorage(saveKey, {
       cellCount: ringSize,
       getState() {
         const correct = [];
         cellPaths.forEach((p, i) => { if (p.classList.contains('correct')) correct.push(i); });
-        return { letters: letterState, correct, activeMs: timer.getElapsedMs() };
+        return {
+          letters: letterState, correct, activeMs: timer.getElapsedMs(),
+          composing: composer.getComposing(),
+        };
       },
       applyState(saved) {
         saved.letters.forEach((letter, i) => {
           if (!letter) return;
           letterState[i] = letter;
-          letterTexts[i].textContent = letter;
+          setLetterText(letterTexts[i], letter);
         });
-        saved.correct.forEach(i => {
-          cellPaths[i].classList.add('correct');
-          letterTexts[i].classList.add('correct');
-        });
+        saved.correct.forEach(i => setCorrect(i, true));
         timer.restoreMs(saved.activeMs);
+        // After the letters are painted, so the composing cell shows its partial content.
+        // Absent in saves predating this field; composer.restore treats that as null.
+        composer.restore(saved.composing);
       },
     });
-
-    const timer = setupTimer({ onPause: () => saveState() });
 
     const congratsDialog = setupCongratsDialog({
       title: data.title,
@@ -203,15 +236,12 @@ function prevRingPos(pos, total) {
       onPlayAgain: () => resetBoard(),
     });
 
-    const latch = makeCompletionLatch({
-      puzzleRoot: document.querySelector('.puzzle-main'),
-      kind:         data.kind,
-      title:        data.title,
-      date:         data.date,
-      getBoardHash: () => data.boardHash,
-      getSolution,
-      getElapsedMs: () => timer.getElapsedMs(),
-      onComplete: (timeMs) => congratsDialog.open(timeMs),
+    const { timer, latch } = setupSolveTracking({
+      puzzleRoot:  document.querySelector('.puzzle-main'),
+      data,
+      getSolution: () => checker.getSolution(),
+      saveState,
+      onComplete:  (timeMs) => congratsDialog.open(timeMs),
     });
 
     // ── Build SVG ─────────────────────────────────────────────────────────────
@@ -287,7 +317,7 @@ function prevRingPos(pos, total) {
       li.dataset.entry = i;
       const textSpan = document.createElement('span');
       textSpan.className = 'clue-text';
-      textSpan.textContent = entry.clue;
+      textSpan.innerHTML = entry.clue; // pre-rendered markdown HTML — see shared/build/renderMarkdown.js
       li.appendChild(textSpan);
       cluesList.appendChild(li);
     });
@@ -296,7 +326,6 @@ function prevRingPos(pos, total) {
     const hiddenInput = document.getElementById('hidden-input');
 
     const checkBtn = document.getElementById('check-btn');
-    if (data.hashed) checkBtn.hidden = true;
 
     const doneWrong = document.getElementById('done-wrong');
     const keysOverlay = setupKeysOverlay(
@@ -306,9 +335,10 @@ function prevRingPos(pos, total) {
         ['← →',       'Move along ring'],
         ['⌫',         'Clear current cell'],
         ['Space',     'Clear and advance'],
+        ['Enter',     'Multi-letter cell'],
         ['.',         'Toggle direction'],
       ],
-      () => hiddenInput.focus({ preventScroll: true })
+      refocus
     );
 
     const loopBtns = (() => {
@@ -340,17 +370,22 @@ function prevRingPos(pos, total) {
       const ringPos = activeRingPos;
       if (e.key === 'Backspace') {
         e.preventDefault();
+        if (composer.backspace(ringPos)) {
+          syncUI();
+          saveState();
+          return;
+        }
         if (letterState[ringPos]) {
           setCellLetter(ringPos, '');
           syncUI();
         } else {
-          const prevPos = prevRingPos(ringPos, ringSize);
-          const prevLoop = prevPos === ringSize - 1 && ringPos === 0
-            ? (activeLoop - 1 + data.loops) % data.loops : activeLoop;
-          setCellLetter(prevPos, '');
-          focusCell(prevPos, prevLoop);
+          setCellLetter(prevRingPos(ringPos, ringSize), '');
+          retreatCell(ringPos);
         }
         saveState();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        toggleRebus();
       } else if (e.key === ' ') {
         e.preventDefault();
         setCellLetter(ringPos, '');
@@ -382,72 +417,78 @@ function prevRingPos(pos, total) {
 
     hiddenInput.addEventListener('input', () => {
       const ringPos = activeRingPos;
-      const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
+      const typed = normalize(hiddenInput.value).toUpperCase();
       hiddenInput.value = '';
-      if (latch.solved || !letter) return;
+      if (latch.solved || !typed) return;
       timer.onFirstInput();
-      setCellLetter(ringPos, letter);
-      // Advance before the hash check — awaiting the check first causes keystroke lag.
-      advanceCell(ringPos);
+      // typeLetter applies the slice(-1) rule on the non-composing path; advance only
+      // when it says so, so capacity never triggers an advance.
+      if (composer.typeLetter(ringPos, typed)) advanceCell(ringPos);
+      else syncUI();
 
-      if (data.hashed) {
-        checkBoardIfFilled();
-      } else {
-        checkAllCellsIfFilled();
-      }
+      // One checker call for both modes — advance first, then check, so the cursor
+      // never lags a keystroke behind the hash comparison.
+      checker.checkIfFilled();
       saveState();
     });
 
     // Clue click → jump to canonical start of that entry
     Array.from(cluesList.children).forEach((li, i) => {
-      li.addEventListener('click', () => {
+      li.addEventListener('click', e => {
+        // A clue can render a real link (see docs/CROSS_TOOL_SPEC.md ->
+        // Markdown formatting) — let it open on its own rather than also
+        // treating the click as selecting this entry.
+        if (e.target.closest('a')) return;
         const { ringPos, loop } = canonicalStart[i];
         focusCell(ringPos, loop);
       });
     });
 
     // Check Cell (non-hashed mode only)
-    // hiddenInput.focus() is required: buttons that don't call focusCell() must restore
-    // focus manually, otherwise the BUTTON guard in the document keydown listener blocks navigation.
-    if (!data.hashed) {
-      checkBtn.addEventListener('click', () => {
-        if (isCellCorrect(letterState[activeRingPos], data.letters[activeRingPos])) {
-          cellPaths[activeRingPos].classList.add('correct');
-          letterTexts[activeRingPos].classList.add('correct');
+    function checkCell() {
+      const rp = activeRingPos;
+      // The focus call is required on every path out: the button holds focus here, and the
+      // document keydown listener's BUTTON guard would swallow the next navigation key.
+      // The already-correct guard skips a redundant re-save.
+      if (!cellPaths[rp].classList.contains('correct') && composer.isCellFilled(rp)) {
+        if (isCellCorrect(letterState[rp], data.letters[rp])) {
+          setCorrect(rp, true);
+          saveState();          // only this branch mutates persisted state
         } else {
-          flashWrong(cellPaths[activeRingPos], flashLayer);
+          flashWrong(cellPaths[rp], flashLayer);
         }
-        syncUI();
-        saveState();
-        hiddenInput.focus({ preventScroll: true });
+      }
+      syncUI();
+      refocus();
+    }
+
+
+    function resetBoard() {
+      resetAndRefocus({
+        composer, clearState, timer, latch,
+        clearBoard() {
+          letterState.fill('');
+          for (let rp = 0; rp < ringSize; rp++) {
+            setLetterText(letterTexts[rp], '');
+            setCorrect(rp, false);
+          }
+          Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
+          flashLayer.replaceChildren();
+        },
+        focusInitial: () => focusCell(0, 0),
       });
     }
 
-    function resetBoard() {
-      letterState.fill('');
-      for (let rp = 0; rp < ringSize; rp++) {
-        letterTexts[rp].textContent = '';
-        cellPaths[rp].classList.remove('correct');
-        letterTexts[rp].classList.remove('correct');
-      }
-      Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
-      while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
-      clearState();
-      timer.reset();
-      latch.reset();
-      focusCell(0, 0);
-    }
-
-    setupClearButton(
-      document.getElementById('clear-btn'),
-      resetBoard,
-      () => hiddenInput.focus({ preventScroll: true })
-    );
+    setupControls({
+      checkBtn, hashed: data.hashed, onCheck: checkCell,
+      onClear: resetBoard, refocus, key: saveKey,
+    });
 
     // ── Restore & focus ─────────────────────────────────────────────────────────
-    restoreState();
-    latch.sealIfSolved(isSolved());
-    focusCell(0, 0);
+    const resumeCell = restoreAndSeal({ restoreState, checker, latch, composer });
+    // Resume on the restored composing cell — see docs/CROSS_TOOL_SPEC.md → "Composition
+    // is saved state" for why this is load-bearing, not a convenience.
+    focusCell(resumeCell === null ? 0 : resumeCell, activeLoop);
   }
 
   document.addEventListener('DOMContentLoaded', init);

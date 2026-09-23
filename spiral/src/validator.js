@@ -1,8 +1,7 @@
 'use strict';
 
-const normalize = require('../../shared/normalize');
-const { validateCommonHeader } = require('../../shared/build/builderUtils');
-const { validateEntry, hasLengthWithoutHash } = require('../../shared/build/validateEntry');
+const { validateCommonHeader, entryCells } = require('../../shared/build/builderUtils');
+const { validateEntry, checkMuddledGuard } = require('../../shared/build/validateEntry');
 
 function validate(puzzle) {
   const errors   = [];
@@ -22,22 +21,20 @@ function validate(puzzle) {
   // Integrity guards
   const isMuddled  = puzzle.boardHash !== undefined;
   const allEntries = [...puzzle.inward, ...puzzle.outward];
-  if (hasLengthWithoutHash(allEntries, isMuddled, errors)) return { errors, warnings };
-  if (isMuddled) {
-    warnings.push('note: entries are muddled; answer validation skipped');
-  }
+  if (checkMuddledGuard(allEntries, isMuddled, errors, warnings)) return { errors, warnings };
 
-  // Each result is { length, norm }: `length` always counts toward the cell total;
-  // `norm` is the normalized answer string, or null when unavailable (muddled entry
-  // or invalid entry) — so the reversal check below can require `norm !== null`.
+  // Each result is { length, cells }: `length` always counts toward the cell total;
+  // `cells` is the array of normalized per-cell strings, or null when unavailable
+  // (muddled entry or invalid entry) — so the reversal check below can require
+  // `cells !== null`.
   function validateEntries(entries, label) {
     return entries.map((entry, i) => {
       const len = validateEntry(entry, `${label}[${i}]`, isMuddled, errors, warnings);
-      if (len === null) return { length: 0, norm: null };
-      const norm = (!isMuddled && entry && typeof entry.answer === 'string')
-        ? normalize(entry.answer)
+      if (len === null) return { length: 0, cells: null };
+      const cells = (!isMuddled && entry && typeof entry.answer === 'string')
+        ? entryCells(entry)
         : null;
-      return { length: len, norm };
+      return { length: len, cells };
     });
   }
 
@@ -54,14 +51,26 @@ function validate(puzzle) {
     errors.push(`Total cell count must be at least 40, got ${inwardTotal}`);
   }
 
-  // Reversal check: only possible with actual letter strings (every entry produced a norm)
+  // Reversal check: only possible with actual answers (every entry produced cells).
+  // Reversal is over the CELL SEQUENCE, not over letters. A rebus cell is a picture
+  // standing for a chunk of a word, and a picture has no reading direction — so the
+  // outward pass reverses the order of the cells while each cell's contents stay
+  // forward. Inward S[HAR]ON ⇒ outward NO[HAR]S, never NO[RAH]S.
   if (!isMuddled) {
-    const allAnswersValid = inwardResults.every(r => r.norm !== null) && outwardResults.every(r => r.norm !== null);
+    const allAnswersValid = inwardResults.every(r => r.cells !== null) && outwardResults.every(r => r.cells !== null);
     if (allAnswersValid && inwardTotal === outwardTotal) {
-      const inwardConcat    = inwardResults.map(r => r.norm).join('');
-      const outwardReversed = outwardResults.map(r => r.norm).join('').split('').reverse().join('');
-      if (inwardConcat !== outwardReversed) {
-        errors.push('Normalized and concatenated inward answers must be the reverse of outward answers');
+      const inwardCells     = inwardResults.flatMap(r => r.cells);
+      const outwardCells    = outwardResults.flatMap(r => r.cells);
+      const outwardReversed = [...outwardCells].reverse();
+      // Joined with a space purely as a comparison separator — a normalized cell is
+      // always [a-z], so a space can never appear inside one and this join is exact.
+      if (inwardCells.join(' ') !== outwardReversed.join(' ')) {
+        errors.push(
+          'Inward and outward answers must describe the same cells in reverse order. ' +
+          'Note that a multi-letter (rebus) cell is like a picture: it has no reading direction, ' +
+          'so its letters stay in forward order in both directions — inward S[HAR]ON pairs with ' +
+          'outward NO[HAR]S, not NO[RAH]S.'
+        );
       }
     }
   }

@@ -1,0 +1,44 @@
+kind: spiral
+title: Rebus 40
+author: Fixtures
+date: '2026'
+inward:
+  - clue: Cells 1-5, ending in a two-letter rebus cell
+    length: 5
+  - clue: Cells 6-9
+    length: 4
+  - clue: Cells 10-15, with a three-letter rebus cell and a circled plain cell after it
+    styles:
+      circle:
+        - 3
+    length: 6
+  - clue: Cells 16-20
+    length: 5
+  - clue: Cells 21-24
+    length: 4
+  - clue: Cells 25-30, opening with a four-letter rebus cell
+    length: 6
+  - clue: Cells 31-35
+    length: 5
+  - clue: Cells 36-40
+    length: 5
+outward:
+  - clue: Cells 40-35
+    length: 6
+  - clue: Cells 34-30
+    length: 5
+  - clue: Cells 29-26
+    length: 4
+  - clue: Cells 25-21, opening with the four-letter rebus cell in forward order
+    length: 5
+  - clue: Cells 20-15
+    length: 6
+  - clue: Cells 14-11, with the three-letter rebus cell in forward order
+    length: 4
+  - clue: Cells 10-6
+    length: 5
+  - clue: Cells 5-1, opening with the two-letter rebus cell in forward order
+    length: 5
+hashed: true
+format: 2
+boardHash: ae4ac216a13376e9e43ab080b25ad8db421dae81161807eba87371f2be014990

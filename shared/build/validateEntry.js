@@ -1,7 +1,6 @@
 'use strict';
 
-const normalize = require('../normalize');
-const { validateEntryStyles } = require('./builderUtils');
+const { validateEntryStyles, parseAnswerCells } = require('./builderUtils');
 
 /**
  * Validates a single puzzle entry (source or muddled) and pushes messages to
@@ -42,13 +41,24 @@ function validateEntry(entry, label, isMuddled, errors, warnings) {
     errors.push(`${label}.answer must be a non-empty string`);
     return null;
   }
-  const norm = normalize(entry.answer);
-  if (!norm.length) {
+  const { cells, error } = parseAnswerCells(entry.answer);
+  if (error) {
+    errors.push(`${label}.answer: ${error}`);
+    return null;
+  }
+  if (!cells.length) {
     errors.push(`${label}.answer must contain at least one letter`);
     return null;
   }
-  validateEntryStyles(entry, label, norm.length, errors, warnings);
-  return norm.length;
+  // A group this long is nearly always a typo or an unclosed bracket. Individual
+  // tools may impose stricter limits as errors.
+  for (const cell of cells) {
+    if (cell.length >= 5) {
+      warnings.push(`${label}.answer: bracketed group "${cell}" has ${cell.length} letters — is that intended?`);
+    }
+  }
+  validateEntryStyles(entry, label, cells.length, errors, warnings);
+  return cells.length;
 }
 
 /**
@@ -73,4 +83,24 @@ function hasLengthWithoutHash(allEntries, isMuddled, errors) {
   return false;
 }
 
-module.exports = { validateEntry, hasLengthWithoutHash };
+/**
+ * Shared muddled-guard sequence run by all four validators right after they
+ * compute `isMuddled`: bail (via hasLengthWithoutHash) when muddled-looking
+ * entries appear without a top-level boardHash, otherwise push the
+ * skip-notice warning when the puzzle is muddled.
+ *
+ * @param {Array}    allEntries - Flat array of all entry objects in the puzzle.
+ * @param {boolean}  isMuddled  - True when puzzle.boardHash !== undefined.
+ * @param {string[]} errors     - Array to push error messages into.
+ * @param {string[]} warnings   - Array to push warning messages into.
+ * @returns {boolean} True when the caller should bail (return { errors, warnings }).
+ */
+function checkMuddledGuard(allEntries, isMuddled, errors, warnings) {
+  if (hasLengthWithoutHash(allEntries, isMuddled, errors)) return true;
+  if (isMuddled) {
+    warnings.push('note: entries are muddled; answer validation skipped');
+  }
+  return false;
+}
+
+module.exports = { validateEntry, hasLengthWithoutHash, checkMuddledGuard };

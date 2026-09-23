@@ -17,8 +17,9 @@ Examples:
   spiral puzzle.yaml --theme skeleton -o out/puzzle.html
 `;
 
-runToolCli({
+const code = runToolCli({
   helpText:  HELP,
   usageLine: 'spiral <input.yaml> [options]',
   buildPuzzle,
 });
+process.exit(code);

@@ -1,17 +1,18 @@
 // Shared browser-engine "chrome": the UI-surround logic that is identical across
-// every puzzle tool's engine.js — byline, instructions, the two-click Clear
-// button, scroll-key forwarding, the localStorage save/restore/clear scaffolding,
-// the shared keydown guard wrapper, and the congrats dialog on solve.
-// Each engine calls these from inside its own init(); the tool-specific cores
-// (SVG rendering, navigation, syncUI, answer checking) stay in the engine.
-// Injected into the HTML bundle as browser globals by getSharedBundle(); the
-// dual-mode guard at the bottom keeps the pattern consistent with the other
-// shared/ files even though no Node code requires it.
+// every puzzle tool's engine.js — byline, instructions, the options menu and its
+// two-click Clear button, the Rebus button, scroll-key forwarding, the
+// localStorage save/restore/clear scaffolding, the shared keydown guard wrapper,
+// the keyboard-shortcuts overlay, and the congrats dialog on solve. The
+// solve-tracking cores (timer, completion latch, composer, board checker) live in
+// engine-state.js; the tool-specific cores (SVG rendering, navigation, syncUI,
+// per-cell answer checking) stay in each engine. Each engine calls these from
+// inside its own init(). Injected into the HTML bundle as browser globals by
+// getSharedBundle(); the dual-mode guard at the bottom lets node:test require the
+// helpers that are tested via mocks (setupClearButton, setupRebusButton).
 
 // Browser-only: create an SVG-namespaced element and apply an attribute map
-// (setAttribute coerces each value to a string). Replaces the per-engine svgEl /
-// makeSvgEl helpers and Snake Charmer's hand-rolled createElementNS + setAttribute
-// construction, so every engine builds SVG nodes the same way.
+// (setAttribute coerces each value to a string). Every engine builds SVG nodes
+// this way.
 const SVG_NS = 'http://www.w3.org/2000/svg';
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -30,46 +31,102 @@ function renderByline(data) {
   byline.textContent = parts.join(' · ');
 }
 
-// instructions string → one `<p>` per blank-line-separated paragraph inside
-// `#instructions`, which is revealed (hidden=false) only when content exists.
+// Injects the pre-rendered instructions HTML into `#instructions`, which is
+// revealed (hidden=false) only when content exists. `data.instructions` is
+// already block-level markdown HTML by the time it reaches the browser
+// (shared/build/renderMarkdown.js's renderInstructionsMarkdown, called from
+// commonPuzzleData at build time) — blank-line paragraph splitting happens
+// at build time, not here, so this only ever injects trusted, build-time-rendered
+// HTML, never author text directly.
 function renderInstructions(data) {
   const el = document.getElementById('instructions');
   if (!data.instructions || !el) return;
-  data.instructions.split(/(?:\r?\n){2,}/).forEach(para => {
-    const p = document.createElement('p');
-    p.textContent = para.trim();
-    el.appendChild(p);
-  });
+  el.innerHTML = data.instructions;
   el.hidden = false;
 }
 
-// Two-click arm/disarm Clear button. First click swaps the label to "Sure?" and
-// adds `.armed` for 3s; a second click within that window calls onConfirmed(),
-// which each engine supplies to perform the full in-memory board reset.
+// Two-click arm/disarm Clear button. First click swaps the label to "Are you
+// sure?" and adds `.armed` for 3s; a second click within that window calls
+// onConfirmed(), which each engine supplies to perform the full in-memory
+// board reset.
 // `refocus` (optional) restores puzzle focus after the arming click so the
 // document keydown BUTTON guard doesn't block the next keystroke.
 function setupClearButton(clearBtn, onConfirmed, refocus) {
   let armed = false;
   let timer = null;
+  function disarm() {
+    armed = false;
+    clearBtn.textContent = 'Clear Puzzle';
+    clearBtn.classList.remove('armed');
+  }
   clearBtn.addEventListener('click', () => {
     if (!armed) {
       armed = true;
-      clearBtn.textContent = 'Sure?';
+      clearBtn.textContent = 'Are you sure?';
       clearBtn.classList.add('armed');
-      timer = setTimeout(() => {
-        armed = false;
-        clearBtn.textContent = 'Clear';
-        clearBtn.classList.remove('armed');
-      }, 3000);
+      timer = setTimeout(disarm, 3000);
       if (refocus) refocus();
     } else {
       clearTimeout(timer);
-      armed = false;
-      clearBtn.textContent = 'Clear';
-      clearBtn.classList.remove('armed');
+      disarm();
       onConfirmed();
     }
   });
+}
+
+// Touch affordance for rebus entry — the pointer equivalent of the Enter key, which is
+// otherwise the only way into composition. Some Android IMEs report keyCode 229 /
+// key 'Unidentified' for composition-routed keys, leaving rebus cells unreachable there.
+//
+// Never disabled, never hidden, identical in hashed and non-hashed builds. That is the
+// spoiler rule from docs/CROSS_TOOL_SPEC.md → Enter — rebus entry: nothing in the UI may
+// vary as a function of a cell's capacity. #check-btn sits next to this one in #controls
+// and *is* toggled per-cell — do not copy it here.
+//
+// The solved guard is not redundant with the engines' `if (latch.solved) return;`: that
+// one lives inside the setupKeydown callback, and a click never passes through it.
+// Without the guard here, composition could open on a sealed board.
+//
+//   onToggle()    → run the engine's Enter branch (composer.enter + advance-or-syncUI)
+//   isComposing() → composer.isComposing(activeCell)
+//   isSolved()    → latch.solved
+//   refocus()     → restore hidden-input focus (optional)
+function setupRebusButton(btn, { onToggle, isComposing, isSolved, refocus }) {
+  // Idempotent: sync() runs from every syncUI(), i.e. on every keystroke and cursor
+  // move, and assigning textContent replaces the text node even when the string is
+  // unchanged. The guard also makes the extra sync() in the click handler free.
+  function sync() {
+    const want = isComposing() ? 'Done' : 'Rebus';
+    if (btn.textContent !== want) btn.textContent = want;
+  }
+
+  // Focus-on-click is a `mousedown` default action, so cancelling mousedown keeps focus
+  // on the hidden input and a phone's soft keyboard open, while `click` still fires and
+  // keeps the button reachable by keyboard.
+  //
+  // It must be mousedown and not pointerdown. On a WebKit (iOS) touch tap, cancelling
+  // pointerdown suppresses the click entirely and the button never fires at all;
+  // cancelling mousedown does not. Chromium fires click either way, so no Chromium-only
+  // test can catch a regression here — `shared/test/engine-chrome.rebus-button.test.js`
+  // asserts structurally that no pointerdown listener exists.
+  btn.addEventListener('mousedown', e => e.preventDefault());
+
+  btn.addEventListener('click', e => {
+    // setupKeydown returns early on any meta/ctrl chord, so Cmd+Enter cannot open
+    // composition; a modified click must match or the two entry points diverge.
+    if (e && (e.metaKey || e.ctrlKey)) return;
+    // Only the toggle is gated on the solved board. Refocus is unconditional — see
+    // docs/CROSS_TOOL_SPEC.md → Focus management; parking focus on the button would
+    // also leave setupKeydown's BUTTON guard set.
+    if (!isSolved()) {
+      onToggle();
+      sync();
+    }
+    if (refocus) refocus();
+  });
+
+  sync();
+  return { sync };
 }
 
 // Page-scroll deltas for keys the puzzles don't otherwise consume. Because the
@@ -143,9 +200,9 @@ function setupStorage(key, { cellCount, getState, applyState }) {
 }
 
 // Wraps a tool's keydown handler with the guards shared by every engine: hasFocus,
-// Cmd/Ctrl+Arrow history navigation, generic Cmd/Ctrl passthrough, BUTTON focus
-// skip, and keys-overlay open. The tool-specific handler receives the event only
-// when all guards pass.
+// Cmd+Arrow history navigation, generic Cmd/Ctrl passthrough, BUTTON focus skip,
+// and keys-overlay open. The tool-specific handler receives the event only when
+// all guards pass.
 function setupKeydown(handler, { keysOverlay } = {}) {
   document.addEventListener('keydown', e => {
     if (!document.hasFocus()) return;
@@ -310,92 +367,173 @@ function setupKeysOverlay(shortcuts, refocus) {
   return dialog;
 }
 
-function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
-  let activeMs = 0;
-  let runningSince = null;
-  let started = false;
+// Builds and wires the options menu: a fixed top-right hamburger trigger
+// (#menu-btn) and a non-modal dropdown (#menu-panel) that today holds only the
+// Clear button, but is the shared home for any future rarely-used puzzle-wide
+// toggle. Unlike setupKeysOverlay's <dialog>, the panel is a plain div — it
+// never makes the page inert, so the grid stays clickable behind it.
+//
+// Clicks inside the panel never close it on their own. That is what lets
+// #clear-btn's existing two-click arm/confirm sequence (setupClearButton) play
+// out with the panel visibly open through the 3s "Are you sure?" window, instead of
+// vanishing after the first (arming) click. Closing — by re-clicking the
+// trigger, clicking outside, or Escape — calls `refocus`, matching every other
+// control that can steal focus from the hidden input (see
+// docs/CROSS_TOOL_SPEC.md → Focus management).
+//
+// Returns { clearBtn, close, checkBtnToggle, checkBtnToggleLabel } for setupControls
+// to wire.
+function setupOptionsMenu(refocus) {
+  const btn = document.createElement('button');
+  btn.id = 'menu-btn';
+  btn.type = 'button';
+  btn.setAttribute('aria-label', 'Menu');
+  btn.setAttribute('aria-haspopup', 'true');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.textContent = '☰';
+  document.body.appendChild(btn);
 
-  function onFirstInput() {
-    if (started) return;
-    started = true;
-    runningSince = _now();
+  const panel = document.createElement('div');
+  panel.id = 'menu-panel';
+  panel.setAttribute('role', 'menu');
+  panel.hidden = true;
+
+  // Only meaningful in non-hashed puzzles — the caller hides checkBtnToggleLabel
+  // entirely (not just the checkbox) when hashed, since there's no Check Cell
+  // button there to control. Sits above Clear Puzzle: a plain display setting
+  // before the destructive action.
+  const checkBtnToggle = document.createElement('input');
+  checkBtnToggle.type = 'checkbox';
+  checkBtnToggle.id = 'check-btn-toggle';
+  const checkBtnToggleLabel = document.createElement('label');
+  checkBtnToggleLabel.id = 'check-btn-toggle-label';
+  checkBtnToggleLabel.append(checkBtnToggle, document.createTextNode(' Show Check Cell button'));
+  panel.appendChild(checkBtnToggleLabel);
+
+  const clearBtn = document.createElement('button');
+  clearBtn.id = 'clear-btn';
+  clearBtn.type = 'button';
+  clearBtn.textContent = 'Clear Puzzle';
+  panel.appendChild(clearBtn);
+
+  document.body.appendChild(panel);
+
+  function isOpen() { return !panel.hidden; }
+
+  function close() {
+    if (!isOpen()) return;
+    panel.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    refocus();
   }
 
-  // Resets all timer state to initial values — used by resetBoard in each
-  // engine so a cleared puzzle starts timing fresh from the next keystroke.
-  function reset() {
-    started = false;
-    runningSince = null;
-    activeMs = 0;
+  function open() {
+    panel.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
   }
 
-  function getElapsedMs() {
-    return activeMs + (runningSince !== null ? _now() - runningSince : 0);
-  }
+  btn.addEventListener('click', () => (isOpen() ? close() : open()));
 
-  function restoreMs(ms) {
-    activeMs = (typeof ms === 'number' && ms >= 0) ? ms : 0;
-  }
+  // A click on the trigger is excluded here because its own listener above
+  // already handled it (bubbling reaches this one after), and a click inside
+  // the panel (e.g. arming Clear) must never close the menu out from under it.
+  document.addEventListener('click', e => {
+    if (!isOpen()) return;
+    if (panel.contains(e.target) || btn.contains(e.target)) return;
+    close();
+  });
 
-  function handleVisibility(hidden) {
-    if (hidden) {
-      if (runningSince !== null) {
-        activeMs += _now() - runningSince;
-        runningSince = null;
-      }
-      // Only flush to storage if the clock was ever started — an idle tab that
-      // never received input has nothing new to persist.
-      if (started && onPause) onPause();
-    } else {
-      // Guard against unpaired visible events (bfcache, iOS app-switcher) that
-      // would overwrite runningSince and silently drop accumulated time.
-      if (started && runningSince === null) runningSince = _now();
-    }
-  }
+  document.addEventListener('keydown', e => {
+    if (isOpen() && e.key === 'Escape') close();
+  });
 
-  const register = listenVisibility ??
-    (fn => document.addEventListener('visibilitychange', () => fn(document.hidden)));
-  register(handleVisibility);
-
-  return { onFirstInput, reset, getElapsedMs, restoreMs };
+  return { clearBtn, close, checkBtnToggle, checkBtnToggleLabel };
 }
 
-function makeCompletionLatch({
-  puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs,
-  onComplete,
-  _postMessage,
-}) {
-  let fired = false;
-  const pm = _postMessage ?? ((msg) => window.parent?.postMessage(msg, '*'));
-
-  function sealIfSolved(isSolved) {
-    if (isSolved) fired = true;
+// A tiny, board-independent localStorage boolean for the Check Cell button's
+// visibility — namespaced under the puzzle's own key (see storageKey) but never
+// touched by clearState()/resetBoard(): it's a display preference, not board
+// state, so Clear Puzzle must not reset it. Not built on setupStorage(), whose
+// v/cellCount guard is board-shaped and meaningless for a single boolean. Absent
+// (first load, or an older save) defaults to visible. `key` may be null exactly
+// as in setupStorage — an untitled/undated puzzle gets no persistence either.
+function setupCheckBtnPref(key) {
+  const prefKey = key && (key + ':showCheckBtn');
+  function load() {
+    if (!prefKey) return true;
+    try {
+      const v = JSON.parse(localStorage.getItem(prefKey));
+      return typeof v === 'boolean' ? v : true;
+    } catch (_) { return true; }
   }
-
-  function reset() { fired = false; }
-
-  function check(isSolved) {
-    if (fired || !isSolved) return;
-    fired = true;
-    const timeMs = getElapsedMs();
-    const solution = getSolution();
-    const boardHash = getBoardHash();
-    const detail = { boardHash, kind, title, date, timeMs, solution };
-    puzzleRoot.dispatchEvent(new CustomEvent('varietypack:complete', {
-      bubbles: true, composed: true, detail,
-    }));
-    pm({ type: 'varietypack:complete', boardHash, kind, title, date, timeMs });
-    if (onComplete) onComplete(timeMs);
+  function save(visible) {
+    if (!prefKey) return;
+    try { localStorage.setItem(prefKey, JSON.stringify(visible)); } catch (_) {}
   }
+  return { load, save };
+}
 
-  return { check, sealIfSolved, reset, get solved() { return fired; } };
+// Reserves #controls' current rendered width and height as min-width/min-height,
+// so hiding #check-btn (via the "Show Check Cell button" toggle) never shrinks
+// the row. Two independent reasons, both load-bearing:
+//   - height: #check-btn is deliberately styled larger than its siblings
+//     ("Primary button", theme-components.css), so it's ordinarily the
+//     tallest child and the one whose removal would otherwise change
+//     #controls' own height — in Snake Charmer specifically, that shifts the
+//     ring below it in the same flex column.
+//   - width: Snake Charmer's #ring-wrap has no explicit width — it shrinks to
+//     fit its widest child (src/template/base.css), which for a small ring is
+//     #controls, not the ring itself. Removing a button there shrinks
+//     #controls' natural width, which shrinks #ring-wrap, which shrinks the
+//     ring (#ring-svg is width:100% of it) — an unrelated button hide
+//     visibly resizing the puzzle, not just reflowing #controls internally.
+// Must be called while #check-btn is still visible, i.e. before applying the
+// loaded preference.
+// If a future fix makes #controls' rendered size constant (e.g. by giving it
+// an explicit width/height instead of relying on content), revisit whether
+// this runtime measurement is still needed.
+function reserveControlsSize() {
+  const controls = document.getElementById('controls');
+  if (!controls) return;
+  const rect = controls.getBoundingClientRect();
+  controls.style.minWidth = rect.width + 'px';
+  controls.style.minHeight = rect.height + 'px';
+}
+
+// Wires #check-btn and the options menu around it, identically in every engine:
+//   - #check-btn is hidden in hashed builds (the plain-text answer never ships there, so
+//     there is nothing to check against) and calls `onCheck` otherwise.
+//   - Clear arms/confirms through setupClearButton; once actually confirmed (not just
+//     armed) it runs `onClear` and closes the menu on the solver's behalf.
+//   - The "Show Check Cell button" row is hidden in hashed builds; otherwise it reserves
+//     #controls' size (before the loaded preference can hide the button — see
+//     reserveControlsSize), applies the persisted preference, and keeps it in sync.
+// `key` is the same storageKey(...) result the engine passes to setupStorage.
+function setupControls({ checkBtn, hashed, onCheck, onClear, refocus, key }) {
+  const { clearBtn, close, checkBtnToggle, checkBtnToggleLabel } = setupOptionsMenu(refocus);
+  setupClearButton(clearBtn, () => { onClear(); close(); }, refocus);
+
+  if (hashed) {
+    checkBtn.hidden = true;
+    checkBtnToggleLabel.hidden = true;
+    return;
+  }
+  checkBtn.addEventListener('click', onCheck);
+  reserveControlsSize();
+  const checkBtnPref = setupCheckBtnPref(key);
+  checkBtnToggle.checked = checkBtnPref.load();
+  checkBtn.hidden = !checkBtnToggle.checked;
+  checkBtnToggle.addEventListener('change', () => {
+    checkBtn.hidden = !checkBtnToggle.checked;
+    checkBtnPref.save(checkBtnToggle.checked);
+  });
 }
 
 if (typeof module !== 'undefined') {
   module.exports = {
-    svgEl, renderByline, renderInstructions, setupClearButton,
+    svgEl, renderByline, renderInstructions, setupClearButton, setupRebusButton,
     scrollByKey, storageKey, setupStorage, flashWrong,
-    setupKeydown, setupCongratsDialog, setupKeysOverlay, setupTimer,
-    makeCompletionLatch,
+    setupKeydown, setupCongratsDialog, setupKeysOverlay, setupOptionsMenu,
+    setupCheckBtnPref, reserveControlsSize, setupControls,
   };
 }

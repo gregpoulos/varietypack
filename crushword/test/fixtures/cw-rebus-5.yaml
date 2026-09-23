@@ -1,0 +1,42 @@
+kind: crushword
+title: "Crushword Test Fixture — Rebus 5×5"
+author: "Fixtures"
+date: "2026"
+grid:
+  - "...#."
+  - "....."
+  - "....."
+  - "....."
+  - ".#..."
+across:
+  1:
+    clue: "First three letters, plainly"
+    answer: "ABC"
+  5:
+    clue: "Contains a two-letter rebus cell"
+    answer: "E[TH]FGH"
+  7:
+    clue: "Contains a three-letter rebus cell"
+    answer: "IJK[ING]L"
+  8:
+    clue: "Five letters in a row"
+    answer: "MNOPQ"
+  9:
+    clue: "Last three letters, plainly"
+    answer: "STU"
+down:
+  1:
+    clue: "First column, top to bottom"
+    answer: "AEIMR"
+  2:
+    clue: "Second column, crosses the two-letter rebus cell"
+    answer: "B[TH]JN"
+  3:
+    clue: "Third column"
+    answer: "CFKOS"
+  4:
+    clue: "Fifth column"
+    answer: "DHLQU"
+  6:
+    clue: "Fourth column, crosses the three-letter rebus cell"
+    answer: "G[ING]PT"

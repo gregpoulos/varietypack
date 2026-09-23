@@ -3,10 +3,10 @@
 const path = require('path');
 const fs   = require('fs');
 const yaml = require('js-yaml');
-const { TOOLS }             = require('./toolRegistry');
-const { loadPuzzle }        = require('./builderUtils');
+const { TOOLS, loadAndValidate } = require('./toolRegistry');
 const { buildMuddledYaml }  = require('./muddleUtils');
 const parseCliArgs          = require('./parseCliArgs');
+const { writeHelpIfRequested } = require('./globalHelp');
 
 const HELP = `Produce a muddled YAML — a distributable version with answers replaced by hashes.
 
@@ -18,9 +18,11 @@ Options:
   -o <path>    Write output to this path (default: <basename>.muddled.yaml next to the source)
   -f, --force  Overwrite output if it already exists
 
-The muddled YAML sets hashed:true and replaces each entry's answer: with length:.
-It can only be produced from a valid puzzle and is a derived distribution format, not an
-authoring format. Building a muddled puzzle always produces a hashed (answer-obscured) HTML.
+The muddled YAML sets hashed:true and format:2, and replaces each entry's answer: with
+length: — a CELL count (a bracketed rebus group like [HAR] counts as one cell, not three
+letters). It can only be produced from a valid puzzle and is a derived distribution format,
+not an authoring format. Building a muddled puzzle always produces a hashed (answer-obscured)
+HTML.
 `;
 
 function muddleOutputPath(inputPath) {
@@ -29,11 +31,21 @@ function muddleOutputPath(inputPath) {
   return path.join(dir, base);
 }
 
-function muddleCommand(args) {
-  if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
-    process.stdout.write(HELP);
-    process.exit(args.length === 0 ? 1 : 0);
-  }
+/**
+ * Pure: reads only `args`, writes only to the injected `stdout`/`stderr`,
+ * and returns an exit code rather than calling process.exit(). The root
+ * cli.js entry point is a thin wrapper that calls this with real
+ * process.argv/stdout/stderr and exits with the returned code.
+ *
+ * @param {string[]} args
+ * @param {object} [deps]
+ * @param {{write: Function}} [deps.stdout]
+ * @param {{write: Function}} [deps.stderr]
+ * @returns {number} exit code
+ */
+function muddleCommand(args, { stdout = process.stdout, stderr = process.stderr } = {}) {
+  const helpCode = writeHelpIfRequested(args, HELP, stdout);
+  if (helpCode !== null) return helpCode;
 
   let flags, positionals;
   try {
@@ -42,46 +54,33 @@ function muddleCommand(args) {
       { flag: ['-f', '--force'], name: 'force', boolean: true },
     ]));
   } catch (err) {
-    process.stderr.write(`${err.message}\n`);
-    process.exit(1);
+    stderr.write(`${err.message}\n`);
+    return 1;
   }
 
   if (positionals.length < 1) {
-    process.stderr.write('Error: no input file specified.\n');
-    process.exit(1);
+    stderr.write('Error: no input file specified.\n');
+    return 1;
   }
 
   const inputPath = path.resolve(positionals[0]);
   const force     = flags.force ?? false;
 
-  let puzzle;
-  try {
-    puzzle = loadPuzzle(inputPath);
-  } catch (err) {
-    process.stderr.write(`${path.basename(inputPath)}: error\n  ${err.message}\n`);
-    process.exit(1);
+  const { error, puzzle, kind, errors, warnings } = loadAndValidate(inputPath);
+  if (error) {
+    stderr.write(`${path.basename(inputPath)}: error\n  ${error}\n`);
+    return 1;
   }
 
-  const { kind } = puzzle;
-  if (typeof kind !== 'string' || !TOOLS[kind]) {
-    const msg = typeof kind !== 'string'
-      ? 'missing or invalid "kind" field'
-      : `unknown kind "${kind}"`;
-    process.stderr.write(`${path.basename(inputPath)}: error\n  ${msg}\n`);
-    process.exit(1);
-  }
-
-  const validate = TOOLS[kind].getValidator();
-  const { errors, warnings } = validate(puzzle);
   if (warnings.length > 0) {
-    for (const w of warnings) process.stderr.write(`  ${w}\n`);
+    for (const w of warnings) stderr.write(`  ${w}\n`);
   }
   if (errors.length > 0) {
     const name = path.basename(inputPath);
-    process.stderr.write(`${name}: ${errors.length} error${errors.length === 1 ? '' : 's'}\n`);
-    for (const e of errors) process.stderr.write(`  ${e}\n`);
-    process.stderr.write('Fix errors before muddling.\n');
-    process.exit(1);
+    stderr.write(`${name}: ${errors.length} error${errors.length === 1 ? '' : 's'}\n`);
+    for (const e of errors) stderr.write(`  ${e}\n`);
+    stderr.write('Fix errors before muddling.\n');
+    return 1;
   }
 
   const preparePuzzle = TOOLS[kind].getHasher();
@@ -94,12 +93,13 @@ function muddleCommand(args) {
     : muddleOutputPath(inputPath);
 
   if (!force && fs.existsSync(outPath)) {
-    process.stderr.write(`Output already exists: ${outPath}. Use -f to overwrite.\n`);
-    process.exit(1);
+    stderr.write(`Output already exists: ${outPath}. Use -f to overwrite.\n`);
+    return 1;
   }
 
   fs.writeFileSync(outPath, yaml.dump(muddled, { lineWidth: -1 }));
-  process.stdout.write(`${path.basename(inputPath)} → ${path.basename(outPath)}\n`);
+  stdout.write(`${path.basename(inputPath)} → ${path.basename(outPath)}\n`);
+  return 0;
 }
 
 module.exports = { muddleCommand };

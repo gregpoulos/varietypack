@@ -6,11 +6,38 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 
+const { TOOLS } = require('../shared/build/toolRegistry');
+const { main } = require('../cli');
+
 const CLI = path.resolve(__dirname, '..', 'cli.js');
 const SC_FIXTURE = path.resolve(__dirname, '..', 'snake-charmer/test/fixtures/circle-36.yaml');
 const SP_FIXTURE = path.resolve(__dirname, '..', 'spiral/test/fixtures/test-100.yaml');
 
+// Per-kind fixture used by the table-driven "builds each kind" test below.
+const PER_KIND_FIXTURE = {
+  'snake-charmer':  SC_FIXTURE,
+  'spiral':         SP_FIXTURE,
+  'marching-bands': path.resolve(__dirname, '..', 'marching-bands/test/fixtures/mb-12.yaml'),
+  'crushword':      path.resolve(__dirname, '..', 'crushword/test/fixtures/cw-9.yaml'),
+};
+
+// In-process invocation of the dispatcher's pure main(). Every "build" call
+// still spawns the target per-tool cli.js as a real subprocess internally
+// (buildCommand.js's spawnTool) — only the dispatcher-level argv/exit-code
+// plumbing is exercised in-process here.
 function run(...args) {
+  let out = '';
+  let err = '';
+  const status = main(args, {
+    stdout: { write: (s) => { out += s; } },
+    stderr: { write: (s) => { err += s; } },
+  });
+  return { status, stdout: out, stderr: err };
+}
+
+// Genuine subprocess call, kept for the dispatcher's real spawnSync boundary
+// (see 'build: real subprocess smoke test' below).
+function runSubprocess(...args) {
   return spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
 }
 
@@ -18,26 +45,21 @@ function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'vp-cli-test-'));
 }
 
-// --- help / no-args ---
+// --- help ---
+//
+// No-args / -h / --help semantics live once in shared/test/globalHelp.test.js;
+// these only pin that the dispatcher and `build` are wired to that helper.
 
 test('--help writes usage to stdout and exits 0', () => {
   const r = run('--help');
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /Usage:/);
-  assert.equal(r.stderr, '');
+  assert.match(r.stdout, /Usage: varietypack <subcommand>/);
 });
 
-test('-h writes usage to stdout and exits 0', () => {
-  const r = run('-h');
+test('build: --help writes build usage and exits 0', () => {
+  const r = run('build', '--help');
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /Usage:/);
-  assert.equal(r.stderr, '');
-});
-
-test('no args writes usage to stdout and exits 1', () => {
-  const r = run();
-  assert.equal(r.status, 1);
-  assert.match(r.stdout, /Usage:/);
+  assert.match(r.stdout, /Build one or more puzzle files/);
 });
 
 test('unknown subcommand exits 1 with error', () => {
@@ -46,21 +68,32 @@ test('unknown subcommand exits 1 with error', () => {
   assert.match(r.stderr, /Unknown subcommand/i);
 });
 
-// --- build: single-file auto-detection ---
+// --- build: real subprocess boundary ---
+//
+// The dispatcher's build command spawns each per-tool cli.js as a real
+// subprocess (shared/build/buildCommand.js's spawnTool). That boundary is
+// deliberately covered here with an actual `node cli.js` subprocess rather
+// than folded into the in-process run() helper above, since the in-process
+// tests below only prove the dispatcher's own argv/exit-code plumbing —
+// they never prove the spawnSync handoff to a real per-tool process works.
 
-test('build: auto-detects snake-charmer from kind field and builds', () => {
+test('build: real subprocess smoke test — spawns per-tool cli.js and builds', () => {
   const out = path.join(tmpDir(), 'out.html');
-  const r = run('build', SC_FIXTURE, '-o', out);
+  const r = runSubprocess('build', SC_FIXTURE, '-o', out);
   assert.equal(r.status, 0, r.stderr);
   assert.ok(fs.existsSync(out));
 });
 
-test('build: auto-detects spiral from kind field and builds', () => {
-  const out = path.join(tmpDir(), 'out.html');
-  const r = run('build', SP_FIXTURE, '-o', out);
-  assert.equal(r.status, 0, r.stderr);
-  assert.ok(fs.existsSync(out));
-});
+// --- build: single-file auto-detection, table-driven across all kinds ---
+
+for (const kind of Object.keys(TOOLS)) {
+  test(`build: auto-detects ${kind} from kind field and builds via dispatcher`, () => {
+    const out = path.join(tmpDir(), 'out.html');
+    const r = run('build', PER_KIND_FIXTURE[kind], '-o', out);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(fs.existsSync(out));
+  });
+}
 
 test('build: yaml file not found exits 1', () => {
   const r = run('build', 'nonexistent.yaml');

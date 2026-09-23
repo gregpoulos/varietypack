@@ -40,3 +40,66 @@ test('injectTemplate: XSS protection — replaces </ with <\\/ in data', () => {
   assert.ok(!result.includes('</script><script>'));
   assert.ok(result.includes('<\\/script>'));
 });
+
+// $-pattern injection: a plain-string replaceAll replacement interprets
+// special patterns ($$, $&, $`, $') in the replacement value itself. A
+// function replacer's return value is inserted literally. These four cases
+// cover title (escaped, but escHtml doesn't touch '$') and a puzzleData
+// value (unescaped JSON), since the vulnerability applies to every
+// placeholder substitution, not just title.
+
+test('injectTemplate: title containing $$ survives verbatim', () => {
+  const result = injectTemplate(TEMPLATE, { title: 'Demo $$ Puzzle', css: '', js: '', puzzleData: {} });
+  assert.ok(result.includes('Demo $$ Puzzle'));
+});
+
+test('injectTemplate: title containing $& survives verbatim (post-escaping)', () => {
+  const result = injectTemplate(TEMPLATE, { title: 'Demo $& Puzzle', css: '', js: '', puzzleData: {} });
+  assert.ok(result.includes('Demo $&amp; Puzzle'));
+});
+
+test('injectTemplate: title containing $` survives verbatim', () => {
+  const result = injectTemplate(TEMPLATE, { title: 'Demo $` Puzzle', css: '', js: '', puzzleData: {} });
+  assert.ok(result.includes('Demo $` Puzzle'));
+});
+
+test('injectTemplate: title containing $\' survives verbatim and does not close the data script early', () => {
+  const result = injectTemplate(TEMPLATE, {
+    title: "Demo $'<img src=x onerror=alert(1)>", css: '', js: '',
+    puzzleData: { x: 1 },
+  });
+  assert.ok(result.includes("Demo $&#39;&lt;img src=x onerror=alert(1)&gt;"));
+  // The data <script> block must not contain a </script> tag introduced by
+  // $'-expansion (the "rest of the template" past the TITLE match).
+  const scriptOpen = result.indexOf('window.PUZZLE_DATA');
+  const scriptTagEnd = result.indexOf('</script>', scriptOpen);
+  const nextScriptOpenTag = result.indexOf('<script>', scriptOpen + 1);
+  // The first </script> after the data assignment must close that same
+  // block cleanly — i.e. nothing from the title leaked in between — and any
+  // later <script> tag must come strictly after it, confirming scriptTagEnd
+  // is the real closing tag for this block, not a spurious one the leak
+  // introduced before the template's next legitimate <script>.
+  assert.ok(scriptTagEnd !== -1);
+  assert.ok(result.slice(scriptOpen, scriptTagEnd).includes('"x": 1'));
+  assert.ok(nextScriptOpenTag === -1 || nextScriptOpenTag > scriptTagEnd);
+});
+
+test('injectTemplate: puzzleData value containing $$ survives verbatim (not collapsed)', () => {
+  const result = injectTemplate(TEMPLATE, { title: 'T', css: '', js: '', puzzleData: { note: 'a$$b' } });
+  assert.ok(result.includes('a$$b'));
+});
+
+test('injectTemplate: puzzleData value containing $& survives verbatim', () => {
+  const result = injectTemplate(TEMPLATE, { title: 'T', css: '', js: '', puzzleData: { note: 'a$&b' } });
+  assert.ok(result.includes('a$&b'));
+});
+
+test('injectTemplate: puzzleData value containing $` survives verbatim', () => {
+  const result = injectTemplate(TEMPLATE, { title: 'T', css: '', js: '', puzzleData: { note: 'a$`b' } });
+  assert.ok(result.includes('a$`b'));
+});
+
+test('injectTemplate: puzzleData value containing $\' survives verbatim', () => {
+  const result = injectTemplate(TEMPLATE, { title: 'T', css: '', js: '', puzzleData: { note: "a$'b" } });
+  assert.ok(result.includes("a$'b"));
+});

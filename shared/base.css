@@ -1,10 +1,28 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* An ID or class rule that sets `display` on a [hidden] element (e.g. #menu-panel's
+   `display: flex` below) otherwise outranks the UA [hidden] default by specificity,
+   leaving the element stuck visible. */
+[hidden] { display: none !important; }
+
 body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.4; }
 
-/* Tools with a fixed active-clue bar need body padding to clear it */
+/* Tools with a fixed active-clue bar reserve its height as body padding, and
+   expose it as --active-clue-bar-space for anything positioned against the
+   bar (#menu-btn/#menu-panel in theme-components.css, Crushword's sticky
+   grid). The bar's min-height fills that space even when its content is
+   shorter (e.g. Crushword hiding its secondary row), so there's no unpainted
+   strip for scrolled content to show through — and, since its clue text can
+   never wrap (forced nowrap + ellipsis, base.css below), this is also an
+   exact ceiling, not just a floor: the bar's rendered height is always
+   precisely this value, never more, which is what makes calc()-only
+   positioning against it exact rather than approximate. */
 body.tool-snake-charmer,
-body.tool-spiral { padding-top: 56px; }
+body.tool-spiral,
+body.tool-crushword {
+  padding-top: 56px;
+  --active-clue-bar-space: 56px;
+}
 
 #active-clue-bar {
   position: fixed;
@@ -12,6 +30,7 @@ body.tool-spiral { padding-top: 56px; }
   left: 0;
   right: 0;
   z-index: 100;
+  min-height: var(--active-clue-bar-space);
   padding: 5px 16px 4px;
 }
 
@@ -71,15 +90,29 @@ button {
   font-size: 0.875rem;
 }
 
+/* Suppress double-tap-to-zoom and its tap delay on the in-solve controls, which are
+   tapped repeatedly (#rebus-btn especially) so the delay is felt. Scoped to #controls
+   rather than every button: the modal and dialog buttons are tapped once and have no
+   reason to change hit-testing behavior. */
+#controls button { touch-action: manipulation; }
+
 button:disabled { opacity: 0.4; cursor: default; }
 
-#clear-btn::after {
-  content: 'Sure?';
+/* Reserve the width of the widest label each button can show, so swapping the label
+   never reflows its container — #menu-panel for #clear-btn (shrink-to-fit width,
+   sized off this reservation, not the panel's own min-width), #controls for
+   #rebus-btn. #clear-btn swaps Clear Puzzle→Are you sure?, #rebus-btn Rebus→Done;
+   each reserves its longer string — measured, not eyeballed: 'Are you sure?' is
+   wider than 'Clear Puzzle' despite having fewer wide characters. */
+#clear-btn::after,
+#rebus-btn::after {
   display: block;
   height: 0;
   overflow: hidden;
   visibility: hidden;
 }
+#clear-btn::after { content: 'Are you sure?'; }
+#rebus-btn::after { content: 'Rebus'; }
 
 #hidden-input {
   position: fixed;
@@ -109,6 +142,64 @@ button:disabled { opacity: 0.4; cursor: default; }
   align-items: center;
   justify-content: center;
 }
+
+/* Fixed top-right corner, mirroring #keys-btn's bottom-right circle. Snake
+   Charmer/Spiral override `top` (theme-components.css) to sit the button
+   below #active-clue-bar instead of at this default offset — see that
+   override for why. */
+#menu-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  z-index: 110;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: bold;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* The ☰ glyph's ink sits noticeably below its own line box (most of a
+     typeface's descent is unused whitespace for this character, but not all
+     of it) — flex-centering the line box therefore visually centers the
+     glyph about 1px low. This asymmetric padding nudges the centered line
+     box up by half the difference to compensate; pinned by an e2e pixel
+     measurement, not eyeballed, since the misalignment itself is only ~1px. */
+  padding-bottom: 8px;
+}
+
+/* Non-modal dropdown — plain div, not <dialog>, so the page behind it stays
+   interactive. The [hidden] reset above (!important) wins over this display:flex
+   while the panel is closed. */
+#menu-panel {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  min-width: 120px;
+}
+
+/* Matches #clear-btn's padding/font-size/border-radius (theme-components.css)
+   so both menu-panel rows read as plain, equally-weighted menu items — a flat
+   hoverable strip, not a bordered "submit button" next to a bare checkbox. */
+#check-btn-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+#check-btn-toggle { cursor: pointer; }
 
 /* Native <dialog>: raised to the top layer by showModal() and dimmed via
    ::backdrop — no positioning or z-index needed. The dialog is a transparent

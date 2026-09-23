@@ -7,11 +7,29 @@
   <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* An ID or class rule that sets `display` on a [hidden] element (e.g. #menu-panel's
+   `display: flex` below) otherwise outranks the UA [hidden] default by specificity,
+   leaving the element stuck visible. */
+[hidden] { display: none !important; }
+
 body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.4; }
 
-/* Tools with a fixed active-clue bar need body padding to clear it */
+/* Tools with a fixed active-clue bar reserve its height as body padding, and
+   expose it as --active-clue-bar-space for anything positioned against the
+   bar (#menu-btn/#menu-panel in theme-components.css, Crushword's sticky
+   grid). The bar's min-height fills that space even when its content is
+   shorter (e.g. Crushword hiding its secondary row), so there's no unpainted
+   strip for scrolled content to show through — and, since its clue text can
+   never wrap (forced nowrap + ellipsis, base.css below), this is also an
+   exact ceiling, not just a floor: the bar's rendered height is always
+   precisely this value, never more, which is what makes calc()-only
+   positioning against it exact rather than approximate. */
 body.tool-snake-charmer,
-body.tool-spiral { padding-top: 56px; }
+body.tool-spiral,
+body.tool-crushword {
+  padding-top: 56px;
+  --active-clue-bar-space: 56px;
+}
 
 #active-clue-bar {
   position: fixed;
@@ -19,6 +37,7 @@ body.tool-spiral { padding-top: 56px; }
   left: 0;
   right: 0;
   z-index: 100;
+  min-height: var(--active-clue-bar-space);
   padding: 5px 16px 4px;
 }
 
@@ -78,15 +97,29 @@ button {
   font-size: 0.875rem;
 }
 
+/* Suppress double-tap-to-zoom and its tap delay on the in-solve controls, which are
+   tapped repeatedly (#rebus-btn especially) so the delay is felt. Scoped to #controls
+   rather than every button: the modal and dialog buttons are tapped once and have no
+   reason to change hit-testing behavior. */
+#controls button { touch-action: manipulation; }
+
 button:disabled { opacity: 0.4; cursor: default; }
 
-#clear-btn::after {
-  content: 'Sure?';
+/* Reserve the width of the widest label each button can show, so swapping the label
+   never reflows its container — #menu-panel for #clear-btn (shrink-to-fit width,
+   sized off this reservation, not the panel's own min-width), #controls for
+   #rebus-btn. #clear-btn swaps Clear Puzzle→Are you sure?, #rebus-btn Rebus→Done;
+   each reserves its longer string — measured, not eyeballed: 'Are you sure?' is
+   wider than 'Clear Puzzle' despite having fewer wide characters. */
+#clear-btn::after,
+#rebus-btn::after {
   display: block;
   height: 0;
   overflow: hidden;
   visibility: hidden;
 }
+#clear-btn::after { content: 'Are you sure?'; }
+#rebus-btn::after { content: 'Rebus'; }
 
 #hidden-input {
   position: fixed;
@@ -116,6 +149,64 @@ button:disabled { opacity: 0.4; cursor: default; }
   align-items: center;
   justify-content: center;
 }
+
+/* Fixed top-right corner, mirroring #keys-btn's bottom-right circle. Snake
+   Charmer/Spiral override `top` (theme-components.css) to sit the button
+   below #active-clue-bar instead of at this default offset — see that
+   override for why. */
+#menu-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  z-index: 110;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: bold;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* The ☰ glyph's ink sits noticeably below its own line box (most of a
+     typeface's descent is unused whitespace for this character, but not all
+     of it) — flex-centering the line box therefore visually centers the
+     glyph about 1px low. This asymmetric padding nudges the centered line
+     box up by half the difference to compensate; pinned by an e2e pixel
+     measurement, not eyeballed, since the misalignment itself is only ~1px. */
+  padding-bottom: 8px;
+}
+
+/* Non-modal dropdown — plain div, not <dialog>, so the page behind it stays
+   interactive. The [hidden] reset above (!important) wins over this display:flex
+   while the panel is closed. */
+#menu-panel {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  min-width: 120px;
+}
+
+/* Matches #clear-btn's padding/font-size/border-radius (theme-components.css)
+   so both menu-panel rows read as plain, equally-weighted menu items — a flat
+   hoverable strip, not a bordered "submit button" next to a bare checkbox. */
+#check-btn-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+#check-btn-toggle { cursor: pointer; }
 
 /* Native <dialog>: raised to the top layer by showModal() and dimmed via
    ::backdrop — no positioning or z-index needed. The dialog is a transparent
@@ -175,6 +266,11 @@ h1.title { font-size: 1.5rem; font-weight: bold; line-height: 1; }
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  /* flex-shrink:0 otherwise sizes this to its widest child — #controls at max-content —
+     so the row could never wrap and a narrow viewport scrolled sideways instead. Capping
+     it lets #controls wrap and the ring scale down. Spiral and Marching Bands need no
+     equivalent: their center grid track is already width-capped. */
+  max-width: 100%;
 }
 
 #ring-container {
@@ -367,6 +463,43 @@ h1.title {
   border-bottom: 1px solid var(--theme-color-bar-border);
 }
 
+/* #menu-btn sits *within* #active-clue-bar's own band instead of floating
+   below it as a separate row — costs no extra vertical space, which matters
+   most on mobile where the on-screen keyboard already eats much of it. Pure
+   CSS calc() against #active-clue-bar's min-height (base.css), not
+   JS-measured: an earlier version computed this via getBoundingClientRect()
+   on every syncUI() and could snapshot a stale value mid mobile-keyboard
+   viewport animation, leaving the button off-screen with nothing to
+   re-correct it. 32px is the button's own height (base.css); Marching
+   Bands, with no bar, keeps the plain `top: 20px` default. */
+.tool-snake-charmer #menu-btn,
+.tool-spiral        #menu-btn,
+.tool-crushword     #menu-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
+
+/* #menu-panel opens directly below the bar's bottom edge (8px gap, matching
+   Marching Bands' static button-to-panel gap from base.css) — same
+   CSS-not-JS reasoning as #menu-btn above. */
+.tool-snake-charmer #menu-panel,
+.tool-spiral        #menu-panel,
+.tool-crushword     #menu-panel { top: calc(var(--active-clue-bar-space) + 8px); }
+
+/* Right gutter for the bar's own text now that #menu-btn shares its row.
+   Lives here rather than in base.css's shared #active-clue-bar rule since
+   only these three tools ever place the button there. */
+.tool-snake-charmer #active-clue-bar,
+.tool-spiral        #active-clue-bar,
+.tool-crushword     #active-clue-bar { padding-right: 60px; }
+
+/* Direction label ("Across"/"Down", "In"/"Out") before the bar's clue number. */
+.active-clue-dir {
+  font-size:      0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color:          var(--theme-color-muted);
+  opacity:        0.6;
+  flex-shrink:    0;
+}
+
 #instructions {
   color:         var(--theme-color-instructions);
   font-size:     var(--theme-instructions-size);
@@ -396,18 +529,41 @@ h1.title {
 #check-btn:hover:not(:disabled) { background: var(--theme-color-btn-hover); }
 #check-btn:disabled { background: var(--theme-color-btn-disabled); cursor: default; }
 
-/* Clear button */
+/* Clear button — flat, borderless, left-aligned, matching #check-btn-toggle-label
+   (base.css): both are plain menu-panel rows now, not a bordered pill next to a
+   bare checkbox. Colour cues (armed, hover) carry entirely through text colour
+   and the shared row-hover background instead of a border. */
 #clear-btn {
+  font-family:    var(--theme-font-button);
+  font-size:      0.8rem;
+  padding:        6px 8px;
+  background:     transparent;
+  border:         none;
+  text-align:     left;
+  color:          var(--theme-color-clear-fg);
+  letter-spacing: var(--theme-button-tracking);
+}
+#clear-btn:hover              { color: var(--theme-color-clear-hover-fg); }
+#clear-btn.armed              { color: var(--theme-color-danger); }
+#clear-btn:hover,
+#check-btn-toggle-label:hover { background: var(--theme-color-clue-hover); }
+
+/* Rebus button — the pointer route into multi-letter entry, mirroring the Enter key.
+   Deliberately has no disabled or per-cell state: it looks identical on every square,
+   in every build, which is what keeps it from signalling which cells are rebus.
+   Composition-in-progress is shown on the cell itself (.cell.active-cell.composing
+   below), so the button carries only its label — whose width is reserved in
+   shared/base.css so the Rebus→Done swap does not reflow #controls. */
+#rebus-btn {
   font-family:    var(--theme-font-button);
   font-size:      0.8rem;
   padding:        5px 12px;
   background:     transparent;
-  color:          var(--theme-color-clear-fg);
-  border-color:   var(--theme-color-clear-fg);
+  color:          var(--theme-color-muted);
+  border-color:   var(--theme-color-btn2-border);
   letter-spacing: var(--theme-button-tracking);
 }
-#clear-btn:hover { color: var(--theme-color-clear-hover-fg); border-color: var(--theme-color-clear-hover-fg); }
-#clear-btn.armed { color: var(--theme-color-danger);         border-color: var(--theme-color-danger); }
+#rebus-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
 /* Puzzle toggle (direction / mode / loop) */
 .puzzle-toggle { border: 1px solid var(--theme-color-btn2-border); }
@@ -440,6 +596,25 @@ h1.title {
 .cell-letter.correct { fill: var(--theme-color-correct-text); }
 .cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 
+/* Multi-letter (rebus) cell content. Sized with transform, not font-size: Spiral writes
+   its per-puzzle letter size as an SVG presentation attribute, which any CSS font-size
+   rule would outrank (e2e/spiral.spec.js asserts exactly that). transform composes with
+   whatever base size each tool established, so one shared block covers all three tools
+   with no per-tool font math. transform-box: fill-box is required — SVG's default
+   view-box origin would drag the text toward the viewport origin instead of scaling it
+   in place. */
+.cell-letter          { transform-box: fill-box; transform-origin: center; }
+.cell-letter.len-2    { transform: scale(0.62); }
+.cell-letter.len-3    { transform: scale(0.45); }
+.cell-letter.len-long { transform: scale(0.34); }
+
+/* Rebus entry in progress. Specificity 0,3,0 beats .cell.active-cell (0,2,0) without
+   depending on source order; the composing cell is always the active cell, so the
+   selector states that invariant rather than working around it. Fill and stroke colour
+   are inherited from .cell.active-cell — only the dash pattern distinguishes the state,
+   so no theme needs a new token. */
+.cell.active-cell.composing { stroke-width: 2.5; stroke-dasharray: 4 2; }
+
 /* Congrats modal — backdrop handles the overlay dim; #congrats is the visible card */
 #congrats-dialog::backdrop { background: var(--theme-color-overlay); }
 
@@ -450,6 +625,25 @@ h1.title {
   color:      var(--theme-color-muted);
 }
 #keys-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+
+/* Menu button (fixed top-right corner, created by setupOptionsMenu) — same
+   var usage as #keys-btn. */
+#menu-btn {
+  background: var(--theme-color-btn2-bg);
+  border:     1px solid var(--theme-color-btn2-border);
+  color:      var(--theme-color-muted);
+}
+#menu-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+
+/* Menu dropdown card — same var usage as #keys-modal. */
+#menu-panel {
+  background:    var(--theme-color-bg);
+  color:         var(--theme-color-text);
+  border:        2px solid var(--theme-color-soft-border);
+  border-radius: var(--theme-card-radius);
+}
+/* #clear-btn is full width inside the dropdown. */
+#menu-panel #clear-btn { width: 100%; }
 
 /* Keys modal — the <dialog> dim is its ::backdrop (skeleton sets this transparent) */
 #keys-overlay::backdrop { background: var(--theme-color-overlay); }
@@ -570,7 +764,10 @@ kbd {
 .tool-snake-charmer .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
 
 /* Marching Bands — band fills are unnamespaced to keep :where() specificity
-   below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive. */
+   below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive.
+   Prefixing with .tool-marching-bands would raise these to 0,2,0 too, tying
+   with active-entry and leaving the winner to source order (wrong) — dead
+   CSS in other tools, but harmless since the classes are MB-exclusive. */
 .cell:where(.band-even) { fill: var(--theme-color-band-even); }
 .cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
 .cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
@@ -590,14 +787,25 @@ kbd {
 .tool-spiral .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
 .tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
 .tool-spiral #direction-chevron { stroke: var(--theme-color-active-stroke); stroke-width: 0.9; opacity: 0.5; }
-.tool-spiral .active-clue-dir {
-  font-size:      0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color:          var(--theme-color-muted);
-  opacity:        0.6;
-  flex-shrink:    0;
-}
+/* Crushword */
+/* Opaque background is load-bearing, not cosmetic: .puzzle-center is
+   position:sticky over .clue-columns (base.css), which scrolls directly
+   underneath it in the same horizontal space — without this, clue text
+   would show through the padding around the sticky grid as it scrolls. */
+.tool-crushword .puzzle-center { background: var(--theme-color-bg); }
+.tool-crushword .cell-num    { font-size: 8px; }
+.tool-crushword .cell-letter { font-size: 14px; }
+.tool-crushword .cell-block  { fill: var(--theme-color-cell-center); }
+/* Every Crushword cell composes from its first keystroke, so the shared
+   dashed outline would flag nothing; reset to plain .active-cell. */
+.tool-crushword .cell.active-cell.composing { stroke-width: 1.5; stroke-dasharray: none; }
+/* Deliberately static: a blink competes for attention in a dense grid. */
+.tool-crushword .cell-caret { fill: var(--theme-color-cell-text); pointer-events: none; }
+.tool-crushword .clue-item { margin-bottom: 4px; font-size: 0.85rem; line-height: 1.35; padding: 2px 6px 2px 2px; }
+.tool-crushword .clue-item:hover           { background: var(--theme-color-clue-hover); }
+.tool-crushword .clue-item.active-clue     { background: var(--theme-color-active); }
+.tool-crushword .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
+.tool-crushword .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
 
 /* Shared print resets — the final override layer for printing, applied to
    every tool and theme. Forces plain ink on white regardless of solve state
@@ -613,6 +821,8 @@ kbd {
   #congrats-dialog,
   #keys-overlay,
   #keys-btn,
+  #menu-btn,
+  #menu-panel,
   #done-wrong { display: none !important; }
 
   body { padding-top: 0 !important; }
@@ -622,7 +832,8 @@ kbd {
   .cell,
   .cell.active-entry,
   .cell.active-cell,
-  .cell.correct { fill: #fff !important; stroke: #999 !important; stroke-width: 1 !important; }
+  .cell.correct,
+  .cell.secondary-entry { fill: #fff !important; stroke: #999 !important; stroke-width: 1 !important; stroke-dasharray: none !important; }
   .cell-letter.correct { fill: #111 !important; }
 
   /* Clue highlight / strike-through reset */
@@ -685,8 +896,8 @@ kbd {
       <div id="ring-wrap">
         <div id="controls">
           <div id="loop-toggle" class="puzzle-toggle"></div>
+          <button id="rebus-btn" type="button">Rebus</button>
           <button id="check-btn" type="button" disabled>Check Cell</button>
-          <button id="clear-btn" type="button">Clear</button>
         </div>
         <div id="ring-container">
           <svg id="ring-svg"></svg>
@@ -709,7 +920,7 @@ kbd {
   "hashed": false,
   "author": "Greg Poulos",
   "date": "2026",
-  "instructions": "Enter each answer in a clockwise direction starting at the correspondingly numbered cell in the grid. The chain of answers will snake its way around the loop twice.",
+  "instructions": "<p>Enter each answer in a clockwise direction starting at the correspondingly numbered cell in the grid. The chain of answers will snake its way around the loop twice.<\/p>\n",
   "letters": [
     "m",
     "a",
@@ -760,7 +971,7 @@ kbd {
     "i",
     "s"
   ],
-  "boardHash": "bb08026e8b3647ccf6ca0a4555d05e7ecccb0fa5851938ec9d841e005ea21967",
+  "boardHash": "3e99892e4d5835b3db17e5b51b15d58a6218ea1cd00422813d9ea25c095042b7",
   "loops": 2,
   "shape": "double-turn",
   "entries": [
@@ -979,20 +1190,400 @@ function isCellCorrect(typed, letter) {
 }
 if (typeof module !== 'undefined') module.exports = isCellCorrect;
 
+// Canonical board-string construction, shared by every tool's hasher and engine.
+// Cells join with a delimiter so that cell boundaries survive hashing: without it,
+// a solver's ["ha","ro"] would hash identically to the correct ["har","o"].
+// The delimiter is non-alphabetic, so it can never collide with normalized cell
+// content (which is [a-z] only).
+var CELL_DELIM = '.';
+
+// Joins normalized cell strings in traversal order. Callers pass only cells that
+// EXIST — a grid position with no cell (e.g. Marching Bands' center square)
+// contributes nothing, not an empty segment.
+function joinCells(cells) {
+  return cells.join(CELL_DELIM);
+}
+
+if (typeof module !== 'undefined') module.exports = { CELL_DELIM, joinCells };
+
+// Shared modules: browser globals from getSharedBundle()'s concatenation order
+// (normalize → sha256hex → isCellCorrect → boardString → this file); require()'d when
+// loaded under node:test. Same dual-mode preamble the engines use.
+if (typeof sha256hex === 'undefined' && typeof require !== 'undefined')
+  var sha256hex = require('./sha256hex');
+if (typeof isCellCorrect === 'undefined' && typeof require !== 'undefined')
+  var isCellCorrect = require('./isCellCorrect');
+if (typeof joinCells === 'undefined' && typeof require !== 'undefined')
+  var { joinCells } = require('./boardString');
+
+// Shared browser-engine game state: the solve-tracking cores every puzzle tool's
+// engine.js builds on — the active-solve timer, the one-shot completion latch,
+// multi-letter (rebus) composition, and board-state/answer checking. Unlike
+// engine-chrome.js, nothing here creates page elements: every DOM touch goes through
+// an accessor or element the engine supplies, which is what lets node:test drive
+// these with plain closures and mocks. Injected into the HTML bundle as browser
+// globals by getSharedBundle().
+
+function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
+  let activeMs = 0;
+  let runningSince = null;
+  let started = false;
+
+  function onFirstInput() {
+    if (started) return;
+    started = true;
+    runningSince = _now();
+  }
+
+  // Resets all timer state to initial values — used by resetBoard in each
+  // engine so a cleared puzzle starts timing fresh from the next keystroke.
+  function reset() {
+    started = false;
+    runningSince = null;
+    activeMs = 0;
+  }
+
+  function getElapsedMs() {
+    return activeMs + (runningSince !== null ? _now() - runningSince : 0);
+  }
+
+  function restoreMs(ms) {
+    activeMs = (typeof ms === 'number' && ms >= 0) ? ms : 0;
+  }
+
+  function handleVisibility(hidden) {
+    if (hidden) {
+      if (runningSince !== null) {
+        activeMs += _now() - runningSince;
+        runningSince = null;
+      }
+      // Only flush to storage if the clock was ever started — an idle tab that
+      // never received input has nothing new to persist.
+      if (started && onPause) onPause();
+    } else {
+      // Guard against unpaired visible events (bfcache, iOS app-switcher) that
+      // would overwrite runningSince and silently drop accumulated time.
+      if (started && runningSince === null) runningSince = _now();
+    }
+  }
+
+  const register = listenVisibility ??
+    (fn => document.addEventListener('visibilitychange', () => fn(document.hidden)));
+  register(handleVisibility);
+
+  return { onFirstInput, reset, getElapsedMs, restoreMs };
+}
+
+function makeCompletionLatch({
+  puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs,
+  onComplete,
+  _postMessage,
+}) {
+  let fired = false;
+  const pm = _postMessage ?? ((msg) => window.parent?.postMessage(msg, '*'));
+
+  function sealIfSolved(isSolved) {
+    if (isSolved) fired = true;
+  }
+
+  function reset() { fired = false; }
+
+  function check(isSolved) {
+    if (fired || !isSolved) return;
+    fired = true;
+    const timeMs = getElapsedMs();
+    const solution = getSolution();
+    const boardHash = getBoardHash();
+    const detail = { boardHash, kind, title, date, timeMs, solution };
+    puzzleRoot.dispatchEvent(new CustomEvent('varietypack:complete', {
+      bubbles: true, composed: true, detail,
+    }));
+    pm({ type: 'varietypack:complete', boardHash, kind, title, date, timeMs });
+    if (onComplete) onComplete(timeMs);
+  }
+
+  return { check, sealIfSolved, reset, get solved() { return fired; } };
+}
+
+// Builds the timer + completion-latch pair every engine wires identically: the timer
+// flushes to storage on pause, and the latch's onComplete fires once, on first solve.
+// `puzzleRoot`, `getSolution` and `onComplete` are supplied rather than read from module
+// scope — same DOM-via-accessor discipline as makeComposer/makeBoardChecker, which is what
+// keeps this file's exports callable from plain closures under node:test. The engine builds
+// its own congratsDialog (shared/engine-chrome.js) separately and passes its `.open` as
+// `onComplete` — this function never references a chrome helper, so engine-state.js still
+// calls nothing in engine-chrome.js.
+function setupSolveTracking({ puzzleRoot, data, getSolution, saveState, onComplete }) {
+  const timer = setupTimer({ onPause: saveState });
+  const latch = makeCompletionLatch({
+    puzzleRoot,
+    kind:         data.kind,
+    title:        data.title,
+    date:         data.date,
+    getBoardHash: () => data.boardHash,
+    getSolution,
+    getElapsedMs: () => timer.getElapsedMs(),
+    onComplete,
+  });
+  return { timer, latch };
+}
+
+// Length class for a cell-letter element, derived from the *typed* content's length —
+// never from the answer's capacity. Deriving it from capacity would put a len-3 class
+// on an empty cell in a non-hashed build, advertising which squares are rebus, and is
+// impossible in a hashed build where the engine has no capacity to read.
+const LEN_CLASSES = ['len-2', 'len-3', 'len-long'];
+function letterLenClass(text) {
+  if (text.length < 2)  return null;
+  if (text.length === 2) return 'len-2';
+  if (text.length === 3) return 'len-3';
+  return 'len-long';
+}
+
+// Sets a cell-letter element's text and its length class together. Every path that
+// writes letter text goes through this — setCellLetter, applyState's restore, and
+// resetBoard's clear — so a cell can never keep a stale size class.
+function setLetterText(el, text) {
+  if (!el) return;
+  el.textContent = text;
+  const want = letterLenClass(text);
+  for (const c of LEN_CLASSES) if (c !== want) el.classList.remove(c);
+  if (want) el.classList.add(want);
+}
+
+// Upper bound on a composing cell's content. Real rebus groups are 2-4 letters and the
+// shared validator already warns at 5, so this can never truncate legitimate content —
+// it exists because the composing branch appends without limit and nothing clips a cell's
+// text, so a long paste or a held key would spill over neighbouring cells. Input past the
+// cap is dropped silently; Backspace still works.
+const MAX_COMPOSE_LEN = 12;
+
+// Composing (multi-letter / rebus) cell state. At most one cell composes at a time and,
+// by the focusCell invariant (see docs/CROSS_TOOL_SPEC.md → Focus management), it is
+// always the active cell. A cell counts as *filled* only when it holds content AND is
+// not composing: that exclusion is what stops a mid-composition prefix from being read
+// as a solved board and sealing the one-way completion latch early.
+//
+// The tool supplies its own accessors because the four engines key cells differently
+// (Snake Charmer by ring position, Spiral by cell number, Marching Bands and Crushword
+// by grid id):
+//   getContent(n)    → the cell's current string
+//   setContent(n, s) → write it (the engine's setCellLetter)
+//   getCellEl(n)     → the element that carries the .composing class
+//   onCommit()       → runs after a commit: syncUI + the mode-appropriate check + save
+function makeComposer({ getContent, setContent, getCellEl, onCommit }) {
+  let composingId = null;
+
+  function mark(n, on) {
+    if (n === null) return;
+    const el = getCellEl(n);
+    if (!el) return;
+    if (on) el.classList.add('composing');
+    else    el.classList.remove('composing');
+  }
+
+  function isComposing(n) { return composingId !== null && n === composingId; }
+
+  function isCellFilled(n) { return getContent(n) !== '' && n !== composingId; }
+
+  function commit() {
+    if (composingId === null) return;
+    mark(composingId, false);
+    // Clear the id *before* onCommit so the check it triggers sees the cell as filled.
+    composingId = null;
+    if (onCommit) onCommit();
+  }
+
+  // Called at the top of every engine's focusCell. Because the active cell is assigned
+  // nowhere else, this one call site covers arrows, Tab, Space, cell clicks, clue
+  // clicks and toggles. A same-cell focus (a direction/mode toggle) is a no-op, so
+  // composition survives a toggle — the cursor did not move.
+  function commitIfMoved(n) {
+    if (composingId !== null && composingId !== n) commit();
+  }
+
+  // Returns true when the caller should advance the cursor.
+  function typeLetter(n, text) {
+    if (isComposing(n)) {
+      setContent(n, (getContent(n) + text).slice(0, MAX_COMPOSE_LEN));
+      return false;
+    }
+    // The non-composing path sets one character per keystroke. The composing path takes
+    // the whole value instead, which is what makes paste and mobile autocorrect work
+    // mid-rebus. The asymmetry is deliberate — do not "unify" these.
+    setContent(n, text.slice(-1));
+    return true;
+  }
+
+  // Returns true when it consumed the keystroke. Returning false on an empty composing
+  // cell is what lets the engine fall through to its normal retreat, which commits.
+  function backspace(n) {
+    if (!isComposing(n)) return false;
+    const cur = getContent(n);
+    if (cur === '') return false;
+    setContent(n, cur.slice(0, -1));
+    return true;
+  }
+
+  // Toggles composition on n. Beginning keeps any existing content, so a cell holding H
+  // grows into HAR without retyping and no input is ever destroyed.
+  function enter(n) {
+    if (isComposing(n)) { commit(); return; }
+    composingId = n;
+    mark(n, true);
+  }
+
+  // Drops state without firing onCommit — see resetAndRefocus for why.
+  function reset() {
+    mark(composingId, false);
+    composingId = null;
+  }
+
+  // Composition is part of the saved board, not just live UI state. Autosave fires at
+  // every mutation site including mid-composition — and on mobile also on every app
+  // switch and screen lock, via setupTimer's visibility listener — so without these two
+  // a reload silently commits a half-typed prefix: the cell returns *filled*, counts
+  // toward isBoardFilled, and can be adjudicated as an answer the solver never submitted.
+  function getComposing() { return composingId; }
+
+  // `n` comes straight from the parsed save, so it may be undefined (a save written
+  // before this field existed) or null. Only a real cell id reopens composition — an
+  // absent field is treated as "not composing" rather than bumping the schema `v`,
+  // matching how `activeMs`'s addition was handled.
+  function restore(n) {
+    if (n === null || n === undefined) return;
+    composingId = n;
+    mark(n, true);
+  }
+
+  return {
+    isCellFilled, isComposing, typeLetter, backspace, enter, commitIfMoved, reset,
+    getComposing, restore,
+  };
+}
+
+// The board-state and answer-checking core, shared by every tool: pure state logic,
+// covered by node:test.
+//
+// The tool supplies only what genuinely differs:
+//   cellIds             → cell ids in canonical traversal order (the board-string order)
+//   getContent(n)       → the cell's current string
+//   isCellFilled(n)     → composer.isCellFilled — content present AND not composing
+//   isCellMarkedCorrect(n) → reads the tool's own correct marker (class or dataset)
+//   hashed              → picks the evidence source, nothing else
+//   getExpected(n)      → the cell's answer string (non-hashed builds only)
+//   getBoardHash()      → the stored board hash
+//   markSolved()        → paint the solved board (cells, letters, and clue items if the
+//                         tool marks them)
+//   syncUI()            → the engine's syncUI
+//
+// One checkIfFilled() serves both modes. That is what keeps them symmetric by
+// construction rather than by two hand-maintained copies: the guard, the syncUI calls
+// and markSolved() are shared, and `hashed` chooses only how correctness is evidenced.
+function makeBoardChecker({
+  cellIds, getContent, isCellFilled, isCellMarkedCorrect,
+  hashed, getExpected, getBoardHash, markSolved, syncUI,
+}) {
+  function isBoardFilled() { return cellIds.every(n => isCellFilled(n)); }
+
+  function isSolved() { return cellIds.every(n => isCellMarkedCorrect(n)); }
+
+  // Normalize each cell, then join — never normalize a joined string. joinCells inserts
+  // CELL_DELIM so a solver's ["ha","ro"] cannot hash identically to a correct ["har","o"].
+  function getSolution() {
+    return joinCells(cellIds.map(n => getContent(n).toLowerCase()));
+  }
+
+  function boardIsCorrect() {
+    return hashed
+      ? sha256hex(getSolution()) === getBoardHash()
+      : cellIds.every(n => isCellCorrect(getContent(n), getExpected(n)));
+  }
+
+  // No feedback of any kind until every cell is filled — and a composing cell is not
+  // filled, which is what stops a mid-composition prefix from sealing the completion
+  // latch on a half-entered board.
+  function checkIfFilled() {
+    if (!isBoardFilled()) return;
+    if (!boardIsCorrect()) { syncUI(); return; }
+    markSolved();
+    syncUI();
+  }
+
+  // Restore-time repaint, called once after restoreState(). The auto-save payload
+  // records cell correctness only — deliberately, since everything else the solved
+  // board shows is derivable — so a solved puzzle comes back with green cells and
+  // unmarked clue items. Re-running markSolved() puts the rest of the painting back.
+  //
+  // Mark-driven, never evidence-driven: it re-paints from correctness already
+  // established, it does not re-adjudicate the board, so hashed and non-hashed
+  // behave identically.
+  //
+  // And it must not call syncUI(), which would reach the engine's latch.check().
+  // Today's engines all seal before repainting, so such a call would in fact be
+  // harmless — check() returns immediately on an already-fired latch. The rule is
+  // not about today: makeBoardChecker is shared and cannot see how any future
+  // engine orders its restore epilogue, so the repaint has to be safe under *any*
+  // ordering. Staying out of syncUI() is what buys that; seal-first is insurance,
+  // not the guarantee — pinned by shared/test/engine-state.checker.test.js. All
+  // four engines call latch.sealIfSolved() then checker.repaintIfSolved(), both
+  // before the first focusCell(); see docs/CROSS_TOOL_SPEC.md → "localStorage key
+  // format" → Timing contract for that call-order requirement.
+  function repaintIfSolved() { if (isSolved()) markSolved(); }
+
+  return { isBoardFilled, isSolved, getSolution, checkIfFilled, repaintIfSolved };
+}
+
+// The restore-time epilogue every engine's init() runs just before its first focusCell():
+// apply saved state, seal the latch if the restored board is already solved, then repaint.
+// One shared call keeps the order fixed across engines (see repaintIfSolved for why the
+// repaint must be safe under any order anyway). Returns the cell left mid-composition, or
+// null, for the engine's resume-focus call.
+function restoreAndSeal({ restoreState, checker, latch, composer }) {
+  restoreState();
+  latch.sealIfSolved(checker.isSolved());
+  checker.repaintIfSolved();
+  return composer.getComposing();
+}
+
+// The in-memory board reset behind Clear and Play again, shared so its two fixed
+// positions hold in every engine. composer.reset() runs first: it drops composition
+// without firing onCommit, whose saveState would otherwise re-write the key clearState
+// removes — and commitIfMoved can't stand in for it, being a no-op when the reset target
+// is the composing cell. focusInitial() runs last, so syncUI re-derives every highlight
+// and the done-wrong banner from the fully reset board. `clearBoard` is the engine's own
+// teardown: letters, correct marks, flash overlays, navigation sub-mode.
+function resetAndRefocus({ composer, clearBoard, clearState, timer, latch, focusInitial }) {
+  composer.reset();
+  clearBoard();
+  clearState();
+  timer.reset();
+  latch.reset();
+  focusInitial();
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    setupTimer, makeCompletionLatch, makeComposer, setLetterText, letterLenClass, makeBoardChecker,
+    setupSolveTracking, restoreAndSeal, resetAndRefocus,
+  };
+}
+
 // Shared browser-engine "chrome": the UI-surround logic that is identical across
-// every puzzle tool's engine.js — byline, instructions, the two-click Clear
-// button, scroll-key forwarding, the localStorage save/restore/clear scaffolding,
-// the shared keydown guard wrapper, and the congrats dialog on solve.
-// Each engine calls these from inside its own init(); the tool-specific cores
-// (SVG rendering, navigation, syncUI, answer checking) stay in the engine.
-// Injected into the HTML bundle as browser globals by getSharedBundle(); the
-// dual-mode guard at the bottom keeps the pattern consistent with the other
-// shared/ files even though no Node code requires it.
+// every puzzle tool's engine.js — byline, instructions, the options menu and its
+// two-click Clear button, the Rebus button, scroll-key forwarding, the
+// localStorage save/restore/clear scaffolding, the shared keydown guard wrapper,
+// the keyboard-shortcuts overlay, and the congrats dialog on solve. The
+// solve-tracking cores (timer, completion latch, composer, board checker) live in
+// engine-state.js; the tool-specific cores (SVG rendering, navigation, syncUI,
+// per-cell answer checking) stay in each engine. Each engine calls these from
+// inside its own init(). Injected into the HTML bundle as browser globals by
+// getSharedBundle(); the dual-mode guard at the bottom lets node:test require the
+// helpers that are tested via mocks (setupClearButton, setupRebusButton).
 
 // Browser-only: create an SVG-namespaced element and apply an attribute map
-// (setAttribute coerces each value to a string). Replaces the per-engine svgEl /
-// makeSvgEl helpers and Snake Charmer's hand-rolled createElementNS + setAttribute
-// construction, so every engine builds SVG nodes the same way.
+// (setAttribute coerces each value to a string). Every engine builds SVG nodes
+// this way.
 const SVG_NS = 'http://www.w3.org/2000/svg';
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -1011,46 +1602,102 @@ function renderByline(data) {
   byline.textContent = parts.join(' · ');
 }
 
-// instructions string → one `<p>` per blank-line-separated paragraph inside
-// `#instructions`, which is revealed (hidden=false) only when content exists.
+// Injects the pre-rendered instructions HTML into `#instructions`, which is
+// revealed (hidden=false) only when content exists. `data.instructions` is
+// already block-level markdown HTML by the time it reaches the browser
+// (shared/build/renderMarkdown.js's renderInstructionsMarkdown, called from
+// commonPuzzleData at build time) — blank-line paragraph splitting happens
+// at build time, not here, so this only ever injects trusted, build-time-rendered
+// HTML, never author text directly.
 function renderInstructions(data) {
   const el = document.getElementById('instructions');
   if (!data.instructions || !el) return;
-  data.instructions.split(/(?:\r?\n){2,}/).forEach(para => {
-    const p = document.createElement('p');
-    p.textContent = para.trim();
-    el.appendChild(p);
-  });
+  el.innerHTML = data.instructions;
   el.hidden = false;
 }
 
-// Two-click arm/disarm Clear button. First click swaps the label to "Sure?" and
-// adds `.armed` for 3s; a second click within that window calls onConfirmed(),
-// which each engine supplies to perform the full in-memory board reset.
+// Two-click arm/disarm Clear button. First click swaps the label to "Are you
+// sure?" and adds `.armed` for 3s; a second click within that window calls
+// onConfirmed(), which each engine supplies to perform the full in-memory
+// board reset.
 // `refocus` (optional) restores puzzle focus after the arming click so the
 // document keydown BUTTON guard doesn't block the next keystroke.
 function setupClearButton(clearBtn, onConfirmed, refocus) {
   let armed = false;
   let timer = null;
+  function disarm() {
+    armed = false;
+    clearBtn.textContent = 'Clear Puzzle';
+    clearBtn.classList.remove('armed');
+  }
   clearBtn.addEventListener('click', () => {
     if (!armed) {
       armed = true;
-      clearBtn.textContent = 'Sure?';
+      clearBtn.textContent = 'Are you sure?';
       clearBtn.classList.add('armed');
-      timer = setTimeout(() => {
-        armed = false;
-        clearBtn.textContent = 'Clear';
-        clearBtn.classList.remove('armed');
-      }, 3000);
+      timer = setTimeout(disarm, 3000);
       if (refocus) refocus();
     } else {
       clearTimeout(timer);
-      armed = false;
-      clearBtn.textContent = 'Clear';
-      clearBtn.classList.remove('armed');
+      disarm();
       onConfirmed();
     }
   });
+}
+
+// Touch affordance for rebus entry — the pointer equivalent of the Enter key, which is
+// otherwise the only way into composition. Some Android IMEs report keyCode 229 /
+// key 'Unidentified' for composition-routed keys, leaving rebus cells unreachable there.
+//
+// Never disabled, never hidden, identical in hashed and non-hashed builds. That is the
+// spoiler rule from docs/CROSS_TOOL_SPEC.md → Enter — rebus entry: nothing in the UI may
+// vary as a function of a cell's capacity. #check-btn sits next to this one in #controls
+// and *is* toggled per-cell — do not copy it here.
+//
+// The solved guard is not redundant with the engines' `if (latch.solved) return;`: that
+// one lives inside the setupKeydown callback, and a click never passes through it.
+// Without the guard here, composition could open on a sealed board.
+//
+//   onToggle()    → run the engine's Enter branch (composer.enter + advance-or-syncUI)
+//   isComposing() → composer.isComposing(activeCell)
+//   isSolved()    → latch.solved
+//   refocus()     → restore hidden-input focus (optional)
+function setupRebusButton(btn, { onToggle, isComposing, isSolved, refocus }) {
+  // Idempotent: sync() runs from every syncUI(), i.e. on every keystroke and cursor
+  // move, and assigning textContent replaces the text node even when the string is
+  // unchanged. The guard also makes the extra sync() in the click handler free.
+  function sync() {
+    const want = isComposing() ? 'Done' : 'Rebus';
+    if (btn.textContent !== want) btn.textContent = want;
+  }
+
+  // Focus-on-click is a `mousedown` default action, so cancelling mousedown keeps focus
+  // on the hidden input and a phone's soft keyboard open, while `click` still fires and
+  // keeps the button reachable by keyboard.
+  //
+  // It must be mousedown and not pointerdown. On a WebKit (iOS) touch tap, cancelling
+  // pointerdown suppresses the click entirely and the button never fires at all;
+  // cancelling mousedown does not. Chromium fires click either way, so no Chromium-only
+  // test can catch a regression here — `shared/test/engine-chrome.rebus-button.test.js`
+  // asserts structurally that no pointerdown listener exists.
+  btn.addEventListener('mousedown', e => e.preventDefault());
+
+  btn.addEventListener('click', e => {
+    // setupKeydown returns early on any meta/ctrl chord, so Cmd+Enter cannot open
+    // composition; a modified click must match or the two entry points diverge.
+    if (e && (e.metaKey || e.ctrlKey)) return;
+    // Only the toggle is gated on the solved board. Refocus is unconditional — see
+    // docs/CROSS_TOOL_SPEC.md → Focus management; parking focus on the button would
+    // also leave setupKeydown's BUTTON guard set.
+    if (!isSolved()) {
+      onToggle();
+      sync();
+    }
+    if (refocus) refocus();
+  });
+
+  sync();
+  return { sync };
 }
 
 // Page-scroll deltas for keys the puzzles don't otherwise consume. Because the
@@ -1124,9 +1771,9 @@ function setupStorage(key, { cellCount, getState, applyState }) {
 }
 
 // Wraps a tool's keydown handler with the guards shared by every engine: hasFocus,
-// Cmd/Ctrl+Arrow history navigation, generic Cmd/Ctrl passthrough, BUTTON focus
-// skip, and keys-overlay open. The tool-specific handler receives the event only
-// when all guards pass.
+// Cmd+Arrow history navigation, generic Cmd/Ctrl passthrough, BUTTON focus skip,
+// and keys-overlay open. The tool-specific handler receives the event only when
+// all guards pass.
 function setupKeydown(handler, { keysOverlay } = {}) {
   document.addEventListener('keydown', e => {
     if (!document.hasFocus()) return;
@@ -1291,549 +1938,373 @@ function setupKeysOverlay(shortcuts, refocus) {
   return dialog;
 }
 
-function setupTimer({ onPause, listenVisibility, now: _now = Date.now } = {}) {
-  let activeMs = 0;
-  let runningSince = null;
-  let started = false;
+// Builds and wires the options menu: a fixed top-right hamburger trigger
+// (#menu-btn) and a non-modal dropdown (#menu-panel) that today holds only the
+// Clear button, but is the shared home for any future rarely-used puzzle-wide
+// toggle. Unlike setupKeysOverlay's <dialog>, the panel is a plain div — it
+// never makes the page inert, so the grid stays clickable behind it.
+//
+// Clicks inside the panel never close it on their own. That is what lets
+// #clear-btn's existing two-click arm/confirm sequence (setupClearButton) play
+// out with the panel visibly open through the 3s "Are you sure?" window, instead of
+// vanishing after the first (arming) click. Closing — by re-clicking the
+// trigger, clicking outside, or Escape — calls `refocus`, matching every other
+// control that can steal focus from the hidden input (see
+// docs/CROSS_TOOL_SPEC.md → Focus management).
+//
+// Returns { clearBtn, close, checkBtnToggle, checkBtnToggleLabel } for setupControls
+// to wire.
+function setupOptionsMenu(refocus) {
+  const btn = document.createElement('button');
+  btn.id = 'menu-btn';
+  btn.type = 'button';
+  btn.setAttribute('aria-label', 'Menu');
+  btn.setAttribute('aria-haspopup', 'true');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.textContent = '☰';
+  document.body.appendChild(btn);
 
-  function onFirstInput() {
-    if (started) return;
-    started = true;
-    runningSince = _now();
+  const panel = document.createElement('div');
+  panel.id = 'menu-panel';
+  panel.setAttribute('role', 'menu');
+  panel.hidden = true;
+
+  // Only meaningful in non-hashed puzzles — the caller hides checkBtnToggleLabel
+  // entirely (not just the checkbox) when hashed, since there's no Check Cell
+  // button there to control. Sits above Clear Puzzle: a plain display setting
+  // before the destructive action.
+  const checkBtnToggle = document.createElement('input');
+  checkBtnToggle.type = 'checkbox';
+  checkBtnToggle.id = 'check-btn-toggle';
+  const checkBtnToggleLabel = document.createElement('label');
+  checkBtnToggleLabel.id = 'check-btn-toggle-label';
+  checkBtnToggleLabel.append(checkBtnToggle, document.createTextNode(' Show Check Cell button'));
+  panel.appendChild(checkBtnToggleLabel);
+
+  const clearBtn = document.createElement('button');
+  clearBtn.id = 'clear-btn';
+  clearBtn.type = 'button';
+  clearBtn.textContent = 'Clear Puzzle';
+  panel.appendChild(clearBtn);
+
+  document.body.appendChild(panel);
+
+  function isOpen() { return !panel.hidden; }
+
+  function close() {
+    if (!isOpen()) return;
+    panel.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    refocus();
   }
 
-  // Resets all timer state to initial values — used by resetBoard in each
-  // engine so a cleared puzzle starts timing fresh from the next keystroke.
-  function reset() {
-    started = false;
-    runningSince = null;
-    activeMs = 0;
+  function open() {
+    panel.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
   }
 
-  function getElapsedMs() {
-    return activeMs + (runningSince !== null ? _now() - runningSince : 0);
-  }
+  btn.addEventListener('click', () => (isOpen() ? close() : open()));
 
-  function restoreMs(ms) {
-    activeMs = (typeof ms === 'number' && ms >= 0) ? ms : 0;
-  }
+  // A click on the trigger is excluded here because its own listener above
+  // already handled it (bubbling reaches this one after), and a click inside
+  // the panel (e.g. arming Clear) must never close the menu out from under it.
+  document.addEventListener('click', e => {
+    if (!isOpen()) return;
+    if (panel.contains(e.target) || btn.contains(e.target)) return;
+    close();
+  });
 
-  function handleVisibility(hidden) {
-    if (hidden) {
-      if (runningSince !== null) {
-        activeMs += _now() - runningSince;
-        runningSince = null;
-      }
-      // Only flush to storage if the clock was ever started — an idle tab that
-      // never received input has nothing new to persist.
-      if (started && onPause) onPause();
-    } else {
-      // Guard against unpaired visible events (bfcache, iOS app-switcher) that
-      // would overwrite runningSince and silently drop accumulated time.
-      if (started && runningSince === null) runningSince = _now();
-    }
-  }
+  document.addEventListener('keydown', e => {
+    if (isOpen() && e.key === 'Escape') close();
+  });
 
-  const register = listenVisibility ??
-    (fn => document.addEventListener('visibilitychange', () => fn(document.hidden)));
-  register(handleVisibility);
-
-  return { onFirstInput, reset, getElapsedMs, restoreMs };
+  return { clearBtn, close, checkBtnToggle, checkBtnToggleLabel };
 }
 
-function makeCompletionLatch({
-  puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs,
-  onComplete,
-  _postMessage,
-}) {
-  let fired = false;
-  const pm = _postMessage ?? ((msg) => window.parent?.postMessage(msg, '*'));
-
-  function sealIfSolved(isSolved) {
-    if (isSolved) fired = true;
+// A tiny, board-independent localStorage boolean for the Check Cell button's
+// visibility — namespaced under the puzzle's own key (see storageKey) but never
+// touched by clearState()/resetBoard(): it's a display preference, not board
+// state, so Clear Puzzle must not reset it. Not built on setupStorage(), whose
+// v/cellCount guard is board-shaped and meaningless for a single boolean. Absent
+// (first load, or an older save) defaults to visible. `key` may be null exactly
+// as in setupStorage — an untitled/undated puzzle gets no persistence either.
+function setupCheckBtnPref(key) {
+  const prefKey = key && (key + ':showCheckBtn');
+  function load() {
+    if (!prefKey) return true;
+    try {
+      const v = JSON.parse(localStorage.getItem(prefKey));
+      return typeof v === 'boolean' ? v : true;
+    } catch (_) { return true; }
   }
-
-  function reset() { fired = false; }
-
-  function check(isSolved) {
-    if (fired || !isSolved) return;
-    fired = true;
-    const timeMs = getElapsedMs();
-    const solution = getSolution();
-    const boardHash = getBoardHash();
-    const detail = { boardHash, kind, title, date, timeMs, solution };
-    puzzleRoot.dispatchEvent(new CustomEvent('varietypack:complete', {
-      bubbles: true, composed: true, detail,
-    }));
-    pm({ type: 'varietypack:complete', boardHash, kind, title, date, timeMs });
-    if (onComplete) onComplete(timeMs);
+  function save(visible) {
+    if (!prefKey) return;
+    try { localStorage.setItem(prefKey, JSON.stringify(visible)); } catch (_) {}
   }
+  return { load, save };
+}
 
-  return { check, sealIfSolved, reset, get solved() { return fired; } };
+// Reserves #controls' current rendered width and height as min-width/min-height,
+// so hiding #check-btn (via the "Show Check Cell button" toggle) never shrinks
+// the row. Two independent reasons, both load-bearing:
+//   - height: #check-btn is deliberately styled larger than its siblings
+//     ("Primary button", theme-components.css), so it's ordinarily the
+//     tallest child and the one whose removal would otherwise change
+//     #controls' own height — in Snake Charmer specifically, that shifts the
+//     ring below it in the same flex column.
+//   - width: Snake Charmer's #ring-wrap has no explicit width — it shrinks to
+//     fit its widest child (src/template/base.css), which for a small ring is
+//     #controls, not the ring itself. Removing a button there shrinks
+//     #controls' natural width, which shrinks #ring-wrap, which shrinks the
+//     ring (#ring-svg is width:100% of it) — an unrelated button hide
+//     visibly resizing the puzzle, not just reflowing #controls internally.
+// Must be called while #check-btn is still visible, i.e. before applying the
+// loaded preference.
+// If a future fix makes #controls' rendered size constant (e.g. by giving it
+// an explicit width/height instead of relying on content), revisit whether
+// this runtime measurement is still needed.
+function reserveControlsSize() {
+  const controls = document.getElementById('controls');
+  if (!controls) return;
+  const rect = controls.getBoundingClientRect();
+  controls.style.minWidth = rect.width + 'px';
+  controls.style.minHeight = rect.height + 'px';
+}
+
+// Wires #check-btn and the options menu around it, identically in every engine:
+//   - #check-btn is hidden in hashed builds (the plain-text answer never ships there, so
+//     there is nothing to check against) and calls `onCheck` otherwise.
+//   - Clear arms/confirms through setupClearButton; once actually confirmed (not just
+//     armed) it runs `onClear` and closes the menu on the solver's behalf.
+//   - The "Show Check Cell button" row is hidden in hashed builds; otherwise it reserves
+//     #controls' size (before the loaded preference can hide the button — see
+//     reserveControlsSize), applies the persisted preference, and keeps it in sync.
+// `key` is the same storageKey(...) result the engine passes to setupStorage.
+function setupControls({ checkBtn, hashed, onCheck, onClear, refocus, key }) {
+  const { clearBtn, close, checkBtnToggle, checkBtnToggleLabel } = setupOptionsMenu(refocus);
+  setupClearButton(clearBtn, () => { onClear(); close(); }, refocus);
+
+  if (hashed) {
+    checkBtn.hidden = true;
+    checkBtnToggleLabel.hidden = true;
+    return;
+  }
+  checkBtn.addEventListener('click', onCheck);
+  reserveControlsSize();
+  const checkBtnPref = setupCheckBtnPref(key);
+  checkBtnToggle.checked = checkBtnPref.load();
+  checkBtn.hidden = !checkBtnToggle.checked;
+  checkBtnToggle.addEventListener('change', () => {
+    checkBtn.hidden = !checkBtnToggle.checked;
+    checkBtnPref.save(checkBtnToggle.checked);
+  });
 }
 
 if (typeof module !== 'undefined') {
   module.exports = {
-    svgEl, renderByline, renderInstructions, setupClearButton,
+    svgEl, renderByline, renderInstructions, setupClearButton, setupRebusButton,
     scrollByKey, storageKey, setupStorage, flashWrong,
-    setupKeydown, setupCongratsDialog, setupKeysOverlay, setupTimer,
-    makeCompletionLatch,
+    setupKeydown, setupCongratsDialog, setupKeysOverlay, setupOptionsMenu,
+    setupCheckBtnPref, reserveControlsSize, setupControls,
   };
 }
 
 'use strict';
-// Stadium/circle shape renderer.
-// getStadiumRenderer(ring) → { cellPath, letterCenter, labelPos }
+// Shared core for the shape renderers (stadium.js, turn.js, double-turn.js).
+//
+// Every ring shape is a closed chain of sections in clockwise traversal order, and
+// every section is one of two kinds:
+//   - a straight track along one side of a horizontal arm. A 'top' track sits above
+//     the arm's center line and runs left → right; a 'bottom' track sits below it and
+//     runs right → left (clockwise traversal fixes the pairing).
+//   - an arc of an annulus, stepping by a signed angle per cell (positive =
+//     clockwise in SVG's y-down coordinates).
+// A shape module only lists its sections; the cell outline, letter anchor and
+// number-label anchor are computed here, so every shape positions labels the same way.
+//
+// A band is the radial extent a section occupies: { rOut, rIn, rc } — outer edge,
+// inner edge, and the center line letters sit on. For a straight track the radii are
+// vertical offsets from the arm's center line.
+
+// Entry-number label placement, tuned by eye and shared by every shape. `.cell-num` is
+// text-anchor: middle / dominant-baseline: middle (shared/base.css), so these position a
+// label's *center*, not a corner. The values are not arbitrary:
+//   - 8px from the outer edge, on straights and curves alike, is what makes a curved
+//     label line up with the straight-section label it meets at a corner; 6px there
+//     leaves the curved one visibly high.
+//   - 6px in from a straight cell's leading edge (3px looked cramped).
+//   - a curved label sits 0.2 of the way into the cell's angular span, which reads as
+//     the same "just inside the leading edge" as the straight inset.
+const LABEL_LEAD_INSET  = 6;
+const LABEL_OUTER_INSET = 8;
+const LABEL_ARC_FRAC    = 0.2;
+
+// `n` straight cells of width `w` along the `side` ('top' | 'bottom') of the arm whose
+// center line is `y`. `xStart` is the leading edge of the first cell: its left edge on
+// a top track, its right edge on a bottom track.
+function trackSection(n, xStart, y, side, band, w) {
+  return { kind: 'track', n, xStart, y, side, band, w };
+}
+
+// `n` curved cells around (ccx, ccy), the first starting at angle `tStart` and each
+// spanning `step` radians.
+function arcSection(n, ccx, ccy, band, tStart, step) {
+  return { kind: 'arc', n, ccx, ccy, band, tStart, step };
+}
+
+function trackCell({ xStart, y, side, band, w }, j) {
+  const top = side === 'top';
+  const dir = top ? 1 : -1;
+  const xLead  = xStart + dir * j * w;
+  const xTrail = xStart + dir * (j + 1) * w;
+  // Outer edge is above the center line on a top track, below it on a bottom track.
+  const yOut = top ? y - band.rOut : y + band.rOut;
+  const yIn  = top ? y - band.rIn  : y + band.rIn;
+  const [xl, xr]  = top ? [xLead, xTrail] : [xTrail, xLead];
+  const [yT, yB]  = top ? [yOut, yIn]     : [yIn, yOut];
+  return {
+    path:   `M ${xl} ${yT} L ${xr} ${yT} L ${xr} ${yB} L ${xl} ${yB} Z`,
+    letter: { tx: xStart + dir * (j + 0.5) * w, ty: top ? y - band.rc : y + band.rc },
+    label:  { lx: xLead + dir * LABEL_LEAD_INSET, ly: top ? yOut + LABEL_OUTER_INSET : yOut - LABEL_OUTER_INSET },
+  };
+}
+
+function arcCell({ ccx, ccy, band, tStart, step }, j) {
+  const { rOut, rIn, rc } = band;
+  const t1 = tStart + j * step;
+  const t2 = tStart + (j + 1) * step;
+  const c1 = Math.cos(t1), s1 = Math.sin(t1);
+  const c2 = Math.cos(t2), s2 = Math.sin(t2);
+  // The outer arc sweeps in the direction of travel, the inner arc back against it.
+  const fOut = step > 0 ? 1 : 0;
+  const fIn  = 1 - fOut;
+  const tMid = tStart + (j + 0.5) * step;
+  const la   = t1 + LABEL_ARC_FRAC * step;
+  const rl   = rOut - LABEL_OUTER_INSET;
+  return {
+    path: `M ${ccx+rOut*c1} ${ccy+rOut*s1} A ${rOut} ${rOut} 0 0 ${fOut} ${ccx+rOut*c2} ${ccy+rOut*s2} ` +
+          `L ${ccx+rIn*c2} ${ccy+rIn*s2} A ${rIn} ${rIn} 0 0 ${fIn} ${ccx+rIn*c1} ${ccy+rIn*s1} Z`,
+    letter: { tx: ccx + rc * Math.cos(tMid), ty: ccy + rc * Math.sin(tMid) },
+    label:  { lx: ccx + rl * Math.cos(la),   ly: ccy + rl * Math.sin(la) },
+  };
+}
+
+// sections → { cellPath, letterCenter, labelPos, sectionOf }, each indexed by ring
+// position. Sections with n = 0 (e.g. a circle's straight tracks) contribute no cells.
+function makeRingRenderer(sections) {
+  const cells = [];
+  const sectionIdx = [];
+  sections.forEach((s, k) => {
+    for (let j = 0; j < s.n; j++) {
+      cells.push(s.kind === 'track' ? trackCell(s, j) : arcCell(s, j));
+      sectionIdx.push(k);
+    }
+  });
+  function at(i) {
+    const cell = cells[i];
+    if (!cell) throw new RangeError(`ring position ${i} is outside 0..${cells.length - 1}`);
+    return cell;
+  }
+  return {
+    cellPath:     i => at(i).path,
+    letterCenter: i => at(i).letter,
+    labelPos:     i => at(i).label,
+    sectionOf:    i => (at(i), sectionIdx[i]),
+  };
+}
+
+if (typeof module !== 'undefined') module.exports = { makeRingRenderer, trackSection, arcSection };
+
+'use strict';
+// Stadium/circle shape renderer: two straight tracks joined by semicircles. A circle
+// is the same ring with nStraight = 0.
+// getStadiumRenderer(ring) → { cellPath, letterCenter, labelPos, sectionOf }
+
+if (typeof makeRingRenderer === 'undefined' && typeof require !== 'undefined')
+  var { makeRingRenderer, trackSection, arcSection } = require('./ring');
 
 function getStadiumRenderer(ring) {
   const { nCurve, nStraight, L, rCenter, rOuter, rInner, cx, cy } = ring;
   const W_CELL = nStraight > 0 ? L / nStraight : 0;
+  const band = { rOut: rOuter, rIn: rInner, rc: rCenter };
+  const step = Math.PI / nCurve;
 
-  // Section start indices
-  const S1 = nStraight;
-  const S2 = S1 + nCurve;
-  const S3 = S2 + nStraight;
-
-  function annularSector(ccx, ccy, r1, r2, t1, t2) {
-    const c1 = Math.cos(t1), s1 = Math.sin(t1);
-    const c2 = Math.cos(t2), s2 = Math.sin(t2);
-    return `M ${ccx+r1*c1} ${ccy+r1*s1} A ${r1} ${r1} 0 0 1 ${ccx+r1*c2} ${ccy+r1*s2} ` +
-           `L ${ccx+r2*c2} ${ccy+r2*s2} A ${r2} ${r2} 0 0 0 ${ccx+r2*c1} ${ccy+r2*s1} Z`;
-  }
-
-  function cellPath(i) {
-    if (i < S1) {
-      const xl = (cx - L / 2) + i * W_CELL;
-      const xr = xl + W_CELL;
-      return `M ${xl} ${cy-rOuter} L ${xr} ${cy-rOuter} L ${xr} ${cy-rInner} L ${xl} ${cy-rInner} Z`;
-    } else if (i < S2) {
-      const j = i - S1;
-      const t1 = -Math.PI / 2 + j * (Math.PI / nCurve);
-      const t2 = -Math.PI / 2 + (j + 1) * (Math.PI / nCurve);
-      return annularSector(cx + L / 2, cy, rOuter, rInner, t1, t2);
-    } else if (i < S3) {
-      const j = i - S2;
-      const xr = (cx + L / 2) - j * W_CELL;
-      const xl = xr - W_CELL;
-      return `M ${xl} ${cy+rInner} L ${xr} ${cy+rInner} L ${xr} ${cy+rOuter} L ${xl} ${cy+rOuter} Z`;
-    } else {
-      const j = i - S3;
-      const t1 = Math.PI / 2 + j * (Math.PI / nCurve);
-      const t2 = Math.PI / 2 + (j + 1) * (Math.PI / nCurve);
-      return annularSector(cx - L / 2, cy, rOuter, rInner, t1, t2);
-    }
-  }
-
-  function letterCenter(i) {
-    if (i < S1) {
-      const xl = (cx - L / 2) + i * W_CELL;
-      return { tx: xl + W_CELL / 2, ty: cy - rCenter };
-    } else if (i < S2) {
-      const j = i - S1;
-      const tMid = -Math.PI / 2 + (j + 0.5) * (Math.PI / nCurve);
-      return { tx: (cx + L / 2) + rCenter * Math.cos(tMid), ty: cy + rCenter * Math.sin(tMid) };
-    } else if (i < S3) {
-      const j = i - S2;
-      const xr = (cx + L / 2) - j * W_CELL;
-      return { tx: xr - W_CELL / 2, ty: cy + rCenter };
-    } else {
-      const j = i - S3;
-      const tMid = Math.PI / 2 + (j + 0.5) * (Math.PI / nCurve);
-      return { tx: (cx - L / 2) + rCenter * Math.cos(tMid), ty: cy + rCenter * Math.sin(tMid) };
-    }
-  }
-
-  function labelPos(i) {
-    if (i < S1) {
-      const xl = (cx - L / 2) + i * W_CELL;
-      return { lx: xl + 6, ly: (cy - rOuter) + 8 };
-    } else if (i < S2) {
-      const j = i - S1;
-      const tStart = -Math.PI / 2 + j * (Math.PI / nCurve);
-      const la = tStart + (Math.PI / nCurve) * 0.2;
-      return { lx: (cx + L / 2) + (rOuter - 8) * Math.cos(la), ly: cy + (rOuter - 8) * Math.sin(la) };
-    } else if (i < S3) {
-      const j = i - S2;
-      const xr = (cx + L / 2) - j * W_CELL;
-      return { lx: xr - 6, ly: (cy + rOuter) - 8 };
-    } else {
-      const j = i - S3;
-      const tStart = Math.PI / 2 + j * (Math.PI / nCurve);
-      const la = tStart + (Math.PI / nCurve) * 0.2;
-      return { lx: (cx - L / 2) + (rOuter - 8) * Math.cos(la), ly: cy + (rOuter - 8) * Math.sin(la) };
-    }
-  }
-
-  return { cellPath, letterCenter, labelPos };
+  return makeRingRenderer([
+    trackSection(nStraight, cx - L / 2, cy, 'top', band, W_CELL),        // top, left → right
+    arcSection(nCurve, cx + L / 2, cy, band, -Math.PI / 2, step),        // right semicircle, top → bottom
+    trackSection(nStraight, cx + L / 2, cy, 'bottom', band, W_CELL),     // bottom, right → left
+    arcSection(nCurve, cx - L / 2, cy, band, Math.PI / 2, step),         // left semicircle, bottom → top
+  ]);
 }
 
 if (typeof module !== 'undefined') module.exports = { getStadiumRenderer };
 
 'use strict';
-// Turn (C-shape) renderer.
-// getTurnRenderer(ring) → { cellPath, letterCenter, labelPos }
+// Turn (C-shape) renderer: two horizontal arms joined on the left by a body arc system
+// centered on (cx, cy). Traversal order is documented in src/layoutTurn.js.
+// getTurnRenderer(ring) → { cellPath, letterCenter, labelPos, sectionOf }
+
+if (typeof makeRingRenderer === 'undefined' && typeof require !== 'undefined')
+  var { makeRingRenderer, trackSection, arcSection } = require('./ring');
 
 function getTurnRenderer(ring) {
   const { nArmStraight, nArmCurve, nBodyInner, nBodyOuter, rArmCenter, rArmOuter, rArmInner,
           D, R_in, R_out, L, cx, cy } = ring;
   const H_CELL = rArmOuter - rArmInner;
   const W_CELL = nArmStraight > 0 ? L / nArmStraight : 0;
+  const arm  = { rOut: rArmOuter, rIn: rArmInner, rc: rArmCenter };
+  const body = R => ({ rOut: R + H_CELL / 2, rIn: R - H_CELL / 2, rc: R });
+  const PI = Math.PI;
 
-  // Section start indices
-  const S1 = nArmStraight;
-  const S2 = S1 + nArmCurve;
-  const S3 = S2 + nArmStraight;
-  const S4 = S3 + nBodyInner;
-  const S5 = S4 + nArmStraight;
-  const S6 = S5 + nArmCurve;
-  const S7 = S6 + nArmStraight;
-
-  // Clockwise annular sector (same sweep as stadium arm curves)
-  function annularSectorCW(ccx, ccy, r1, r2, t1, t2) {
-    const c1 = Math.cos(t1), s1 = Math.sin(t1);
-    const c2 = Math.cos(t2), s2 = Math.sin(t2);
-    return `M ${ccx+r1*c1} ${ccy+r1*s1} A ${r1} ${r1} 0 0 1 ${ccx+r1*c2} ${ccy+r1*s2} ` +
-           `L ${ccx+r2*c2} ${ccy+r2*s2} A ${r2} ${r2} 0 0 0 ${ccx+r2*c1} ${ccy+r2*s1} Z`;
-  }
-
-  // Counterclockwise annular sector (for body inner arc, section 3)
-  function annularSectorCCW(ccx, ccy, r1, r2, t1, t2) {
-    const c1 = Math.cos(t1), s1 = Math.sin(t1);
-    const c2 = Math.cos(t2), s2 = Math.sin(t2);
-    return `M ${ccx+r1*c1} ${ccy+r1*s1} A ${r1} ${r1} 0 0 0 ${ccx+r1*c2} ${ccy+r1*s2} ` +
-           `L ${ccx+r2*c2} ${ccy+r2*s2} A ${r2} ${r2} 0 0 1 ${ccx+r2*c1} ${ccy+r2*s1} Z`;
-  }
-
-  function cellPath(i) {
-    if (i < S1) {
-      // Section 0: top arm upper track, left→right
-      const xl = cx + i * W_CELL;
-      return `M ${xl} ${cy-D-rArmOuter} L ${xl+W_CELL} ${cy-D-rArmOuter} ` +
-             `L ${xl+W_CELL} ${cy-D-rArmInner} L ${xl} ${cy-D-rArmInner} Z`;
-    } else if (i < S2) {
-      // Section 1: top arm right curve, CW top→bottom
-      const j = i - S1;
-      const t1 = -Math.PI / 2 + j * (Math.PI / nArmCurve);
-      return annularSectorCW(cx + L, cy - D, rArmOuter, rArmInner, t1, t1 + Math.PI / nArmCurve);
-    } else if (i < S3) {
-      // Section 2: top arm lower track, right→left
-      const j = i - S2;
-      const xr = cx + L - j * W_CELL;
-      return `M ${xr-W_CELL} ${cy-D+rArmInner} L ${xr} ${cy-D+rArmInner} ` +
-             `L ${xr} ${cy-D+rArmOuter} L ${xr-W_CELL} ${cy-D+rArmOuter} Z`;
-    } else if (i < S4) {
-      // Section 3: body inner arc, CCW top→bottom (left side)
-      const j = i - S3;
-      const t1 = -Math.PI / 2 - j * (Math.PI / nBodyInner);
-      return annularSectorCCW(cx, cy, R_in + H_CELL / 2, R_in - H_CELL / 2, t1, t1 - Math.PI / nBodyInner);
-    } else if (i < S5) {
-      // Section 4: bottom arm upper track, left→right
-      const j = i - S4;
-      const xl = cx + j * W_CELL;
-      return `M ${xl} ${cy+D-rArmOuter} L ${xl+W_CELL} ${cy+D-rArmOuter} ` +
-             `L ${xl+W_CELL} ${cy+D-rArmInner} L ${xl} ${cy+D-rArmInner} Z`;
-    } else if (i < S6) {
-      // Section 5: bottom arm right curve, CW top→bottom
-      const j = i - S5;
-      const t1 = -Math.PI / 2 + j * (Math.PI / nArmCurve);
-      return annularSectorCW(cx + L, cy + D, rArmOuter, rArmInner, t1, t1 + Math.PI / nArmCurve);
-    } else if (i < S7) {
-      // Section 6: bottom arm lower track, right→left
-      const j = i - S6;
-      const xr = cx + L - j * W_CELL;
-      return `M ${xr-W_CELL} ${cy+D+rArmInner} L ${xr} ${cy+D+rArmInner} ` +
-             `L ${xr} ${cy+D+rArmOuter} L ${xr-W_CELL} ${cy+D+rArmOuter} Z`;
-    } else {
-      // Section 7: body outer arc, CW bottom→top (left side)
-      const j = i - S7;
-      const t1 = Math.PI / 2 + j * (Math.PI / nBodyOuter);
-      return annularSectorCW(cx, cy, R_out + H_CELL / 2, R_out - H_CELL / 2, t1, t1 + Math.PI / nBodyOuter);
-    }
-  }
-
-  function letterCenter(i) {
-    if (i < S1) {
-      return { tx: cx + (i + 0.5) * W_CELL, ty: cy - D - rArmCenter };
-    } else if (i < S2) {
-      const j = i - S1;
-      const tMid = -Math.PI / 2 + (j + 0.5) * (Math.PI / nArmCurve);
-      return { tx: (cx + L) + rArmCenter * Math.cos(tMid), ty: (cy - D) + rArmCenter * Math.sin(tMid) };
-    } else if (i < S3) {
-      const j = i - S2;
-      return { tx: cx + L - (j + 0.5) * W_CELL, ty: cy - D + rArmCenter };
-    } else if (i < S4) {
-      const j = i - S3;
-      const tMid = -Math.PI / 2 - (j + 0.5) * (Math.PI / nBodyInner);
-      return { tx: cx + R_in * Math.cos(tMid), ty: cy + R_in * Math.sin(tMid) };
-    } else if (i < S5) {
-      const j = i - S4;
-      return { tx: cx + (j + 0.5) * W_CELL, ty: cy + D - rArmCenter };
-    } else if (i < S6) {
-      const j = i - S5;
-      const tMid = -Math.PI / 2 + (j + 0.5) * (Math.PI / nArmCurve);
-      return { tx: (cx + L) + rArmCenter * Math.cos(tMid), ty: (cy + D) + rArmCenter * Math.sin(tMid) };
-    } else if (i < S7) {
-      const j = i - S6;
-      return { tx: cx + L - (j + 0.5) * W_CELL, ty: cy + D + rArmCenter };
-    } else {
-      const j = i - S7;
-      const tMid = Math.PI / 2 + (j + 0.5) * (Math.PI / nBodyOuter);
-      return { tx: cx + R_out * Math.cos(tMid), ty: cy + R_out * Math.sin(tMid) };
-    }
-  }
-
-  function labelPos(i) {
-    if (i < S1) {
-      // Top arm upper track: label near top-left of cell (outer edge = top)
-      return { lx: cx + i * W_CELL + 6, ly: cy - D - rArmOuter + 8 };
-    } else if (i < S2) {
-      // Top arm right curve: label near start of cell on outer radius
-      const j = i - S1;
-      const la = (-Math.PI / 2 + j * (Math.PI / nArmCurve)) + (Math.PI / nArmCurve) * 0.2;
-      return { lx: (cx + L) + (rArmOuter - 8) * Math.cos(la), ly: (cy - D) + (rArmOuter - 8) * Math.sin(la) };
-    } else if (i < S3) {
-      // Top arm lower track: label near right end, outer (bottom) edge
-      const j = i - S2;
-      return { lx: cx + L - j * W_CELL - 6, ly: cy - D + rArmOuter - 8 };
-    } else if (i < S4) {
-      // Body inner arc: label near start of cell, just inside outer edge
-      const j = i - S3;
-      const la = (-Math.PI / 2 - j * (Math.PI / nBodyInner)) - (Math.PI / nBodyInner) * 0.2;
-      return { lx: cx + (R_in + H_CELL / 2 - 8) * Math.cos(la),
-               ly: cy + (R_in + H_CELL / 2 - 8) * Math.sin(la) };
-    } else if (i < S5) {
-      // Bottom arm upper track: label near top-left of cell (outer edge = top)
-      const j = i - S4;
-      return { lx: cx + j * W_CELL + 6, ly: cy + D - rArmOuter + 8 };
-    } else if (i < S6) {
-      // Bottom arm right curve: label near start of cell on outer radius
-      const j = i - S5;
-      const la = (-Math.PI / 2 + j * (Math.PI / nArmCurve)) + (Math.PI / nArmCurve) * 0.2;
-      return { lx: (cx + L) + (rArmOuter - 8) * Math.cos(la), ly: (cy + D) + (rArmOuter - 8) * Math.sin(la) };
-    } else if (i < S7) {
-      // Bottom arm lower track: label near right end, outer (bottom) edge
-      const j = i - S6;
-      return { lx: cx + L - j * W_CELL - 6, ly: cy + D + rArmOuter - 8 };
-    } else {
-      // Body outer arc: label near start of cell, just inside outer edge
-      const j = i - S7;
-      const la = (Math.PI / 2 + j * (Math.PI / nBodyOuter)) + (Math.PI / nBodyOuter) * 0.2;
-      return { lx: cx + (R_out + H_CELL / 2 - 8) * Math.cos(la),
-               ly: cy + (R_out + H_CELL / 2 - 8) * Math.sin(la) };
-    }
-  }
-
-  return { cellPath, letterCenter, labelPos };
+  return makeRingRenderer([
+    trackSection(nArmStraight, cx,     cy - D, 'top',    arm, W_CELL),          // 0 top arm upper track
+    arcSection(nArmCurve,      cx + L, cy - D, arm, -PI / 2, PI / nArmCurve),   // 1 top arm right curve
+    trackSection(nArmStraight, cx + L, cy - D, 'bottom', arm, W_CELL),          // 2 top arm lower track
+    arcSection(nBodyInner,     cx, cy, body(R_in), -PI / 2, -PI / nBodyInner),  // 3 body inner arc (CCW)
+    trackSection(nArmStraight, cx,     cy + D, 'top',    arm, W_CELL),          // 4 bottom arm upper track
+    arcSection(nArmCurve,      cx + L, cy + D, arm, -PI / 2, PI / nArmCurve),   // 5 bottom arm right curve
+    trackSection(nArmStraight, cx + L, cy + D, 'bottom', arm, W_CELL),          // 6 bottom arm lower track
+    arcSection(nBodyOuter,     cx, cy, body(R_out), PI / 2, PI / nBodyOuter),   // 7 body outer arc
+  ]);
 }
 
 if (typeof module !== 'undefined') module.exports = { getTurnRenderer };
 
 'use strict';
-// Double-turn (S-curve) renderer.
-// getDoubleTurnRenderer(ring) → { cellPath, letterCenter, labelPos }
+// Double-turn (S-shape) renderer: three horizontal arms joined by a left body arc
+// system at (cx_L, cy_L) and a right one at (cx_R, cy_R). Traversal order is
+// documented in src/layoutDoubleTurn.js.
+// getDoubleTurnRenderer(ring) → { cellPath, letterCenter, labelPos, sectionOf }
+
+if (typeof makeRingRenderer === 'undefined' && typeof require !== 'undefined')
+  var { makeRingRenderer, trackSection, arcSection } = require('./ring');
 
 function getDoubleTurnRenderer(ring) {
   const { nArmStraight, nMidStraight, nArmCurve, nBodyInner, nBodyOuter,
-          rArmCenter, rArmOuter, rArmInner, R_in, R_out, D, L, Lm,
+          rArmCenter, rArmOuter, rArmInner, R_in, R_out, L, Lm,
           cx_L, cx_R, cy, cy_L, cy_R, cy_top, cy_bot } = ring;
   const H_CELL = rArmOuter - rArmInner;
   const W_CELL = nArmStraight > 0 ? L / nArmStraight
                : nMidStraight > 0 ? Lm / nMidStraight
                : 36;
+  const arm  = { rOut: rArmOuter, rIn: rArmInner, rc: rArmCenter };
+  const body = R => ({ rOut: R + H_CELL / 2, rIn: R - H_CELL / 2, rc: R });
+  const PI = Math.PI;
 
-  // Section start indices
-  const S1  = nArmStraight;
-  const S2  = S1 + nArmCurve;
-  const S3  = S2 + nArmStraight;
-  const S4  = S3 + nBodyInner;
-  const S5  = S4 + nMidStraight;
-  const S6  = S5 + nBodyOuter;
-  const S7  = S6 + nArmStraight;
-  const S8  = S7 + nArmCurve;
-  const S9  = S8 + nArmStraight;
-  const S10 = S9 + nBodyInner;
-  const S11 = S10 + nMidStraight;
-
-  function annularSectorCW(ccx, ccy, r1, r2, t1, t2) {
-    const c1 = Math.cos(t1), s1 = Math.sin(t1);
-    const c2 = Math.cos(t2), s2 = Math.sin(t2);
-    return `M ${ccx+r1*c1} ${ccy+r1*s1} A ${r1} ${r1} 0 0 1 ${ccx+r1*c2} ${ccy+r1*s2} ` +
-           `L ${ccx+r2*c2} ${ccy+r2*s2} A ${r2} ${r2} 0 0 0 ${ccx+r2*c1} ${ccy+r2*s1} Z`;
-  }
-
-  function annularSectorCCW(ccx, ccy, r1, r2, t1, t2) {
-    const c1 = Math.cos(t1), s1 = Math.sin(t1);
-    const c2 = Math.cos(t2), s2 = Math.sin(t2);
-    return `M ${ccx+r1*c1} ${ccy+r1*s1} A ${r1} ${r1} 0 0 0 ${ccx+r1*c2} ${ccy+r1*s2} ` +
-           `L ${ccx+r2*c2} ${ccy+r2*s2} A ${r2} ${r2} 0 0 1 ${ccx+r2*c1} ${ccy+r2*s1} Z`;
-  }
-
-  function cellPath(i) {
-    if (i < S1) {
-      // Section 0: top arm upper track, left→right
-      return `M ${cx_L+i*W_CELL} ${cy_top-rArmOuter} L ${cx_L+(i+1)*W_CELL} ${cy_top-rArmOuter} ` +
-             `L ${cx_L+(i+1)*W_CELL} ${cy_top-rArmInner} L ${cx_L+i*W_CELL} ${cy_top-rArmInner} Z`;
-    } else if (i < S2) {
-      // Section 1: top arm right curve, CW top→bottom
-      const j = i - S1;
-      const t1 = -Math.PI / 2 + j * (Math.PI / nArmCurve);
-      return annularSectorCW(cx_L + L, cy_top, rArmOuter, rArmInner, t1, t1 + Math.PI / nArmCurve);
-    } else if (i < S3) {
-      // Section 2: top arm lower track, right→left
-      const j = i - S2;
-      return `M ${cx_L+L-(j+1)*W_CELL} ${cy_top+rArmInner} L ${cx_L+L-j*W_CELL} ${cy_top+rArmInner} ` +
-             `L ${cx_L+L-j*W_CELL} ${cy_top+rArmOuter} L ${cx_L+L-(j+1)*W_CELL} ${cy_top+rArmOuter} Z`;
-    } else if (i < S4) {
-      // Section 3: left body inside arc, CCW top→bottom
-      const j = i - S3;
-      const t1 = -Math.PI / 2 - j * (Math.PI / nBodyInner);
-      return annularSectorCCW(cx_L, cy_L, R_in + H_CELL / 2, R_in - H_CELL / 2, t1, t1 - Math.PI / nBodyInner);
-    } else if (i < S5) {
-      // Section 4: middle arm upper track, left→right
-      const j = i - S4;
-      return `M ${cx_L+j*W_CELL} ${cy-rArmOuter} L ${cx_L+(j+1)*W_CELL} ${cy-rArmOuter} ` +
-             `L ${cx_L+(j+1)*W_CELL} ${cy-rArmInner} L ${cx_L+j*W_CELL} ${cy-rArmInner} Z`;
-    } else if (i < S6) {
-      // Section 5: right body outside arc, CW top→bottom
-      const j = i - S5;
-      const t1 = -Math.PI / 2 + j * (Math.PI / nBodyOuter);
-      return annularSectorCW(cx_R, cy_R, R_out + H_CELL / 2, R_out - H_CELL / 2, t1, t1 + Math.PI / nBodyOuter);
-    } else if (i < S7) {
-      // Section 6: bottom arm lower track, right→left
-      const j = i - S6;
-      return `M ${cx_R-(j+1)*W_CELL} ${cy_bot+rArmInner} L ${cx_R-j*W_CELL} ${cy_bot+rArmInner} ` +
-             `L ${cx_R-j*W_CELL} ${cy_bot+rArmOuter} L ${cx_R-(j+1)*W_CELL} ${cy_bot+rArmOuter} Z`;
-    } else if (i < S8) {
-      // Section 7: bottom arm left curve, CW bottom→top
-      const j = i - S7;
-      const t1 = Math.PI / 2 + j * (Math.PI / nArmCurve);
-      return annularSectorCW(cx_R - L, cy_bot, rArmOuter, rArmInner, t1, t1 + Math.PI / nArmCurve);
-    } else if (i < S9) {
-      // Section 8: bottom arm upper track, left→right
-      const j = i - S8;
-      return `M ${cx_R-L+j*W_CELL} ${cy_bot-rArmOuter} L ${cx_R-L+(j+1)*W_CELL} ${cy_bot-rArmOuter} ` +
-             `L ${cx_R-L+(j+1)*W_CELL} ${cy_bot-rArmInner} L ${cx_R-L+j*W_CELL} ${cy_bot-rArmInner} Z`;
-    } else if (i < S10) {
-      // Section 9: right body inside arc, CCW bottom→top
-      const j = i - S9;
-      const t1 = Math.PI / 2 - j * (Math.PI / nBodyInner);
-      return annularSectorCCW(cx_R, cy_R, R_in + H_CELL / 2, R_in - H_CELL / 2, t1, t1 - Math.PI / nBodyInner);
-    } else if (i < S11) {
-      // Section 10: middle arm lower track, right→left
-      const j = i - S10;
-      return `M ${cx_R-(j+1)*W_CELL} ${cy+rArmInner} L ${cx_R-j*W_CELL} ${cy+rArmInner} ` +
-             `L ${cx_R-j*W_CELL} ${cy+rArmOuter} L ${cx_R-(j+1)*W_CELL} ${cy+rArmOuter} Z`;
-    } else {
-      // Section 11: left body outside arc, CW bottom→top
-      const j = i - S11;
-      const t1 = Math.PI / 2 + j * (Math.PI / nBodyOuter);
-      return annularSectorCW(cx_L, cy_L, R_out + H_CELL / 2, R_out - H_CELL / 2, t1, t1 + Math.PI / nBodyOuter);
-    }
-  }
-
-  function letterCenter(i) {
-    if (i < S1) {
-      return { tx: cx_L + (i + 0.5) * W_CELL, ty: cy_top - rArmCenter };
-    } else if (i < S2) {
-      const j = i - S1;
-      const t = -Math.PI / 2 + (j + 0.5) * (Math.PI / nArmCurve);
-      return { tx: (cx_L + L) + rArmCenter * Math.cos(t), ty: cy_top + rArmCenter * Math.sin(t) };
-    } else if (i < S3) {
-      const j = i - S2;
-      return { tx: cx_L + L - (j + 0.5) * W_CELL, ty: cy_top + rArmCenter };
-    } else if (i < S4) {
-      const j = i - S3;
-      const t = -Math.PI / 2 - (j + 0.5) * (Math.PI / nBodyInner);
-      return { tx: cx_L + R_in * Math.cos(t), ty: cy_L + R_in * Math.sin(t) };
-    } else if (i < S5) {
-      const j = i - S4;
-      return { tx: cx_L + (j + 0.5) * W_CELL, ty: cy - rArmCenter };
-    } else if (i < S6) {
-      const j = i - S5;
-      const t = -Math.PI / 2 + (j + 0.5) * (Math.PI / nBodyOuter);
-      return { tx: cx_R + R_out * Math.cos(t), ty: cy_R + R_out * Math.sin(t) };
-    } else if (i < S7) {
-      const j = i - S6;
-      return { tx: cx_R - (j + 0.5) * W_CELL, ty: cy_bot + rArmCenter };
-    } else if (i < S8) {
-      const j = i - S7;
-      const t = Math.PI / 2 + (j + 0.5) * (Math.PI / nArmCurve);
-      return { tx: (cx_R - L) + rArmCenter * Math.cos(t), ty: cy_bot + rArmCenter * Math.sin(t) };
-    } else if (i < S9) {
-      const j = i - S8;
-      return { tx: cx_R - L + (j + 0.5) * W_CELL, ty: cy_bot - rArmCenter };
-    } else if (i < S10) {
-      const j = i - S9;
-      const t = Math.PI / 2 - (j + 0.5) * (Math.PI / nBodyInner);
-      return { tx: cx_R + R_in * Math.cos(t), ty: cy_R + R_in * Math.sin(t) };
-    } else if (i < S11) {
-      const j = i - S10;
-      return { tx: cx_R - (j + 0.5) * W_CELL, ty: cy + rArmCenter };
-    } else {
-      const j = i - S11;
-      const t = Math.PI / 2 + (j + 0.5) * (Math.PI / nBodyOuter);
-      return { tx: cx_L + R_out * Math.cos(t), ty: cy_L + R_out * Math.sin(t) };
-    }
-  }
-
-  function labelPos(i) {
-    if (i < S1) {
-      return { lx: cx_L + i * W_CELL + 6, ly: cy_top - rArmOuter + 8 };
-    } else if (i < S2) {
-      const j = i - S1;
-      const step = Math.PI / nArmCurve;
-      const la = -Math.PI / 2 + j * step + 0.2 * step;
-      return { lx: (cx_L + L) + (rArmOuter - 8) * Math.cos(la),
-               ly: cy_top + (rArmOuter - 8) * Math.sin(la) };
-    } else if (i < S3) {
-      const j = i - S2;
-      return { lx: cx_L + L - j * W_CELL - 6, ly: cy_top + rArmOuter - 8 };
-    } else if (i < S4) {
-      const j = i - S3;
-      const step = Math.PI / nBodyInner;
-      const la = -Math.PI / 2 - j * step - 0.2 * step;
-      return { lx: cx_L + (R_in + H_CELL / 2 - 8) * Math.cos(la),
-               ly: cy_L + (R_in + H_CELL / 2 - 8) * Math.sin(la) };
-    } else if (i < S5) {
-      const j = i - S4;
-      return { lx: cx_L + j * W_CELL + 6, ly: cy - rArmOuter + 8 };
-    } else if (i < S6) {
-      const j = i - S5;
-      const step = Math.PI / nBodyOuter;
-      const la = -Math.PI / 2 + j * step + 0.2 * step;
-      return { lx: cx_R + (R_out + H_CELL / 2 - 8) * Math.cos(la),
-               ly: cy_R + (R_out + H_CELL / 2 - 8) * Math.sin(la) };
-    } else if (i < S7) {
-      const j = i - S6;
-      return { lx: cx_R - j * W_CELL - 6, ly: cy_bot + rArmOuter - 8 };
-    } else if (i < S8) {
-      const j = i - S7;
-      const step = Math.PI / nArmCurve;
-      const la = Math.PI / 2 + j * step + 0.2 * step;
-      return { lx: (cx_R - L) + (rArmOuter - 8) * Math.cos(la),
-               ly: cy_bot + (rArmOuter - 8) * Math.sin(la) };
-    } else if (i < S9) {
-      const j = i - S8;
-      return { lx: cx_R - L + j * W_CELL + 6, ly: cy_bot - rArmOuter + 8 };
-    } else if (i < S10) {
-      const j = i - S9;
-      const step = Math.PI / nBodyInner;
-      const la = Math.PI / 2 - j * step - 0.2 * step;
-      return { lx: cx_R + (R_in + H_CELL / 2 - 8) * Math.cos(la),
-               ly: cy_R + (R_in + H_CELL / 2 - 8) * Math.sin(la) };
-    } else if (i < S11) {
-      const j = i - S10;
-      return { lx: cx_R - j * W_CELL - 6, ly: cy + rArmOuter - 8 };
-    } else {
-      const j = i - S11;
-      const step = Math.PI / nBodyOuter;
-      const la = Math.PI / 2 + j * step + 0.2 * step;
-      return { lx: cx_L + (R_out + H_CELL / 2 - 8) * Math.cos(la),
-               ly: cy_L + (R_out + H_CELL / 2 - 8) * Math.sin(la) };
-    }
-  }
-
-  return { cellPath, letterCenter, labelPos };
+  return makeRingRenderer([
+    trackSection(nArmStraight, cx_L,     cy_top, 'top',    arm, W_CELL),              //  0 top arm upper track
+    arcSection(nArmCurve,      cx_L + L, cy_top, arm, -PI / 2, PI / nArmCurve),       //  1 top arm right curve
+    trackSection(nArmStraight, cx_L + L, cy_top, 'bottom', arm, W_CELL),              //  2 top arm lower track
+    arcSection(nBodyInner,     cx_L, cy_L, body(R_in),  -PI / 2, -PI / nBodyInner),   //  3 left body inside arc (CCW)
+    trackSection(nMidStraight, cx_L,     cy,     'top',    arm, W_CELL),              //  4 middle arm upper track
+    arcSection(nBodyOuter,     cx_R, cy_R, body(R_out), -PI / 2, PI / nBodyOuter),    //  5 right body outside arc
+    trackSection(nArmStraight, cx_R,     cy_bot, 'bottom', arm, W_CELL),              //  6 bottom arm lower track
+    arcSection(nArmCurve,      cx_R - L, cy_bot, arm, PI / 2, PI / nArmCurve),        //  7 bottom arm left curve
+    trackSection(nArmStraight, cx_R - L, cy_bot, 'top',    arm, W_CELL),              //  8 bottom arm upper track
+    arcSection(nBodyInner,     cx_R, cy_R, body(R_in),  PI / 2, -PI / nBodyInner),    //  9 right body inside arc (CCW)
+    trackSection(nMidStraight, cx_R,     cy,     'bottom', arm, W_CELL),              // 10 middle arm lower track
+    arcSection(nBodyOuter,     cx_L, cy_L, body(R_out), PI / 2, PI / nBodyOuter),     // 11 left body outside arc
+  ]);
 }
 
 if (typeof module !== 'undefined') module.exports = { getDoubleTurnRenderer };
@@ -1906,52 +2377,58 @@ function prevRingPos(pos, total) {
     let activeLoop = 0;
 
     // ── Logic functions ───────────────────────────────────────────────────────
+    // #hidden-input is static markup, present regardless of when this runs, so declaring
+    // this ahead of the hiddenInput const (Event wiring) is safe.
+    const refocus = () => document.getElementById('hidden-input').focus({ preventScroll: true });
+
     const letterState = new Array(ringSize).fill('');
+
+    // Marks (or unmarks) ring position rp's correct state on both its cell and letter
+    // elements together, so the two can never drift out of sync.
+    function setCorrect(rp, on) {
+      cellPaths[rp].classList.toggle('correct', on);
+      letterTexts[rp].classList.toggle('correct', on);
+    }
 
     function setCellLetter(ringPos, letter) {
       letterState[ringPos] = letter;
-      letterTexts[ringPos].textContent = letter;
-      cellPaths[ringPos].classList.remove('correct');
-      letterTexts[ringPos].classList.remove('correct');
+      setLetterText(letterTexts[ringPos], letter);
+      setCorrect(ringPos, false);
     }
 
+    // Multi-letter (rebus) entry state. Commit is wired at exactly one place — the top
+    // of focusCell — which covers every cursor move because activeRingPos is assigned
+    // nowhere else.
+    const composer = makeComposer({
+      getContent: rp => letterState[rp],
+      setContent: (rp, s) => setCellLetter(rp, s),
+      getCellEl:  rp => cellPaths[rp],
+      onCommit:   () => { syncUI(); checker.checkIfFilled(); saveState(); },
+    });
+
+    // Board state and answer checking. Ring positions 0..N-1 are the canonical board
+    // string order. markSolved marks clue items in *both* modes, per the mode-symmetry
+    // rule in docs/CROSS_TOOL_SPEC.md → Answer checking.
+    const checker = makeBoardChecker({
+      cellIds:             Array.from({ length: ringSize }, (_, rp) => rp),
+      getContent:          rp => letterState[rp],
+      isCellFilled:        rp => composer.isCellFilled(rp),
+      isCellMarkedCorrect: rp => cellPaths[rp].classList.contains('correct'),
+      hashed:              !!data.hashed,
+      getExpected:         rp => data.letters && data.letters[rp],
+      getBoardHash:        () => data.boardHash,
+      markSolved: () => {
+        letterState.forEach((_, rp) => setCorrect(rp, true));
+        data.entries.forEach((_, ei) => cluesList.children[ei].classList.add('correct'));
+      },
+      syncUI: () => syncUI(),
+    });
+
     function focusCell(ringPos, loop) {
+      composer.commitIfMoved(ringPos);
       activeRingPos = ringPos;
       activeLoop = loop;
-      const activeEntryIdx = entryAtCell[ringPos][loop];
-      const activeEntryPositions = new Set(
-        activeEntryIdx >= 0 ? ringPosByEntry[activeEntryIdx] : []
-      );
-
-      const otherLoop = (loop + 1) % data.loops;
-      const secondaryEntryIdx = entryAtCell[ringPos][otherLoop];
-      const secondaryPositions = new Set(
-        secondaryEntryIdx >= 0 && secondaryEntryIdx !== activeEntryIdx
-          ? ringPosByEntry[secondaryEntryIdx]
-          : []
-      );
-
-      cellPaths.forEach((p, rp) => {
-        const isActive = activeEntryPositions.has(rp);
-        const isSecondary = !isActive && secondaryPositions.has(rp);
-        p.classList.toggle('active-entry', isActive);
-        p.classList.toggle('secondary-entry', isSecondary);
-        p.classList.toggle('active-cell', rp === ringPos);
-      });
-      // Repaint active cell last within its layer so its border isn't covered by a neighbour's fill.
-      cellsLayer.appendChild(cellPaths[ringPos]);
-
-      Array.from(cluesList.children).forEach((li, i) => {
-        li.classList.toggle('active-clue', i === activeEntryIdx);
-        li.classList.toggle('secondary-entry', i === secondaryEntryIdx && i !== activeEntryIdx);
-      });
-
-      barPrimaryNum.textContent    = `${activeEntryIdx + 1}.`;
-      barPrimaryText.textContent   = data.entries[activeEntryIdx].clue;
-      barSecondaryNum.textContent  = `${secondaryEntryIdx + 1}.`;
-      barSecondaryText.textContent = data.entries[secondaryEntryIdx].clue;
-
-      hiddenInput.focus({ preventScroll: true });
+      refocus();
       syncUI();
     }
 
@@ -1969,73 +2446,100 @@ function prevRingPos(pos, total) {
       focusCell(prevPos, prevLoop);
     }
 
-    function checkAllCellsIfFilled() {
-      if (!letterState.every(l => l !== '')) return;
-      if (!letterState.every((l, rp) => isCellCorrect(l, data.letters[rp]))) { syncUI(); return; }
-      letterState.forEach((_, rp) => {
-        cellPaths[rp].classList.add('correct');
-        letterTexts[rp].classList.add('correct');
-      });
+    // The one rebus toggle, shared by the Enter key and #rebus-btn. Both entry points must
+    // behave identically, so neither gets its own copy of the composer call. Committing
+    // does not advance the cursor — only an explicit move (arrow, Tab, click) does.
+    function toggleRebus() {
+      composer.enter(activeRingPos);
       syncUI();
     }
 
-    function checkBoardIfFilled() {
-      if (!letterState.every(l => l !== '')) return;
-      if (sha256hex(getSolution()) !== data.boardHash) { syncUI(); return; }
-      letterState.forEach((_, rp) => {
-        cellPaths[rp].classList.add('correct');
-        letterTexts[rp].classList.add('correct');
-      });
-      data.entries.forEach((_, ei) => cluesList.children[ei].classList.add('correct'));
-      syncUI();
-    }
-
-    function getSolution() {
-      return letterState.join('').toLowerCase();
-    }
-
-    function isSolved() {
-      return cellPaths.every(p => p.classList.contains('correct'));
-    }
+    // Declared above syncUI (which calls rebusBtn.sync()) — see docs/CROSS_TOOL_SPEC.md →
+    // "Enter / Rebus button" for the TDZ rationale. Never hidden and never disabled —
+    // unlike checkBtn. See setupRebusButton.
+    const rebusBtn = setupRebusButton(document.getElementById('rebus-btn'), {
+      onToggle:    toggleRebus,
+      isComposing: () => composer.isComposing(activeRingPos),
+      isSolved:    () => latch.solved,
+      refocus,
+    });
 
     function syncUI() {
       // Loop toggle active segment (loopBtns is built in Event wiring; syncUI first runs in Restore & focus).
       loopBtns.forEach((btn, i) => btn.classList.toggle('active', i === activeLoop));
+      // Composition also ends on any cursor move, which never touches the button.
+      rebusBtn.sync();
 
-      const allFilled = letterState.every(l => l !== '');
-      const everyCellCorrect = isSolved();
+      // Active entry, plus the other loop's entry through the same cell as the
+      // secondary highlight (snake-charmer-specific — see CLAUDE.md → SVG ring rendering).
+      const activeEntryIdx = entryAtCell[activeRingPos][activeLoop];
+      const activeEntryPositions = new Set(
+        activeEntryIdx >= 0 ? ringPosByEntry[activeEntryIdx] : []
+      );
+      const otherLoop = (activeLoop + 1) % data.loops;
+      const secondaryEntryIdx = entryAtCell[activeRingPos][otherLoop];
+      const secondaryPositions = new Set(
+        secondaryEntryIdx >= 0 && secondaryEntryIdx !== activeEntryIdx
+          ? ringPosByEntry[secondaryEntryIdx]
+          : []
+      );
+
+      cellPaths.forEach((p, rp) => {
+        const isActive = activeEntryPositions.has(rp);
+        const isSecondary = !isActive && secondaryPositions.has(rp);
+        p.classList.toggle('active-entry', isActive);
+        p.classList.toggle('secondary-entry', isSecondary);
+        p.classList.toggle('active-cell', rp === activeRingPos);
+      });
+      // Repaint active cell last within its layer so its border isn't covered by a neighbour's fill.
+      cellsLayer.appendChild(cellPaths[activeRingPos]);
+
+      Array.from(cluesList.children).forEach((li, i) => {
+        li.classList.toggle('active-clue', i === activeEntryIdx);
+        li.classList.toggle('secondary-entry', i === secondaryEntryIdx && i !== activeEntryIdx);
+      });
+
+      barPrimaryNum.textContent    = `${activeEntryIdx + 1}.`;
+      barPrimaryText.innerHTML     = data.entries[activeEntryIdx].clue; // pre-rendered markdown HTML — see shared/build/renderMarkdown.js
+      barSecondaryNum.textContent  = `${secondaryEntryIdx + 1}.`;
+      barSecondaryText.innerHTML   = data.entries[secondaryEntryIdx].clue; // pre-rendered markdown HTML
+
+      const allFilled = checker.isBoardFilled();
+      const everyCellCorrect = checker.isSolved();
 
       doneWrong.hidden = !(allFilled && !everyCellCorrect);
 
       if (!data.hashed) {
-        checkBtn.disabled = !letterState[activeRingPos] ||
+        checkBtn.disabled = !composer.isCellFilled(activeRingPos) ||
           cellPaths[activeRingPos].classList.contains('correct');
       }
       latch.check(everyCellCorrect);
     }
 
-    const { saveState, restoreState, clearState } = setupStorage(storageKey('sc', data), {
+    const saveKey = storageKey('sc', data);
+    const { saveState, restoreState, clearState } = setupStorage(saveKey, {
       cellCount: ringSize,
       getState() {
         const correct = [];
         cellPaths.forEach((p, i) => { if (p.classList.contains('correct')) correct.push(i); });
-        return { letters: letterState, correct, activeMs: timer.getElapsedMs() };
+        return {
+          letters: letterState, correct, activeMs: timer.getElapsedMs(),
+          composing: composer.getComposing(),
+        };
       },
       applyState(saved) {
         saved.letters.forEach((letter, i) => {
           if (!letter) return;
           letterState[i] = letter;
-          letterTexts[i].textContent = letter;
+          setLetterText(letterTexts[i], letter);
         });
-        saved.correct.forEach(i => {
-          cellPaths[i].classList.add('correct');
-          letterTexts[i].classList.add('correct');
-        });
+        saved.correct.forEach(i => setCorrect(i, true));
         timer.restoreMs(saved.activeMs);
+        // After the letters are painted, so the composing cell shows its partial content.
+        // Absent in saves predating this field; composer.restore treats that as null.
+        composer.restore(saved.composing);
       },
     });
-
-    const timer = setupTimer({ onPause: () => saveState() });
 
     const congratsDialog = setupCongratsDialog({
       title: data.title,
@@ -2043,15 +2547,12 @@ function prevRingPos(pos, total) {
       onPlayAgain: () => resetBoard(),
     });
 
-    const latch = makeCompletionLatch({
-      puzzleRoot: document.querySelector('.puzzle-main'),
-      kind:         data.kind,
-      title:        data.title,
-      date:         data.date,
-      getBoardHash: () => data.boardHash,
-      getSolution,
-      getElapsedMs: () => timer.getElapsedMs(),
-      onComplete: (timeMs) => congratsDialog.open(timeMs),
+    const { timer, latch } = setupSolveTracking({
+      puzzleRoot:  document.querySelector('.puzzle-main'),
+      data,
+      getSolution: () => checker.getSolution(),
+      saveState,
+      onComplete:  (timeMs) => congratsDialog.open(timeMs),
     });
 
     // ── Build SVG ─────────────────────────────────────────────────────────────
@@ -2127,7 +2628,7 @@ function prevRingPos(pos, total) {
       li.dataset.entry = i;
       const textSpan = document.createElement('span');
       textSpan.className = 'clue-text';
-      textSpan.textContent = entry.clue;
+      textSpan.innerHTML = entry.clue; // pre-rendered markdown HTML — see shared/build/renderMarkdown.js
       li.appendChild(textSpan);
       cluesList.appendChild(li);
     });
@@ -2136,7 +2637,6 @@ function prevRingPos(pos, total) {
     const hiddenInput = document.getElementById('hidden-input');
 
     const checkBtn = document.getElementById('check-btn');
-    if (data.hashed) checkBtn.hidden = true;
 
     const doneWrong = document.getElementById('done-wrong');
     const keysOverlay = setupKeysOverlay(
@@ -2146,9 +2646,10 @@ function prevRingPos(pos, total) {
         ['← →',       'Move along ring'],
         ['⌫',         'Clear current cell'],
         ['Space',     'Clear and advance'],
+        ['Enter',     'Multi-letter cell'],
         ['.',         'Toggle direction'],
       ],
-      () => hiddenInput.focus({ preventScroll: true })
+      refocus
     );
 
     const loopBtns = (() => {
@@ -2180,17 +2681,22 @@ function prevRingPos(pos, total) {
       const ringPos = activeRingPos;
       if (e.key === 'Backspace') {
         e.preventDefault();
+        if (composer.backspace(ringPos)) {
+          syncUI();
+          saveState();
+          return;
+        }
         if (letterState[ringPos]) {
           setCellLetter(ringPos, '');
           syncUI();
         } else {
-          const prevPos = prevRingPos(ringPos, ringSize);
-          const prevLoop = prevPos === ringSize - 1 && ringPos === 0
-            ? (activeLoop - 1 + data.loops) % data.loops : activeLoop;
-          setCellLetter(prevPos, '');
-          focusCell(prevPos, prevLoop);
+          setCellLetter(prevRingPos(ringPos, ringSize), '');
+          retreatCell(ringPos);
         }
         saveState();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        toggleRebus();
       } else if (e.key === ' ') {
         e.preventDefault();
         setCellLetter(ringPos, '');
@@ -2222,72 +2728,78 @@ function prevRingPos(pos, total) {
 
     hiddenInput.addEventListener('input', () => {
       const ringPos = activeRingPos;
-      const letter = normalize(hiddenInput.value).slice(-1).toUpperCase();
+      const typed = normalize(hiddenInput.value).toUpperCase();
       hiddenInput.value = '';
-      if (latch.solved || !letter) return;
+      if (latch.solved || !typed) return;
       timer.onFirstInput();
-      setCellLetter(ringPos, letter);
-      // Advance before the hash check — awaiting the check first causes keystroke lag.
-      advanceCell(ringPos);
+      // typeLetter applies the slice(-1) rule on the non-composing path; advance only
+      // when it says so, so capacity never triggers an advance.
+      if (composer.typeLetter(ringPos, typed)) advanceCell(ringPos);
+      else syncUI();
 
-      if (data.hashed) {
-        checkBoardIfFilled();
-      } else {
-        checkAllCellsIfFilled();
-      }
+      // One checker call for both modes — advance first, then check, so the cursor
+      // never lags a keystroke behind the hash comparison.
+      checker.checkIfFilled();
       saveState();
     });
 
     // Clue click → jump to canonical start of that entry
     Array.from(cluesList.children).forEach((li, i) => {
-      li.addEventListener('click', () => {
+      li.addEventListener('click', e => {
+        // A clue can render a real link (see docs/CROSS_TOOL_SPEC.md ->
+        // Markdown formatting) — let it open on its own rather than also
+        // treating the click as selecting this entry.
+        if (e.target.closest('a')) return;
         const { ringPos, loop } = canonicalStart[i];
         focusCell(ringPos, loop);
       });
     });
 
     // Check Cell (non-hashed mode only)
-    // hiddenInput.focus() is required: buttons that don't call focusCell() must restore
-    // focus manually, otherwise the BUTTON guard in the document keydown listener blocks navigation.
-    if (!data.hashed) {
-      checkBtn.addEventListener('click', () => {
-        if (isCellCorrect(letterState[activeRingPos], data.letters[activeRingPos])) {
-          cellPaths[activeRingPos].classList.add('correct');
-          letterTexts[activeRingPos].classList.add('correct');
+    function checkCell() {
+      const rp = activeRingPos;
+      // The focus call is required on every path out: the button holds focus here, and the
+      // document keydown listener's BUTTON guard would swallow the next navigation key.
+      // The already-correct guard skips a redundant re-save.
+      if (!cellPaths[rp].classList.contains('correct') && composer.isCellFilled(rp)) {
+        if (isCellCorrect(letterState[rp], data.letters[rp])) {
+          setCorrect(rp, true);
+          saveState();          // only this branch mutates persisted state
         } else {
-          flashWrong(cellPaths[activeRingPos], flashLayer);
+          flashWrong(cellPaths[rp], flashLayer);
         }
-        syncUI();
-        saveState();
-        hiddenInput.focus({ preventScroll: true });
+      }
+      syncUI();
+      refocus();
+    }
+
+
+    function resetBoard() {
+      resetAndRefocus({
+        composer, clearState, timer, latch,
+        clearBoard() {
+          letterState.fill('');
+          for (let rp = 0; rp < ringSize; rp++) {
+            setLetterText(letterTexts[rp], '');
+            setCorrect(rp, false);
+          }
+          Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
+          flashLayer.replaceChildren();
+        },
+        focusInitial: () => focusCell(0, 0),
       });
     }
 
-    function resetBoard() {
-      letterState.fill('');
-      for (let rp = 0; rp < ringSize; rp++) {
-        letterTexts[rp].textContent = '';
-        cellPaths[rp].classList.remove('correct');
-        letterTexts[rp].classList.remove('correct');
-      }
-      Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
-      while (flashLayer.firstChild) flashLayer.removeChild(flashLayer.firstChild);
-      clearState();
-      timer.reset();
-      latch.reset();
-      focusCell(0, 0);
-    }
-
-    setupClearButton(
-      document.getElementById('clear-btn'),
-      resetBoard,
-      () => hiddenInput.focus({ preventScroll: true })
-    );
+    setupControls({
+      checkBtn, hashed: data.hashed, onCheck: checkCell,
+      onClear: resetBoard, refocus, key: saveKey,
+    });
 
     // ── Restore & focus ─────────────────────────────────────────────────────────
-    restoreState();
-    latch.sealIfSolved(isSolved());
-    focusCell(0, 0);
+    const resumeCell = restoreAndSeal({ restoreState, checker, latch, composer });
+    // Resume on the restored composing cell — see docs/CROSS_TOOL_SPEC.md → "Composition
+    // is saved state" for why this is load-bearing, not a convenience.
+    focusCell(resumeCell === null ? 0 : resumeCell, activeLoop);
   }
 
   document.addEventListener('DOMContentLoaded', init);

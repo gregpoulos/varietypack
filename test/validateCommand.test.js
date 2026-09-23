@@ -1,14 +1,15 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 
-const CLI = path.resolve(__dirname, '..', 'cli.js');
+const { main } = require('../cli');
+
 const SC_FIXTURE = path.resolve(__dirname, '..', 'snake-charmer/test/fixtures/circle-36.yaml');
 const SP_FIXTURE = path.resolve(__dirname, '..', 'spiral/test/fixtures/test-100.yaml');
+const CW_FIXTURE = path.resolve(__dirname, '..', 'examples', 'crushword.yaml');
 
 const BROKEN_YAML = [
   'kind: snake-charmer',
@@ -18,26 +19,31 @@ const BROKEN_YAML = [
   '    answer: A',
 ].join('\n');
 
+// In-process invocation of the dispatcher's pure main(). validate never
+// spawns a subprocess internally, so this fully replaces the previous
+// spawnSync-based coverage.
 function run(...args) {
-  return spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
+  let out = '';
+  let err = '';
+  const status = main(args, {
+    stdout: { write: (s) => { out += s; } },
+    stderr: { write: (s) => { err += s; } },
+  });
+  return { status, stdout: out, stderr: err };
 }
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'vp-validate-test-'));
 }
 
-// --- help / no-args ---
-
-test('validate: no args exits 1 and shows usage', () => {
-  const r = run('validate');
-  assert.equal(r.status, 1);
-  assert.match(r.stdout, /Usage:/i);
-});
+// --- help ---
+// No-args / -h / --help semantics live once in shared/test/globalHelp.test.js;
+// this only pins that validateCommand is wired to that helper.
 
 test('validate: --help exits 0 and shows usage', () => {
   const r = run('validate', '--help');
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /Usage:/i);
+  assert.match(r.stdout, /Check puzzle files for errors/);
 });
 
 // --- single file ---
@@ -53,6 +59,12 @@ test('validate: valid spiral puzzle exits 0 and prints OK', () => {
   const r = run('validate', SP_FIXTURE);
   assert.equal(r.status, 0, r.stdout);
   assert.match(r.stdout, /test-100\.yaml: OK/);
+});
+
+test('validate: valid crushword puzzle exits 0 and prints OK', () => {
+  const r = run('validate', CW_FIXTURE);
+  assert.equal(r.status, 0, r.stdout);
+  assert.match(r.stdout, /crushword\.yaml: OK/);
 });
 
 test('validate: puzzle with errors exits 1 and prints error count', () => {

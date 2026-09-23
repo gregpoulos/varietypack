@@ -6,21 +6,30 @@ const fs       = require('fs');
 const os       = require('os');
 const path     = require('path');
 const vm       = require('vm');
-const { loadPuzzle, validatePuzzle, composeThemeCss, buildFontCss, getSharedBundle, defaultOutputPath, validateEntryStyles, processEntries, validateCommonHeader, entryLength, entryNorm } = require('../build/builderUtils');
+const { loadPuzzle, validatePuzzle, composeThemeCss, buildFontCss, getSharedBundle, defaultOutputPath, validateEntryStyles, validateCommonHeader, commonPuzzleData, instructionsField } = require('../build/builderUtils');
 const { THEME_REGISTRY } = require('../build/themeRegistry');
 
 // ── getSharedBundle ───────────────────────────────────────────────────────────
 
-test('getSharedBundle: exposes normalize, sha256hex, isCellCorrect, and the engine-chrome helpers as callable globals', () => {
+test('getSharedBundle: exposes normalize, sha256hex, isCellCorrect, and the engine-state and engine-chrome helpers as callable globals', () => {
   const sandbox = {};
   vm.createContext(sandbox);
   vm.runInContext(getSharedBundle(), sandbox);
   assert.equal(typeof sandbox.normalize,     'function');
   assert.equal(typeof sandbox.sha256hex,     'function');
   assert.equal(typeof sandbox.isCellCorrect, 'function');
+  assert.equal(typeof sandbox.joinCells,     'function');
   assert.equal(sandbox.normalize('WAH-WAH'), 'wahwah');
-  // engine-chrome.js is browser-only DOM logic, but the bundle must still define
-  // its helpers as globals so each engine can call them by name.
+  assert.equal(sandbox.joinCells(['s', 'har', 'o', 'n']), 's.har.o.n');
+  // engine-state.js's cores, which every engine calls by name.
+  assert.equal(typeof sandbox.setupTimer,          'function');
+  assert.equal(typeof sandbox.makeCompletionLatch, 'function');
+  assert.equal(typeof sandbox.makeComposer,        'function');
+  assert.equal(typeof sandbox.setLetterText,       'function');
+  assert.equal(typeof sandbox.makeBoardChecker,    'function');
+  // Exposure only, not behavior: the bundle must define engine-chrome.js's helpers as
+  // globals so each engine can call them by name. Most of these are browser-only DOM
+  // helpers with no node:test coverage at all — setupClearButton is the exception.
   assert.equal(typeof sandbox.renderByline,      'function');
   assert.equal(typeof sandbox.renderInstructions,'function');
   assert.equal(typeof sandbox.setupClearButton,  'function');
@@ -223,31 +232,22 @@ test('defaultOutputPath: strips .yaml and appends .html', () => {
   assert.equal(defaultOutputPath('/some/dir/puzzle.yaml'), '/some/dir/puzzle.html');
 });
 
-test('defaultOutputPath: strips .yml and appends .html', () => {
+test('defaultOutputPath: strips .yml and appends .html, with and without a directory', () => {
   assert.equal(defaultOutputPath('/some/dir/puzzle.yml'), '/some/dir/puzzle.html');
+  assert.equal(defaultOutputPath('mypuzzle.yml'), 'mypuzzle.html');
 });
 
 test('defaultOutputPath: preserves directory', () => {
   assert.equal(defaultOutputPath('/a/b/c/test.yaml'), '/a/b/c/test.html');
 });
 
-test('defaultOutputPath: handles .yml in a flat path', () => {
-  assert.equal(defaultOutputPath('mypuzzle.yml'), 'mypuzzle.html');
-});
-
 // ── validateEntryStyles ───────────────────────────────────────────────────────
 
-function runStyles(entry, label = 'entries[0]', normLength = 4) {
+function runStyles(entry, label = 'entries[0]', cellCount = 4) {
   const errors = [], warnings = [];
-  validateEntryStyles(entry, label, normLength, errors, warnings);
+  validateEntryStyles(entry, label, cellCount, errors, warnings);
   return { errors, warnings };
 }
-
-test('validateEntryStyles: no-op when styles is undefined', () => {
-  const { errors, warnings } = runStyles({ styles: undefined });
-  assert.deepEqual(errors, []);
-  assert.deepEqual(warnings, []);
-});
 
 test('validateEntryStyles: no-op when styles is absent', () => {
   const { errors, warnings } = runStyles({});
@@ -320,37 +320,18 @@ test('validateEntryStyles: entryLabel appears in all error messages', () => {
   assert.ok(errors.every(e => e.startsWith('inward[2]')));
 });
 
-// ── processEntries ────────────────────────────────────────────────────────────
-
-test('processEntries: keeps clue, computes normalized length, carries _norm', () => {
-  const out = processEntries([{ clue: 'Greeting', answer: 'WAH-WAH' }]);
-  assert.equal(out.length, 1);
-  assert.equal(out[0].clue, 'Greeting');
-  assert.equal(out[0].length, 6);        // "wahwah"
-  assert.equal(out[0]._norm, 'wahwah');
+test('instructionsField: renders instructions as block-level markdown', () => {
+  assert.deepEqual(instructionsField({ instructions: 'Answers read **inward**.' }),
+    { instructions: '<p>Answers read <strong>inward</strong>.</p>\n' });
 });
 
-test('processEntries: strips spaces, hyphens, and punctuation before counting', () => {
-  const out = processEntries([{ clue: 'c', answer: "DON'T" }]);
-  assert.equal(out[0].length, 4);
-  assert.equal(out[0]._norm, 'dont');
+test('instructionsField: multi-paragraph instructions become separate <p> elements', () => {
+  assert.deepEqual(instructionsField({ instructions: 'Fill in the blanks.\n\nEnjoy the puzzle.' }),
+    { instructions: '<p>Fill in the blanks.</p>\n<p>Enjoy the puzzle.</p>\n' });
 });
 
-test('processEntries: passes styles through by value when present', () => {
-  const styles = { circle: [0] };
-  const out = processEntries([{ clue: 'c', answer: 'AB', styles }]);
-  assert.deepEqual(out[0].styles, { circle: [0] });
-});
-
-test('processEntries: keeps an empty styles object (presence test, not truthiness)', () => {
-  const out = processEntries([{ clue: 'c', answer: 'AB', styles: {} }]);
-  assert.ok('styles' in out[0]);
-  assert.deepEqual(out[0].styles, {});
-});
-
-test('processEntries: omits the styles key entirely when styles is undefined', () => {
-  const out = processEntries([{ clue: 'c', answer: 'AB' }]);
-  assert.ok(!('styles' in out[0]));
+test('instructionsField: empty object when instructions is absent, so a spread adds no key', () => {
+  assert.deepEqual(instructionsField({}), {});
 });
 
 // ── validateCommonHeader ──────────────────────────────────────────────────────
@@ -386,7 +367,7 @@ test('validateCommonHeader: reports a missing or empty title', () => {
 test('validateCommonHeader: rejects hashed: in source puzzles (no boardHash), accepts it in muddled', () => {
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', hashed: true }).errors.some(e => e.includes('"hashed:"')));
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', hashed: false }).errors.some(e => e.includes('"hashed:"')));
-  assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', hashed: true, boardHash: 'abc' }).errors, []);
+  assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', hashed: true, format: 2, boardHash: 'abc' }).errors, []);
 });
 
 test('validateCommonHeader: rejects empty/whitespace/non-string instructions, accepts non-empty', () => {
@@ -394,65 +375,6 @@ test('validateCommonHeader: rejects empty/whitespace/non-string instructions, ac
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', instructions: '   ' }).errors.some(e => e.includes('"instructions"')));
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', instructions: 42 }).errors.some(e => e.includes('"instructions"')));
   assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', instructions: 'Go' }).errors, []);
-});
-
-// ── entryLength ───────────────────────────────────────────────────────────────
-
-test('entryLength: normalizes answer and returns its length for an answer entry', () => {
-  assert.equal(entryLength({ answer: 'WAH-WAH' }), 6);   // wahwah
-  assert.equal(entryLength({ answer: 'AA' }),        2);
-  assert.equal(entryLength({ answer: "DON'T" }),     4);
-});
-
-test('entryLength: returns entry.length directly for a hash+length entry', () => {
-  assert.equal(entryLength({ hash: 'abc123', length: 5 }), 5);
-  assert.equal(entryLength({ hash: 'xyz',    length: 1 }), 1);
-});
-
-test('entryLength: prefers answer over a stray length field (must agree with entryNorm)', () => {
-  // A malformed entry carrying both must derive length from the answer, like entryNorm,
-  // so the validator (answer-based) and hasher (entryLength-based) never disagree.
-  assert.equal(entryLength({ answer: 'ABC', length: 99 }), 3);
-});
-
-// ── entryNorm ─────────────────────────────────────────────────────────────────
-
-test('entryNorm: returns normalized answer for an answer entry', () => {
-  assert.equal(entryNorm({ answer: 'WAH-WAH' }), 'wahwah');
-  assert.equal(entryNorm({ answer: 'AA' }),       'aa');
-});
-
-test('entryNorm: returns null for a muddled entry (length only, no answer)', () => {
-  assert.strictEqual(entryNorm({ length: 5 }), null);
-});
-
-// ── processEntries (muddled length path) ──────────────────────────────────────
-
-test('processEntries: muddled entry — sets correct length, _norm is null, no hash', () => {
-  const out = processEntries([{ clue: 'Test', length: 5 }]);
-  assert.equal(out.length, 1);
-  assert.equal(out[0].clue,   'Test');
-  assert.equal(out[0].length, 5);
-  assert.strictEqual(out[0]._norm, null);
-  assert.ok(!('answer' in out[0]));
-  assert.ok(!('hash'   in out[0]));
-});
-
-test('processEntries: muddled entry — passes styles through when present', () => {
-  const out = processEntries([{ clue: 'c', length: 3, styles: { circle: [0] } }]);
-  assert.deepEqual(out[0].styles, { circle: [0] });
-});
-
-test('processEntries: muddled entry — omits styles key when absent', () => {
-  const out = processEntries([{ clue: 'c', length: 3 }]);
-  assert.ok(!('styles' in out[0]));
-});
-
-test('processEntries: source entry — no hash key in output', () => {
-  const out = processEntries([{ clue: 'Greeting', answer: 'WAH-WAH' }]);
-  assert.equal(out[0].length, 6);
-  assert.equal(out[0]._norm,  'wahwah');
-  assert.ok(!('hash' in out[0]));
 });
 
 // ── buildFontCss ──────────────────────────────────────────────────────────────
@@ -554,4 +476,47 @@ test('buildFontCss: no fontMode error lists only --font link when faces absent',
   try { buildFontCss('myfont', entry, undefined); } catch (e) { msg = e.message; }
   assert.ok(msg.includes('--font link'));
   assert.ok(!msg.includes('--font embed'));
+});
+
+test('validateCommonHeader: format: is rejected in a source puzzle', () => {
+  const { errors } = runHeader({ kind: 'spiral', title: 'T', format: 2 });
+  assert.ok(errors.some(e => /format/.test(e) && /source/.test(e)));
+});
+
+test('validateCommonHeader: a muddled puzzle without format: 2 is rejected', () => {
+  const { errors } = runHeader({ kind: 'spiral', title: 'T', hashed: true, boardHash: 'abc' });
+  assert.ok(errors.some(e => /varietypack muddle/.test(e)));
+});
+
+test('validateCommonHeader: a muddled puzzle with format: 2 passes the header check', () => {
+  const { errors } = runHeader({ kind: 'spiral', title: 'T', hashed: true, format: 2, boardHash: 'abc' });
+  assert.deepStrictEqual(errors, []);
+});
+
+// ── commonPuzzleData ───────────────────────────────────────────────────────────
+
+test('commonPuzzleData: required fields always present', () => {
+  const data = commonPuzzleData({ title: 'T', kind: 'spiral', hashed: false });
+  assert.deepEqual(data, { title: 'T', kind: 'spiral', hashed: false });
+});
+
+test('commonPuzzleData: optional fields included only when !== undefined', () => {
+  const data = commonPuzzleData({
+    title: 'T', kind: 'spiral', hashed: false,
+    author: 'A', date: '2026', letters: ['a'], boardHash: 'h',
+  });
+  assert.equal(data.author, 'A');
+  assert.equal(data.date, '2026');
+  assert.deepEqual(data.letters, ['a']);
+  assert.equal(data.boardHash, 'h');
+});
+
+test('commonPuzzleData: instructions passed through verbatim (already rendered at prepare time)', () => {
+  const data = commonPuzzleData({ title: 'T', kind: 'spiral', hashed: false, instructions: '<p>x</p>\n' });
+  assert.equal(data.instructions, '<p>x</p>\n');
+});
+
+test('commonPuzzleData: instructions omitted when not set', () => {
+  const data = commonPuzzleData({ title: 'T', kind: 'spiral', hashed: false });
+  assert.ok(!('instructions' in data));
 });

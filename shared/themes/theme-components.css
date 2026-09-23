@@ -37,6 +37,43 @@ h1.title {
   border-bottom: 1px solid var(--theme-color-bar-border);
 }
 
+/* #menu-btn sits *within* #active-clue-bar's own band instead of floating
+   below it as a separate row — costs no extra vertical space, which matters
+   most on mobile where the on-screen keyboard already eats much of it. Pure
+   CSS calc() against #active-clue-bar's min-height (base.css), not
+   JS-measured: an earlier version computed this via getBoundingClientRect()
+   on every syncUI() and could snapshot a stale value mid mobile-keyboard
+   viewport animation, leaving the button off-screen with nothing to
+   re-correct it. 32px is the button's own height (base.css); Marching
+   Bands, with no bar, keeps the plain `top: 20px` default. */
+.tool-snake-charmer #menu-btn,
+.tool-spiral        #menu-btn,
+.tool-crushword     #menu-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
+
+/* #menu-panel opens directly below the bar's bottom edge (8px gap, matching
+   Marching Bands' static button-to-panel gap from base.css) — same
+   CSS-not-JS reasoning as #menu-btn above. */
+.tool-snake-charmer #menu-panel,
+.tool-spiral        #menu-panel,
+.tool-crushword     #menu-panel { top: calc(var(--active-clue-bar-space) + 8px); }
+
+/* Right gutter for the bar's own text now that #menu-btn shares its row.
+   Lives here rather than in base.css's shared #active-clue-bar rule since
+   only these three tools ever place the button there. */
+.tool-snake-charmer #active-clue-bar,
+.tool-spiral        #active-clue-bar,
+.tool-crushword     #active-clue-bar { padding-right: 60px; }
+
+/* Direction label ("Across"/"Down", "In"/"Out") before the bar's clue number. */
+.active-clue-dir {
+  font-size:      0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color:          var(--theme-color-muted);
+  opacity:        0.6;
+  flex-shrink:    0;
+}
+
 #instructions {
   color:         var(--theme-color-instructions);
   font-size:     var(--theme-instructions-size);
@@ -66,18 +103,41 @@ h1.title {
 #check-btn:hover:not(:disabled) { background: var(--theme-color-btn-hover); }
 #check-btn:disabled { background: var(--theme-color-btn-disabled); cursor: default; }
 
-/* Clear button */
+/* Clear button — flat, borderless, left-aligned, matching #check-btn-toggle-label
+   (base.css): both are plain menu-panel rows now, not a bordered pill next to a
+   bare checkbox. Colour cues (armed, hover) carry entirely through text colour
+   and the shared row-hover background instead of a border. */
 #clear-btn {
+  font-family:    var(--theme-font-button);
+  font-size:      0.8rem;
+  padding:        6px 8px;
+  background:     transparent;
+  border:         none;
+  text-align:     left;
+  color:          var(--theme-color-clear-fg);
+  letter-spacing: var(--theme-button-tracking);
+}
+#clear-btn:hover              { color: var(--theme-color-clear-hover-fg); }
+#clear-btn.armed              { color: var(--theme-color-danger); }
+#clear-btn:hover,
+#check-btn-toggle-label:hover { background: var(--theme-color-clue-hover); }
+
+/* Rebus button — the pointer route into multi-letter entry, mirroring the Enter key.
+   Deliberately has no disabled or per-cell state: it looks identical on every square,
+   in every build, which is what keeps it from signalling which cells are rebus.
+   Composition-in-progress is shown on the cell itself (.cell.active-cell.composing
+   below), so the button carries only its label — whose width is reserved in
+   shared/base.css so the Rebus→Done swap does not reflow #controls. */
+#rebus-btn {
   font-family:    var(--theme-font-button);
   font-size:      0.8rem;
   padding:        5px 12px;
   background:     transparent;
-  color:          var(--theme-color-clear-fg);
-  border-color:   var(--theme-color-clear-fg);
+  color:          var(--theme-color-muted);
+  border-color:   var(--theme-color-btn2-border);
   letter-spacing: var(--theme-button-tracking);
 }
-#clear-btn:hover { color: var(--theme-color-clear-hover-fg); border-color: var(--theme-color-clear-hover-fg); }
-#clear-btn.armed { color: var(--theme-color-danger);         border-color: var(--theme-color-danger); }
+#rebus-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
 /* Puzzle toggle (direction / mode / loop) */
 .puzzle-toggle { border: 1px solid var(--theme-color-btn2-border); }
@@ -110,6 +170,25 @@ h1.title {
 .cell-letter.correct { fill: var(--theme-color-correct-text); }
 .cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 
+/* Multi-letter (rebus) cell content. Sized with transform, not font-size: Spiral writes
+   its per-puzzle letter size as an SVG presentation attribute, which any CSS font-size
+   rule would outrank (e2e/spiral.spec.js asserts exactly that). transform composes with
+   whatever base size each tool established, so one shared block covers all three tools
+   with no per-tool font math. transform-box: fill-box is required — SVG's default
+   view-box origin would drag the text toward the viewport origin instead of scaling it
+   in place. */
+.cell-letter          { transform-box: fill-box; transform-origin: center; }
+.cell-letter.len-2    { transform: scale(0.62); }
+.cell-letter.len-3    { transform: scale(0.45); }
+.cell-letter.len-long { transform: scale(0.34); }
+
+/* Rebus entry in progress. Specificity 0,3,0 beats .cell.active-cell (0,2,0) without
+   depending on source order; the composing cell is always the active cell, so the
+   selector states that invariant rather than working around it. Fill and stroke colour
+   are inherited from .cell.active-cell — only the dash pattern distinguishes the state,
+   so no theme needs a new token. */
+.cell.active-cell.composing { stroke-width: 2.5; stroke-dasharray: 4 2; }
+
 /* Congrats modal — backdrop handles the overlay dim; #congrats is the visible card */
 #congrats-dialog::backdrop { background: var(--theme-color-overlay); }
 
@@ -120,6 +199,25 @@ h1.title {
   color:      var(--theme-color-muted);
 }
 #keys-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+
+/* Menu button (fixed top-right corner, created by setupOptionsMenu) — same
+   var usage as #keys-btn. */
+#menu-btn {
+  background: var(--theme-color-btn2-bg);
+  border:     1px solid var(--theme-color-btn2-border);
+  color:      var(--theme-color-muted);
+}
+#menu-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+
+/* Menu dropdown card — same var usage as #keys-modal. */
+#menu-panel {
+  background:    var(--theme-color-bg);
+  color:         var(--theme-color-text);
+  border:        2px solid var(--theme-color-soft-border);
+  border-radius: var(--theme-card-radius);
+}
+/* #clear-btn is full width inside the dropdown. */
+#menu-panel #clear-btn { width: 100%; }
 
 /* Keys modal — the <dialog> dim is its ::backdrop (skeleton sets this transparent) */
 #keys-overlay::backdrop { background: var(--theme-color-overlay); }
@@ -240,7 +338,10 @@ kbd {
 .tool-snake-charmer .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
 
 /* Marching Bands — band fills are unnamespaced to keep :where() specificity
-   below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive. */
+   below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive.
+   Prefixing with .tool-marching-bands would raise these to 0,2,0 too, tying
+   with active-entry and leaving the winner to source order (wrong) — dead
+   CSS in other tools, but harmless since the classes are MB-exclusive. */
 .cell:where(.band-even) { fill: var(--theme-color-band-even); }
 .cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
 .cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
@@ -260,11 +361,22 @@ kbd {
 .tool-spiral .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
 .tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
 .tool-spiral #direction-chevron { stroke: var(--theme-color-active-stroke); stroke-width: 0.9; opacity: 0.5; }
-.tool-spiral .active-clue-dir {
-  font-size:      0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color:          var(--theme-color-muted);
-  opacity:        0.6;
-  flex-shrink:    0;
-}
+/* Crushword */
+/* Opaque background is load-bearing, not cosmetic: .puzzle-center is
+   position:sticky over .clue-columns (base.css), which scrolls directly
+   underneath it in the same horizontal space — without this, clue text
+   would show through the padding around the sticky grid as it scrolls. */
+.tool-crushword .puzzle-center { background: var(--theme-color-bg); }
+.tool-crushword .cell-num    { font-size: 8px; }
+.tool-crushword .cell-letter { font-size: 14px; }
+.tool-crushword .cell-block  { fill: var(--theme-color-cell-center); }
+/* Every Crushword cell composes from its first keystroke, so the shared
+   dashed outline would flag nothing; reset to plain .active-cell. */
+.tool-crushword .cell.active-cell.composing { stroke-width: 1.5; stroke-dasharray: none; }
+/* Deliberately static: a blink competes for attention in a dense grid. */
+.tool-crushword .cell-caret { fill: var(--theme-color-cell-text); pointer-events: none; }
+.tool-crushword .clue-item { margin-bottom: 4px; font-size: 0.85rem; line-height: 1.35; padding: 2px 6px 2px 2px; }
+.tool-crushword .clue-item:hover           { background: var(--theme-color-clue-hover); }
+.tool-crushword .clue-item.active-clue     { background: var(--theme-color-active); }
+.tool-crushword .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
+.tool-crushword .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }

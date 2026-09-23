@@ -1,7 +1,6 @@
 .worktrees/
 */build/
 !shared/build/
-node_modules/
 */test/fixtures/*.html
 **/puzzles/*.html
 examples/*.html
@@ -15,3 +14,4 @@ deploy.config.json
 test-results/
 playwright-report/
 snake-charmer/devtools/ring-preview.html
+node_modules

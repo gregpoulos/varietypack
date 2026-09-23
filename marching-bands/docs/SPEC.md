@@ -4,69 +4,40 @@ A Marching Bands puzzle file is a YAML file describing an N×N grid in which wor
 
 For odd N, the center cell is a black square that belongs to no entry.
 
+Common header fields (`kind`, `title`, `author`, `date`, `instructions`),
+common entry fields (`clue`, `answer`, `styles`), markdown syntax,
+normalization, cell styles, rebus bracket grammar, muddling, and themes are
+all covered in `docs/AUTHORING.md` — this file covers only what's specific
+to Marching Bands.
+
 ## Fields
 
 | Field | Required | Type | Description |
 |---|---|---|---|
 | `kind` | yes | string | Must be `"marching-bands"` |
-| `title` | yes | string | Displayed in the puzzle header and browser tab |
-| `author` | no | string | Displayed in the puzzle header |
-| `date` | no | string | Displayed in the puzzle header; also used as part of the auto-save key |
 | `size` | no | integer | Grid dimension N; validated against the row content when present |
-| `instructions` | no | string | Shown between the header and the grid; blank lines become separate `<p>` elements |
 | `rows` | yes | array | Exactly N row objects, each containing an `entries` array |
 | `bands` | yes | array | Exactly ⌊N/2⌋ band objects, each containing an `entries` array |
 
-## Entry fields
+## Rebus cells (multi-letter cells)
 
-Each entry (in both `rows` and `bands`) has the following fields:
+See `docs/AUTHORING.md` → "Rebus cells" for the bracket syntax, grammar,
+and how to solve a rebus cell.
 
-| Field | Required | Type | Description |
-|---|---|---|---|
-| `clue` | yes | string | The clue text shown to the solver |
-| `answer` | yes | string | The answer in plain text; may include spaces, hyphens, or other punctuation |
-| `styles` | no | object | Cell decorations: keys are style names, values are arrays of 0-indexed cell positions |
+**Marching Bands' rule — a row and its crossing band must bracket a shared cell identically.** Every cell belongs to one Row word and one Band word, and the build cross-checks that they agree as cells — not merely that their letters, split some other way, happen to match.
 
-### Cell styles
-
-`styles` is a map from style name to a list of positions within the answer's normalized (stripped) letter sequence.
-
-```yaml
-rows:
-  - entries:
-      - clue: "Say it twice"
-        answer: "WAH-WAH"
-        styles:
-          circle: [3]    # stripped sequence is W=0 A=1 H=2 W=3 A=4 H=5; circles second W
-```
-
-Recognized style names:
-
-| Name | Meaning |
-|---|---|
-| `circle` | Draw a circle around the cell |
-
-Unrecognized style names produce a build warning but are not an error — they are reserved for future use. Positions must be non-negative integers within the stripped answer length; out-of-range positions are a validation error.
-
-## Normalization
-
-Answers are normalized before cell-counting and validation: strip all non-alphabetic characters (spaces, hyphens, apostrophes, punctuation), then lowercase. Only A–Z count toward cell length. Examples:
-
-- `"WAH-WAH"` → `"wahwah"` (6 cells)
-- `"LIE TO"` → `"lieto"` (5 cells)
-- `"EDWARD IV"` → `"edwardiv"` (8 cells)
-- `"DON'T"` → `"dont"` (4 cells)
+Bracket grammar, error and warning conditions, and how cell counts feed the row/band totals: see `docs/CROSS_TOOL_SPEC.md` → "Rebus cells".
 
 ## Grid size and band count
 
-N is derived from the `rows` array: the sum of normalized answer lengths in `rows[0]` gives N. The optional `size` field is validated against this derived value and must match if provided.
+N is derived from the `rows` array: the sum of entry cell counts (see "Rebus cells" above) in `rows[0]` gives N. The optional `size` field is validated against this derived value and must match if provided.
 
 - `rows` must contain exactly **N** entries (one per row)
 - `bands` must contain exactly **⌊N/2⌋** entries
 
 ## Row constraints
 
-Each row's entries must have normalized answer lengths summing to N, with one exception:
+Each row's entries must have cell counts summing to N, with one exception:
 
 - **Center row** (index `(N−1)/2`, odd N only): entries sum to N−1, because the center cell is a black square
 
@@ -93,13 +64,13 @@ Band k's entry lengths must sum to `4 × (N−1−2k)`.
 - `bands` must have exactly ⌊N/2⌋ entries
 - Each band k's entries must sum to `4 × (N−1−2k)` cells
 - Every entry must have a non-empty `clue` and non-empty `answer`
-- Every shared cell's Row letter and Band letter must agree — once all length checks pass, the build cross-checks the full grid and rejects the puzzle if any cell's Row word and Band word disagree
-- `styles`, if present on an entry, must be an object; each value must be an array of non-negative integers within the stripped answer length
+- Every shared cell's Row word and Band word must agree cell for cell, so a bracketed rebus group must match exactly, not just its letters read some other way — once all length checks pass, the build cross-checks the full grid and rejects the puzzle if any cell's Row word and Band word disagree
+- `styles`, if present on an entry, must be an object; each value must be an array of non-negative integers within the answer's cell count
 - Unrecognized style names produce a warning, not an error
 
 ## Hashed mode
 
-Build with `varietypack build --muddle` (or from a pre-muddled YAML produced by `varietypack muddle`) to generate an answer-obscured HTML. Plain-text answers are never included; only a SHA-256 hash of the entire board (all cells in row-major order, center cell skipped for odd N, lowercase) is stored as `boardHash`. The solver cannot view-source to find answers. No partial correctness feedback is given until all cells are filled; the complete board is then hashed and compared to `boardHash`.
+See `docs/AUTHORING.md` → "Muddling and hashed builds" for what `--muddle` produces and why. Marching Bands' `boardHash` covers every cell in row-major order (center cell skipped for odd N), each cell normalized and lowercased individually, then joined with a delimiter so a multi-letter rebus cell can't be mistaken for several single-letter cells. No partial correctness feedback is given until all cells are filled; the complete board is then hashed and compared to `boardHash`.
 
 ## Example
 
@@ -155,11 +126,12 @@ bands:
 
 - Every row's answers sum to N = 5, except the center row (row 3, 0-indexed index 2), which sums to N − 1 = 4 because the center cell is a black square
 - Band A's answers sum to 6 + 5 + 5 = 16 = 4 × (N − 1); Band B's sum to 4 + 4 = 8 = 4 × (N − 3)
-- This skeleton illustrates the required structure and cell-count arithmetic only. In a real puzzle every cell letter must satisfy both its Row word and its Band word simultaneously. The build enforces this: once the length checks pass, it cross-checks every cell and rejects the puzzle if a Row word and Band word disagree on any letter. (The skeleton above is **not** letter-consistent, so it would fail that cross-check — it is shown only to illustrate the cell-count arithmetic.)
+- This skeleton illustrates the required structure and cell-count arithmetic only. In a real puzzle every cell's content must satisfy both its Row word and its Band word simultaneously. The build enforces this: once the length checks pass, it cross-checks every cell and rejects the puzzle if a Row word and Band word disagree on any cell. (The skeleton above is **not** cell-consistent, so it would fail that cross-check — it is shown only to illustrate the cell-count arithmetic.)
 
 ## Notes
 
-- **Multi-word and hyphenated answers**: Include spaces, hyphens, or other punctuation in `answer` for readability (`"WAH-WAH"`, `"LIE TO"`). The build step strips them when placing letters in cells and when hashing.
+Multi-word/hyphenated answers and answer security are covered in
+`docs/AUTHORING.md`.
+
 - **Band direction**: All bands march clockwise — top edge left→right, right edge top→bottom, bottom edge right→left, left edge bottom→top.
-- **Answer security**: Build with `--muddle` (or from a pre-muddled YAML) to produce an answer-obscured HTML; plain-text answers are never included and only a single SHA-256 board hash is stored.
 - **Entry boundaries hidden**: The dividing points between consecutive entries within a row or band are intentionally not revealed by the puzzle interface. Tab navigation and highlighting operate at the row/band level, not the entry level.

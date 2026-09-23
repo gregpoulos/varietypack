@@ -33,7 +33,7 @@ The `varietypack` dispatcher reads the `kind` field from each YAML and routes to
 
 ### Muddling puzzles
 
-`varietypack muddle <file.yaml>` produces a **muddled YAML** — a distributable version of a puzzle where each entry's `answer:` is replaced by `length:`, and `hashed: true` plus a single `boardHash:` (SHA-256 of all normalized answer letters concatenated) are added at the top level. The muddled file can be shared with collaborators or test-solvers who need to build the HTML themselves without seeing the answers. Building a muddled YAML always produces answer-obscured HTML.
+`varietypack muddle <file.yaml>` produces a **muddled YAML** — a distributable version of a puzzle where each entry's `answer:` is replaced by `length:` (a cell count — a bracketed rebus group like `[HAR]` counts as one cell, not three letters), and `hashed: true`, `format: 2`, plus a single `boardHash:` (SHA-256 of the board's cells, each normalized individually and joined with a delimiter) are added at the top level. The muddled file can be shared with collaborators or test-solvers who need to build the HTML themselves without seeing the answers. Building a muddled YAML always produces answer-obscured HTML.
 
 ```fish
 # Produce puzzle.muddled.yaml next to the source
@@ -55,7 +55,7 @@ These are supported by every tool:
 | Option | Default | Description |
 |---|---|---|
 | `--muddle` | off | Build a hashed (answer-obscured) HTML from a source YAML — no `hashed:` field needed. Muddled YAMLs (which carry `boardHash:`) build hashed automatically without this flag. |
-| `--theme <name>` | `broadsheet` | Visual theme. All tools ship `broadsheet` and `skeleton`; the exact list may vary per tool. Themes with custom fonts (e.g. `skeleton`) require `--font`. |
+| `--theme <name>` | `broadsheet` | Visual theme. The theme list is shared across all tools (see `docs/AUTHORING.md` → "Themes and fonts"); all tools ship at least `broadsheet` and `skeleton`. Themes with custom fonts (e.g. `skeleton`) require `--font`. |
 | `--font <mode>` | — | Font delivery for custom-font themes: `embed` inlines fonts as base64 (self-contained output) or `link` references a CDN via `@import` (needs network at solve time). Required when the theme uses custom fonts; silently ignored for system-font themes. |
 | `--minify` | off | Minify the generated HTML: terser-minifies each `<script>`, clean-css minifies each `<style>`, strips comments, and trims trailing whitespace. |
 | `-o <output.html>` | `<input-basename>.html` | Output path. Defaults to writing next to the input file. |
@@ -72,6 +72,10 @@ Some tools accept additional options. Pass them after the path argument.
 ---
 
 ## Puzzle formats
+
+Every tool's `clue` field, and the top-level `instructions` field, accept a small markdown subset: `**bold**`, `*italic*`, `` `code` ``, `[text](url)` links, `~~strikethrough~~`, `H~2~O`-style subscript, `29^th^`-style superscript, and `:shortcode:` emoji. Rendering happens at build time, so the shipped puzzle HTML has no runtime markdown dependency.
+
+See [docs/AUTHORING.md](docs/AUTHORING.md) for the full cross-tool authoring guide — common header fields, this markdown subset, normalization, cell styles, rebus bracket grammar, muddling/hashed builds, and themes/fonts — shared by all four formats below.
 
 ### Snake Charmer
 
@@ -96,7 +100,7 @@ See [snake-charmer/docs/SPEC.md](snake-charmer/docs/SPEC.md) for the full format
 
 ### Spiral
 
-Two sets of entries share every cell: inward entries fill the spiral from the outer edge toward the center; outward entries fill it from the center back out. The combined inward string must be the reverse of the combined outward string. Minimum 40 cells. The generated HTML is print-ready. **[Try an example](https://gregpoulos.github.io/varietypack/examples/spiral.html)**
+Two sets of entries share every cell: inward entries fill the spiral from the outer edge toward the center; outward entries fill it from the center back out. The inward cells, read in order, must be the reverse of the outward cells. Minimum 40 cells. The generated HTML is print-ready. **[Try an example](https://gregpoulos.github.io/varietypack/examples/spiral.html)**
 
 ```yaml
 kind: spiral
@@ -149,9 +153,40 @@ bands:
   # ⌊N/2⌋ bands total; band k's answers sum to 4×(N−1−2k)
 ```
 
-N is derived from the first row (the sum of its answer lengths); the optional `size` field is validated against it.
+N is derived from the first row (the sum of its entry cell counts); the optional `size` field is validated against it.
 
 See [marching-bands/docs/SPEC.md](marching-bands/docs/SPEC.md) for the full format reference.
+
+### Crushword
+
+A rebus crossword: standard American crossword grid and clue numbering (across/down, black squares), plus the repo-wide rebus convention that a bracketed group in an `answer:` occupies a single cell however many letters it holds. Tab jumps between entries (not rows or bands) since a crossword's numbering already reveals entry boundaries to the solver. **[Try an example](https://gregpoulos.github.io/varietypack/examples/crushword.html)**
+
+```yaml
+kind: crushword
+title: "My Crushword"
+author: "Your Name"
+date: "2026"
+grid:
+  - "...#."
+  - "....."
+  - "....."
+  - "....."
+  - ".#..."
+across:
+  1:
+    clue: "First three letters"
+    answer: "ABC"
+  # ... keyed by clue number, matching the grid's derived numbering
+down:
+  1:
+    clue: "First column"
+    answer: "AEIMR"
+  # ... keyed by clue number, matching the grid's derived numbering
+```
+
+`grid` uses `.` for an open cell and `#` for a block; clue numbers are derived from the grid (standard American crossword numbering) and must match `across`/`down`'s keys exactly. `maxCellLetters` (optional, default 3) bounds how many letters one bracketed rebus cell may hold.
+
+See [crushword/docs/SPEC.md](crushword/docs/SPEC.md) for the full format reference.
 
 ---
 
@@ -198,14 +233,12 @@ Or run tests for a single tool:
 node --test snake-charmer/test/*.test.js
 node --test spiral/test/*.test.js
 node --test marching-bands/test/*.test.js
+node --test crushword/test/*.test.js
 node --test shared/test/*.test.js
 ```
 
-## Shared library
+End-to-end (Playwright) tests are separate from `npm test`:
 
-Utilities in `shared/` use the dual-mode export pattern so they work in both Node (CommonJS `require`) and the browser (global functions injected by the build step):
-
-```js
-function normalize(str) { /* ... */ }
-if (typeof module !== 'undefined') module.exports = normalize;
+```fish
+npm run test:e2e
 ```

@@ -8,7 +8,7 @@ function makeBtn() {
   const listeners = [];
   const classes = new Set();
   return {
-    textContent: 'Clear',
+    textContent: 'Clear Puzzle',
     classList: {
       add(c)      { classes.add(c); },
       remove(c)   { classes.delete(c); },
@@ -48,11 +48,11 @@ test('onConfirmed is called exactly once on second click', () => {
   assert.strictEqual(confirmed, 1);
 });
 
-test('button label becomes Sure? after first click', () => {
+test('button label becomes "Are you sure?" after first click', () => {
   const btn = makeBtn();
   setupClearButton(btn, () => {}, null);
   btn.click();
-  assert.strictEqual(btn.textContent, 'Sure?');
+  assert.strictEqual(btn.textContent, 'Are you sure?');
 });
 
 test('button gets .armed class after first click', () => {

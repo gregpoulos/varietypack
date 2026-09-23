@@ -1,12 +1,10 @@
 'use strict';
 
-const fs      = require('fs');
 const path    = require('path');
 const { validate }      = require('./validator');
 const { preparePuzzle } = require('./hasher');
 const { computeCells }  = require('./layout');
-const injectTemplate    = require('../../shared/build/injectTemplate');
-const { composeThemeCss, getSharedBundle, commonPuzzleData } = require('../../shared/build/builderUtils');
+const { commonPuzzleData, buildToolHtml } = require('../../shared/build/builderUtils');
 const { runBuildPuzzle } = require('../../shared/build/runBuildPuzzle');
 
 const TEMPLATE_DIR = path.join(__dirname, 'template');
@@ -20,10 +18,6 @@ function nTurnsFor(totalCells) {
 }
 
 function buildHtml(prepared, cells, layoutOpts, theme, font) {
-  const template = fs.readFileSync(path.join(TEMPLATE_DIR, 'index.html'), 'utf8');
-  const css = composeThemeCss(TEMPLATE_DIR, theme, font);
-  const engineJs  = fs.readFileSync(path.join(TEMPLATE_DIR, 'engine.js'),  'utf8');
-
   const puzzleData = {
     ...commonPuzzleData(prepared),
     inward:  prepared.inward,
@@ -32,21 +26,24 @@ function buildHtml(prepared, cells, layoutOpts, theme, font) {
     geometry: layoutOpts,
   };
 
-  const js = getSharedBundle() + '\n' + engineJs;
-
-  return injectTemplate(template, { title: prepared.title, css, js, puzzleData });
+  return buildToolHtml(TEMPLATE_DIR, {
+    title: prepared.title,
+    theme,
+    font,
+    jsFiles: [path.join(TEMPLATE_DIR, 'engine.js')],
+    puzzleData,
+  });
 }
 
 function buildPuzzle(inputPath, outputPath, options) {
   return runBuildPuzzle(inputPath, outputPath, options, {
     validateFn:  validate,
     prepareFn:   preparePuzzle,
-    buildHtmlFn: (prepared, opts, ctx) => buildHtml(prepared, ctx.cells, ctx.layoutOpts, opts?.theme, opts?.font),
-    preBuild(rawPuzzle, prepared) {
+    buildHtmlFn: (prepared, rawPuzzle, opts) => {
       const totalCells = prepared.inward.reduce((s, e) => s + e.length, 0);
       const layoutOpts = { ...LAYOUT_BASE, N_TURNS: nTurnsFor(totalCells) };
       const cells      = computeCells(totalCells, layoutOpts);
-      return { cells, layoutOpts };
+      return buildHtml(prepared, cells, layoutOpts, opts?.theme, opts?.font);
     },
   });
 }

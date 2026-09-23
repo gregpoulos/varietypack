@@ -1,0 +1,88 @@
+kind: crushword
+title: Crushword Test Fixture — 9×9
+author: Fixtures
+date: '2026'
+grid:
+  - '#.#....#.'
+  - ....#....
+  - .......#.
+  - ....#...#
+  - .........
+  - '#...#....'
+  - .#.......
+  - ....#....
+  - .#....#.#
+across:
+  '2':
+    clue: To sulk
+    length: 4
+  '6':
+    clue: Botanical anther compartment
+    length: 4
+  '8':
+    clue: Prefix meaning "rainbow"
+    length: 4
+  '9':
+    clue: An amino acid
+    length: 7
+  '10':
+    clue: Farm building
+    length: 4
+  '11':
+    clue: Membranous pouch
+    length: 3
+  '13':
+    clue: Like the cord connecting to a placenta
+    length: 9
+  '15':
+    clue: Stew vessel
+    length: 3
+  '16':
+    clue: Melody
+    length: 4
+  '18':
+    clue: Ancient Roman administrative register
+    length: 7
+  '19':
+    clue: Methods, informally
+    length: 4
+  '20':
+    clue: Sell via machine
+    length: 4
+  '21':
+    clue: Unaspirated consonant sound, phonetically
+    length: 4
+down:
+  '1':
+    clue: To fit with a new bulb
+    length: 6
+  '2':
+    clue: A hexose sugar related to mannitol — deliberately verbose clue text included so the Down column has to wrap this entry across at least two lines
+    length: 9
+  '3':
+    clue: Overly sensitive to slight provocation (archaic)
+    length: 9
+  '4':
+    clue: More than acute, medically
+    length: 8
+  '5':
+    clue: Woodworking tool, variant spelling
+    length: 3
+  '6':
+    clue: Forbidden, variant spelling
+    length: 4
+  '7':
+    clue: Chemical group, C=O
+    length: 8
+  '12':
+    clue: Dog-related
+    length: 6
+  '14':
+    clue: Metal, or to guide
+    length: 4
+  '17':
+    clue: Leatherworking piercing tool
+    length: 3
+hashed: true
+format: 2
+boardHash: 28988ef9ce9c7cae94d2a0ed165393ca80fefb7517cd627287d56c6b27d50b99

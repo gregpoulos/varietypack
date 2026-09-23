@@ -58,7 +58,7 @@ test('validateEntry: empty clue string on source entry — pushes error but stil
   assert.equal(result, 5);
 });
 
-test('validateEntry: valid source entry — returns normalized letter count', () => {
+test('validateEntry: valid source entry — returns cell count', () => {
   const errors = [], warnings = [];
   const result = validateEntry({ clue: 'Some clue', answer: 'HELLO' }, 'entries[0]', false, errors, warnings);
   assert.equal(result, 5);
@@ -79,6 +79,67 @@ test('validateEntry: valid source entry with hyphenated answer — normalizes co
   const result = validateEntry({ clue: 'Repetitive sound', answer: 'WAH-WAH' }, 'entries[0]', false, errors, warnings);
   assert.equal(result, 6);
   assert.equal(errors.length, 0);
+});
+
+test('bracket grammar errors carry the entry label', () => {
+  const errors = [], warnings = [];
+  const len = validateEntry({ clue: 'c', answer: 'S[HARON' }, 'inward[2]', false, errors, warnings);
+  assert.strictEqual(len, null);
+  assert.strictEqual(errors.length, 1);
+  assert.match(errors[0], /^inward\[2\]/);
+  assert.match(errors[0], /unclosed/);
+});
+
+test('an empty bracketed group is an error', () => {
+  const errors = [], warnings = [];
+  validateEntry({ clue: 'c', answer: 'S[--]ON' }, 'entries[0]', false, errors, warnings);
+  assert.match(errors[0], /no letters/);
+});
+
+test('a valid rebus entry returns its cell count', () => {
+  const errors = [], warnings = [];
+  const len = validateEntry({ clue: 'c', answer: 'S[HAR]ON' }, 'entries[0]', false, errors, warnings);
+  assert.strictEqual(len, 4);
+  assert.deepStrictEqual(errors, []);
+});
+
+test('a four-letter group passes without comment', () => {
+  const errors = [], warnings = [];
+  validateEntry({ clue: 'c', answer: 'A[BCDE]F' }, 'entries[0]', false, errors, warnings);
+  assert.deepStrictEqual(errors, []);
+  assert.deepStrictEqual(warnings, []);
+});
+
+test('a five-letter group warns', () => {
+  const errors = [], warnings = [];
+  validateEntry({ clue: 'c', answer: 'A[BCDEF]G' }, 'entries[0]', false, errors, warnings);
+  assert.deepStrictEqual(errors, []);
+  assert.strictEqual(warnings.length, 1);
+  assert.match(warnings[0], /entries\[0\]/);
+  assert.match(warnings[0], /5 letters/);
+});
+
+test('styles positions are bounded by cell count, not letter count', () => {
+  const errors = [], warnings = [];
+  // 4 cells; position 3 is the last valid one.
+  validateEntry({ clue: 'c', answer: 'S[HAR]ON', styles: { circle: [3] } },
+    'entries[0]', false, errors, warnings);
+  assert.deepStrictEqual(errors, []);
+
+  const errors2 = [], warnings2 = [];
+  validateEntry({ clue: 'c', answer: 'S[HAR]ON', styles: { circle: [4] } },
+    'entries[0]', false, errors2, warnings2);
+  assert.strictEqual(errors2.length, 1);
+  assert.match(errors2[0], /out of range/);
+});
+
+test('validateEntry: non-string answer — pushes error and does not throw', () => {
+  const errors = [], warnings = [];
+  assert.doesNotThrow(() => {
+    const result = validateEntry({ clue: 'c', answer: 123 }, 'entries[0]', false, errors, warnings);
+    assert.strictEqual(result, null);
+  });
+  assert.ok(errors.some(e => e.includes('answer')));
 });
 
 // ── validateEntry — muddled path ──────────────────────────────────────────────

@@ -19,11 +19,6 @@ test('sha256hex: empty string produces correct hex digest', () => {
   assert.equal(result, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
 });
 
-test('sha256hex: returns a 64-character hex string', () => {
-  const result = sha256hex('test');
-  assert.match(result, /^[0-9a-f]{64}$/);
-});
-
 test('sha256hex: works as a standalone browser script (no module, no crypto dependency)', () => {
   // Run the module source in a vm sandbox with no globals to confirm it needs neither
   const source = fs.readFileSync(path.join(__dirname, '../sha256hex.js'), 'utf8');

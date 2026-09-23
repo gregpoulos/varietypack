@@ -12,6 +12,8 @@
   #congrats-dialog,
   #keys-overlay,
   #keys-btn,
+  #menu-btn,
+  #menu-panel,
   #done-wrong { display: none !important; }
 
   body { padding-top: 0 !important; }
@@ -21,7 +23,8 @@
   .cell,
   .cell.active-entry,
   .cell.active-cell,
-  .cell.correct { fill: #fff !important; stroke: #999 !important; stroke-width: 1 !important; }
+  .cell.correct,
+  .cell.secondary-entry { fill: #fff !important; stroke: #999 !important; stroke-width: 1 !important; stroke-dasharray: none !important; }
   .cell-letter.correct { fill: #111 !important; }
 
   /* Clue highlight / strike-through reset */

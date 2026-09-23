@@ -1,0 +1,85 @@
+kind: crushword
+title: "Crushword Test Fixture — 9×9"
+author: "Fixtures"
+date: "2026"
+grid:
+  - "#.#....#."
+  - "....#...."
+  - ".......#."
+  - "....#...#"
+  - "........."
+  - "#...#...."
+  - ".#......."
+  - "....#...."
+  - ".#....#.#"
+across:
+  2:
+    clue: "To sulk"
+    answer: "MUMP"
+  6:
+    clue: "Botanical anther compartment"
+    answer: "TECA"
+  8:
+    clue: "Prefix meaning \"rainbow\""
+    answer: "IRID"
+  9:
+    clue: "An amino acid"
+    answer: "ALANINE"
+  10:
+    clue: "Farm building"
+    answer: "BARN"
+  11:
+    clue: "Membranous pouch"
+    answer: "SAC"
+  13:
+    clue: "Like the cord connecting to a placenta"
+    answer: "UMBILICAL"
+  15:
+    clue: "Stew vessel"
+    answer: "POT"
+  16:
+    clue: "Melody"
+    answer: "TUNE"
+  18:
+    clue: "Ancient Roman administrative register"
+    answer: "NOTITIA"
+  19:
+    clue: "Methods, informally"
+    answer: "WAYS"
+  20:
+    clue: "Sell via machine"
+    answer: "VEND"
+  21:
+    clue: "Unaspirated consonant sound, phonetically"
+    answer: "LENE"
+down:
+  1:
+    clue: "To fit with a new bulb"
+    answer: "RELAMP"
+  2:
+    clue: "A hexose sugar related to mannitol — deliberately verbose clue text included so the Down column has to wrap this entry across at least two lines"
+    answer: "MANNITOSE"
+  3:
+    clue: "Overly sensitive to slight provocation (archaic)"
+    answer: "MINSITIVE"
+  4:
+    clue: "More than acute, medically"
+    answer: "PREACUTE"
+  5:
+    clue: "Woodworking tool, variant spelling"
+    answer: "ADZ"
+  6:
+    clue: "Forbidden, variant spelling"
+    answer: "TABU"
+  7:
+    clue: "Chemical group, C=O"
+    answer: "CARBONYL"
+  12:
+    clue: "Dog-related"
+    answer: "CANINE"
+  14:
+    clue: "Metal, or to guide"
+    answer: "LEAD"
+  17:
+    clue: "Leatherworking piercing tool"
+    answer: "AWL"

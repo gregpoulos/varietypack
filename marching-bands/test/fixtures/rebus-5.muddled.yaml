@@ -1,0 +1,50 @@
+kind: marching-bands
+title: Rebus N=5 (odd, black centre)
+author: Fixtures
+date: '2026'
+size: 5
+rows:
+  - entries:
+      - clue: Two-letter rebus cell, then a circled plain cell
+        styles:
+          circle:
+            - 2
+        length: 3
+      - clue: Row one, second entry
+        length: 2
+  - entries:
+      - clue: Row two, first entry
+        length: 2
+      - clue: Three-letter rebus cell inside the entry
+        length: 3
+  - entries:
+      - clue: Row three, first entry (centre square is black)
+        length: 2
+      - clue: Row three, second entry
+        length: 2
+  - entries:
+      - clue: Four-letter rebus cell inside the entry
+        length: 3
+      - clue: Row four, second entry
+        length: 2
+  - entries:
+      - clue: Row five, first entry
+        length: 2
+      - clue: Row five, second entry
+        length: 3
+bands:
+  - entries:
+      - clue: Band A, top edge — same two-letter cell as row one
+        length: 5
+      - clue: Band A, right edge into the bottom
+        length: 6
+      - clue: Band A, bottom into the left edge
+        length: 5
+  - entries:
+      - clue: Band B — same three-letter cell as row two
+        length: 4
+      - clue: Band B — same four-letter cell as row four
+        length: 4
+hashed: true
+format: 2
+boardHash: efcc2ec66a09187729ee35baf7ac6fb25f2d4a05de102bb36bef86694f020651

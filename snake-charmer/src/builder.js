@@ -1,25 +1,15 @@
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
 const { validate } = require('./validator');
 const { preparePuzzle } = require('./hasher');
 const { computeLayout } = require('./layout');
-const injectTemplate = require('../../shared/build/injectTemplate');
-const { composeThemeCss, getSharedBundle, commonPuzzleData } = require('../../shared/build/builderUtils');
+const { commonPuzzleData, buildToolHtml } = require('../../shared/build/builderUtils');
 const { runBuildPuzzle } = require('../../shared/build/runBuildPuzzle');
 
 const TEMPLATE_DIR = path.join(__dirname, 'template');
 
 function buildHtml(prepared, ring, shape, theme, font) {
-  const template = fs.readFileSync(path.join(TEMPLATE_DIR, 'index.html'), 'utf8');
-  const css = composeThemeCss(TEMPLATE_DIR, theme, font);
-  const engineJs = fs.readFileSync(path.join(TEMPLATE_DIR, 'engine.js'), 'utf8');
-  const stadiumShapeJs = fs.readFileSync(path.join(TEMPLATE_DIR, 'shapes', 'stadium.js'), 'utf8');
-  const turnShapeJs    = fs.readFileSync(path.join(TEMPLATE_DIR, 'shapes', 'turn.js'), 'utf8');
-  const doubleTurnShapeJs = fs.readFileSync(path.join(TEMPLATE_DIR, 'shapes', 'double-turn.js'), 'utf8');
-  const js = getSharedBundle() + '\n' + stadiumShapeJs + '\n' + turnShapeJs + '\n' + doubleTurnShapeJs + '\n' + engineJs;
-
   const puzzleData = {
     ...commonPuzzleData(prepared),
     loops: prepared.loops,
@@ -28,7 +18,20 @@ function buildHtml(prepared, ring, shape, theme, font) {
     ring,
   };
 
-  return injectTemplate(template, { title: prepared.title, css, js, puzzleData });
+  return buildToolHtml(TEMPLATE_DIR, {
+    title: prepared.title,
+    theme,
+    font,
+    jsFiles: [
+      // ring.js is the shared core the shape renderers build on, so it goes first.
+      path.join(TEMPLATE_DIR, 'shapes', 'ring.js'),
+      path.join(TEMPLATE_DIR, 'shapes', 'stadium.js'),
+      path.join(TEMPLATE_DIR, 'shapes', 'turn.js'),
+      path.join(TEMPLATE_DIR, 'shapes', 'double-turn.js'),
+      path.join(TEMPLATE_DIR, 'engine.js'),
+    ],
+    puzzleData,
+  });
 }
 
 function findCoincidentStarts(entries, loops) {
@@ -46,28 +49,24 @@ function buildPuzzle(inputPath, outputPath, options) {
   return runBuildPuzzle(inputPath, outputPath, options, {
     validateFn:  validate,
     prepareFn:   preparePuzzle,
-    buildHtmlFn: (prepared, opts, ctx) => buildHtml(prepared, ctx.ring, ctx.shape, opts?.theme, opts?.font),
-    preBuild(rawPuzzle, prepared, opts) {
+    buildHtmlFn(prepared, rawPuzzle, opts) {
       // Priority: explicit --shape flag > shape field in YAML > auto-select.
       // Auto-select tries double-turn first and falls back to stadium.
       // An explicit shape (from CLI or YAML) disables the fallback so geometry errors surface directly.
-      const shapesToTry = opts?.shape !== undefined
-        ? [opts.shape]
-        : rawPuzzle.shape !== undefined
-          ? [rawPuzzle.shape]
-          : ['double-turn', 'stadium'];
+      const explicitShape = opts?.shape ?? rawPuzzle.shape;
 
       let ring, shape;
-      for (let i = 0; i < shapesToTry.length; i++) {
+      if (explicitShape !== undefined) {
+        ({ ring } = computeLayout(prepared.entries, prepared.loops, explicitShape));
+        shape = explicitShape;
+      } else {
         try {
-          ({ ring } = computeLayout(prepared.entries, prepared.loops, shapesToTry[i]));
-          shape = shapesToTry[i];
-          if (i > 0) {
-            process.stderr.write(`Note: double-turn shape not supported for this puzzle size; using stadium\n`);
-          }
-          break;
-        } catch (err) {
-          if (i === shapesToTry.length - 1) throw err;
+          ({ ring } = computeLayout(prepared.entries, prepared.loops, 'double-turn'));
+          shape = 'double-turn';
+        } catch {
+          ({ ring } = computeLayout(prepared.entries, prepared.loops, 'stadium'));
+          shape = 'stadium';
+          process.stderr.write(`Note: double-turn shape not supported for this puzzle size; using stadium\n`);
         }
       }
 
@@ -78,7 +77,7 @@ function buildPuzzle(inputPath, outputPath, options) {
         );
       }
 
-      return { ring, shape };
+      return buildHtml(prepared, ring, shape, opts?.theme, opts?.font);
     },
   });
 }

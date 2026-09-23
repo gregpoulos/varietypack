@@ -43,4 +43,5 @@ bands:
       - clue: Big ape
         length: 4
 hashed: true
-boardHash: abb00ca6f86a993a6f27d8b12e9c04c976ac803914170756aee36753b82220e1
+format: 2
+boardHash: 0d4e5e6f44cfd53de58bcea22d8587985d5ee2f4f94ed55b016a766fc4013f42

@@ -1,8 +1,7 @@
 'use strict';
 
-const normalize = require('../../shared/normalize');
-const { validateCommonHeader } = require('../../shared/build/builderUtils');
-const { validateEntry, hasLengthWithoutHash } = require('../../shared/build/validateEntry');
+const { validateCommonHeader, entryCells } = require('../../shared/build/builderUtils');
+const { validateEntry, checkMuddledGuard } = require('../../shared/build/validateEntry');
 
 function validate(puzzle) {
   const errors   = [];
@@ -33,10 +32,7 @@ function validate(puzzle) {
 
   // Integrity guards
   const isMuddled = puzzle.boardHash !== undefined;
-  if (hasLengthWithoutHash(puzzle.entries, isMuddled, errors)) return { errors, warnings };
-  if (isMuddled) {
-    warnings.push('note: entries are muddled; answer validation skipped');
-  }
+  if (checkMuddledGuard(puzzle.entries, isMuddled, errors, warnings)) return { errors, warnings };
 
   // Per-entry validation — source entries require answer:, muddled entries require length:
   const entryLengths = puzzle.entries.map((entry, i) => {
@@ -59,17 +55,27 @@ function validate(puzzle) {
     errors.push(`Ring size must be even for the ring layout to close, got ${ringSize} (${totalCells} cells / ${loops} loops)`);
   }
 
-  // Ring-equality check: only possible when we have the actual letter strings
+  // Ring-equality check: only possible when we have the actual answers.
+  // Compared in CELL space — a rebus group in loop 0 requires the same group at the
+  // same cell in every other loop, since all loops occupy the same ring cells.
+  // Deliberately NOT gated on errors.length === 0 (unlike Marching Bands' row/band
+  // cross-check). An unparseable entry contributes 0 cells, which lowers totalCells and
+  // so lowers ringSize below the >= 8 / divisibility guards above — those reject first,
+  // making a grammar-induced "cells differ" unreachable. Adding the gate would only
+  // suppress a real ring mismatch when some unrelated error (e.g. an empty clue) is
+  // also present, which costs a diagnostic and buys nothing.
   if (!isMuddled && ringSize >= 8) {
-    const concat = puzzle.entries.map(e =>
-      e && typeof e.answer === 'string' ? normalize(e.answer) : ''
-    ).join('');
-    const loop0 = concat.slice(0, ringSize);
+    const cells = puzzle.entries.flatMap(e =>
+      (e && typeof e.answer === 'string' ? entryCells(e) : null) ?? []
+    );
+    const key   = arr => arr.join(' ');
+    const loop0 = key(cells.slice(0, ringSize));
     for (let k = 1; k < loops; k++) {
-      const loopK = concat.slice(k * ringSize, (k + 1) * ringSize);
+      const loopK = key(cells.slice(k * ringSize, (k + 1) * ringSize));
       if (loopK !== loop0) {
         errors.push(
-          `Answers do not form a valid ${loops}-loop Snake Charmer: loop ${k} letters differ from loop 0`
+          `Answers do not form a valid ${loops}-loop Snake Charmer: loop ${k} cells differ from loop 0 ` +
+          '(a multi-letter cell must be bracketed identically in every loop)'
         );
         break;
       }

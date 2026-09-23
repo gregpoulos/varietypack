@@ -1,4 +1,8 @@
 'use strict';
+// Grid geometry shared by the validator, the hasher and the browser engine — the
+// engine gets it by concatenation (see src/builder.js), which is what keeps its
+// band traversal and the validator's from drifting apart. Dual-mode guard at the
+// bottom, as in shared/ (root CLAUDE.md → Shared library pattern).
 
 function bandIndexOf(row, col, N) {
   return Math.min(row - 1, col - 1, N - row, N - col);
@@ -35,4 +39,4 @@ function bandCells(k, N) {
   return cells;
 }
 
-module.exports = { bandIndexOf, bandCells, centerFlatIndex, centerN };
+if (typeof module !== 'undefined') module.exports = { bandIndexOf, bandCells, centerFlatIndex, centerN };

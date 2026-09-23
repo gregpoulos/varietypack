@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawnSync } = require('child_process');
 const { TOOLS } = require('./toolRegistry');
+const { writeHelpIfRequested } = require('./globalHelp');
 
 const CLI = path.resolve(__dirname, '../../cli.js');
 
@@ -20,10 +21,8 @@ source directories for engine and template changes. Press Ctrl-C to stop.
 `;
 
 function watchCommand(args) {
-  if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
-    process.stdout.write(HELP);
-    process.exit(args.length === 0 ? 1 : 0);
-  }
+  const helpCode = writeHelpIfRequested(args, HELP, process.stdout);
+  if (helpCode !== null) process.exit(helpCode);
 
   const dirArg = args[0];
   if (!fs.existsSync(dirArg) || !fs.statSync(dirArg).isDirectory()) {

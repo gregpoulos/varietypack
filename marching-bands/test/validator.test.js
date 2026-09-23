@@ -37,26 +37,16 @@ test('validate: accepts minimal valid puzzle', () => {
   assert.deepEqual(errors, []);
 });
 
+// validateCommonHeader's own behavior (kind mismatch, missing title, hashed in
+// source vs muddled, instructions type/emptiness) is covered by shared/test/
+// builderUtils.test.js. This is the single wiring test proving marching-bands
+// forwards validateCommonHeader's errors and passes its own kind
+// ('marching-bands').
+
 test('validate: rejects wrong kind', () => {
   const p = { ...minimalPuzzle(), kind: 'spiral' };
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('"kind"')));
-});
-
-test('validate: rejects missing title', () => {
-  const p = { ...minimalPuzzle(), title: '' };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"title"')));
-});
-
-test('validate: rejects hashed: in source puzzle', () => {
-  const { errors } = validate({ ...minimalPuzzle(), hashed: true });
-  assert.ok(errors.some(e => e.includes('"hashed:"')));
-});
-
-test('validate: hashed: in muddled puzzle does not produce a hashed: error', () => {
-  const { errors } = validate({ ...minimalPuzzle(), hashed: true, boardHash: 'any' });
-  assert.ok(!errors.some(e => e.includes('"hashed:"')));
 });
 
 test('validate: accepts optional fields — size, instructions, author, date', () => {
@@ -162,7 +152,7 @@ test('validate: accepts valid even-N puzzle (N=4)', () => {
 function validMuddledMB() {
   return {
     kind: 'marching-bands', title: 'T',
-    hashed: true, boardHash: 'any-hash',
+    hashed: true, format: 2, boardHash: 'any-hash',
     rows: [
       { entries: [{ clue: 'a', length: 2 }, { clue: 'b', length: 1 }] },
       { entries: [{ clue: 'c', length: 1 }, { clue: 'd', length: 1 }] },
@@ -216,7 +206,72 @@ test('validate: muddled — answer: in a band entry rejected with a use-length-n
 
 test('validate: muddled entries without boardHash rejected for marching-bands', () => {
   const p = validMuddledMB();
+  // Drop format: 2 alongside boardHash — without it the puzzle is neither a source
+  // nor a muddled file, and trips the "format: in a source puzzle" error as well.
   delete p.boardHash;
+  delete p.format;
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('boardHash')));
+});
+
+// 3x3 rebus fixture, per Task 4's construction:
+//   Flat 1-indexed cells: 1 2 3 / 4 [5=black centre] 6 / 7 8 9
+//   Grid: 1=s 2=har 3=o 4=n 6=e 7=t 8=a 9=p
+//   Band 0 clockwise traversal (8 cells) = 1,2,3,6,9,8,7,4 = s har o e p a t n
+function makeRebusPuzzle3x3(bandAnswer) {
+  return {
+    kind: 'marching-bands', title: 'T',
+    rows: [
+      { entries: [{ clue: 'r1', answer: 'S[HAR]O' }] },
+      { entries: [{ clue: 'r2', answer: 'NE' }] },
+      { entries: [{ clue: 'r3', answer: 'TAP' }] },
+    ],
+    bands: [{ entries: [{ clue: 'b0', answer: bandAnswer }] }],
+  };
+}
+
+test('a rebus cell must be bracketed identically in its row and its band', () => {
+  // Band cells: s har o e p a t n — agrees with row 1 at cells 1, 2, 3.
+  const { errors } = validate(makeRebusPuzzle3x3('S[HAR]OEPATN'));
+  assert.deepStrictEqual(errors, []);
+});
+
+test('a rebus bracketed differently on the band is rejected', () => {
+  // Band cells: s ha ro e p a t n — still 8 cells, still the same letters,
+  // but cell 2 is "ha"/cell 3 is "ro" where the row says "har"/"o". A regex that
+  // merely checks for *some* "rows and bands disagree" error is not discriminating
+  // here: normalize() strips brackets, so the old letter-space cross-check flattens
+  // both this fixture and the agreeing one to the identical letter sequence and
+  // reports the same errors for either — it can't tell them apart. The old
+  // implementation also misaligns row0 (5 letters into 3 cell slots), producing
+  // five spurious single-character mismatches at unrelated cells regardless of the
+  // band's bracketing. So this asserts both: exactly two errors (old code produces
+  // five), and that they name the two disagreeing cells with their cell-space
+  // values ("har"/"ha" and "o"/"ro") — pinning the behavior that matters without
+  // pinning exact wording or order.
+  const { errors } = validate(makeRebusPuzzle3x3('S[HA][RO]EPATN'));
+  assert.strictEqual(errors.length, 2, `expected exactly 2 errors, got: ${JSON.stringify(errors)}`);
+  assert.ok(
+    errors.some(e => e.includes('(1, 2)') && e.includes('"har"') && e.includes('"ha"')),
+    `expected an error for cell (1, 2) with "har"/"ha", got: ${JSON.stringify(errors)}`
+  );
+  assert.ok(
+    errors.some(e => e.includes('(1, 3)') && e.includes('"o"') && e.includes('"ro"')),
+    `expected an error for cell (1, 3) with "o"/"ro", got: ${JSON.stringify(errors)}`
+  );
+});
+
+test('rows[0] validation issues are reported exactly once, not double-reported', () => {
+  const p = minimalPuzzle();
+  // Add an entry with an empty clue (1 error) and unknown style (1 warning)
+  p.rows[0].entries[0] = { clue: '', answer: 'AB', styles: { underline: [0] } };
+  const { errors, warnings } = validate(p);
+  assert.strictEqual(
+    errors.length, 1,
+    `expected exactly 1 error for empty clue in rows[0], got ${errors.length}: ${JSON.stringify(errors)}`
+  );
+  assert.strictEqual(
+    warnings.length, 1,
+    `expected exactly 1 warning for unknown style in rows[0], got ${warnings.length}: ${JSON.stringify(warnings)}`
+  );
 });

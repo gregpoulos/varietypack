@@ -17,8 +17,9 @@ Examples:
   marching-bands puzzle.yaml --theme skeleton -o out/puzzle.html
 `;
 
-runToolCli({
+const code = runToolCli({
   helpText:  HELP,
   usageLine: 'marching-bands <input.yaml> [options]',
   buildPuzzle,
 });
+process.exit(code);

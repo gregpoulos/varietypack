@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { setupTimer } = require('../../shared/engine-chrome');
+const { setupTimer } = require('../../shared/engine-state');
 
 // Helper: create a timer with controllable time and visibility, no side effects.
 function makeTimer(opts = {}) {

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <style>{{CSS}}</style>
+</head>
+<body class="tool-crushword">
+  <div id="active-clue-bar">
+    <div class="active-clue-row" id="active-clue-primary">
+      <span class="active-clue-dir"></span>
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+    <div class="active-clue-row" id="active-clue-secondary">
+      <span class="active-clue-dir"></span>
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+  </div>
+  <div class="puzzle-main">
+    <div class="puzzle-header">
+      <h1 class="title">{{TITLE}}</h1>
+      <p class="byline"></p>
+    </div>
+    <div id="instructions" hidden></div>
+    <div class="puzzle-body">
+      <div class="puzzle-center">
+        <svg id="puzzle-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="controls">
+          <button id="check-btn" type="button" disabled>Check Cell</button>
+        </div>
+        <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
+      </div>
+      <div class="clue-columns">
+        <div class="clue-section clue-section-across">
+          <h2>Across</h2>
+          <ul id="across-clues"></ul>
+        </div>
+        <div class="clue-section clue-section-down">
+          <h2>Down</h2>
+          <ul id="down-clues"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <input id="hidden-input" type="text" autocomplete="off" autocorrect="off"
+         autocapitalize="off" spellcheck="false" aria-hidden="true">
+  <script>
+    {{PUZZLE_DATA}}
+  </script>
+  <script>{{JS}}</script>
+</body>
+</html>

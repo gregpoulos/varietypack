@@ -1,0 +1,45 @@
+kind: marching-bands
+title: "Rebus N=5 (odd, black centre)"
+author: "Fixtures"
+date: "2026"
+size: 5
+rows:
+  - entries:
+      - clue: "Two-letter rebus cell, then a circled plain cell"
+        answer: "A[BB]C"
+        styles: { circle: [2] }
+      - clue: "Row one, second entry"
+        answer: "DE"
+  - entries:
+      - clue: "Row two, first entry"
+        answer: "FG"
+      - clue: "Three-letter rebus cell inside the entry"
+        answer: "H[III]J"
+  - entries:
+      - clue: "Row three, first entry (centre square is black)"
+        answer: "KL"
+      - clue: "Row three, second entry"
+        answer: "MN"
+  - entries:
+      - clue: "Four-letter rebus cell inside the entry"
+        answer: "O[PPPP]Q"
+      - clue: "Row four, second entry"
+        answer: "RS"
+  - entries:
+      - clue: "Row five, first entry"
+        answer: "TU"
+      - clue: "Row five, second entry"
+        answer: "VWX"
+bands:
+  - entries:
+      - clue: "Band A, top edge — same two-letter cell as row one"
+        answer: "A[BB]CDE"
+      - clue: "Band A, right edge into the bottom"
+        answer: "JNSXWV"
+      - clue: "Band A, bottom into the left edge"
+        answer: "UTOKF"
+  - entries:
+      - clue: "Band B — same three-letter cell as row two"
+        answer: "GH[III]M"
+      - clue: "Band B — same four-letter cell as row four"
+        answer: "RQ[PPPP]L"

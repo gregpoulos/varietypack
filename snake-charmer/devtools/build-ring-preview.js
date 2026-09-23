@@ -33,6 +33,7 @@ function inlineRenderer(filePath) {
 const layoutStadium    = inlineLayout(path.join(root, 'src/layoutStadium.js'),    'computeStadiumRing');
 const layoutTurn       = inlineLayout(path.join(root, 'src/layoutTurn.js'),       'computeTurnRing');
 const layoutDoubleTurn = inlineLayout(path.join(root, 'src/layoutDoubleTurn.js'), 'computeDoubleTurnRing');
+const rendererRing     = inlineRenderer(path.join(root, 'src/template/shapes/ring.js'));
 const rendererStadium  = inlineRenderer(path.join(root, 'src/template/shapes/stadium.js'));
 const rendererTurn     = inlineRenderer(path.join(root, 'src/template/shapes/turn.js'));
 const rendererDT       = inlineRenderer(path.join(root, 'src/template/shapes/double-turn.js'));
@@ -115,6 +116,7 @@ ${layoutTurn}
 ${layoutDoubleTurn}
 
 // ── inlined renderer modules ──────────────────────────────────────────────────
+${rendererRing}
 ${rendererStadium}
 ${rendererTurn}
 ${rendererDT}
@@ -130,39 +132,6 @@ function getRenderer(shape, ring) {
   if (shape === 'turn')        return getTurnRenderer(ring);
   if (shape === 'double-turn') return getDoubleTurnRenderer(ring);
   return getStadiumRenderer(ring);
-}
-
-// Section colouring: derive from ring geometry for each shape so section
-// boundaries are immediately visible.
-function sectionOf(shape, ring, i) {
-  if (shape === 'stadium' || shape === 'circle') {
-    const { nStraight, nCurve } = ring;
-    if (i < nStraight)                      return 0;
-    if (i < nStraight + nCurve)             return 1;
-    if (i < 2 * nStraight + nCurve)        return 2;
-    return 3;
-  }
-  if (shape === 'turn') {
-    const { nArmStraight: ns, nArmCurve: nc, nBodyInner, nBodyOuter } = ring;
-    const S = [ns, ns+nc, 2*ns+nc, 2*ns+nc+nBodyInner,
-               3*ns+nc+nBodyInner, 3*ns+2*nc+nBodyInner,
-               4*ns+2*nc+nBodyInner];
-    for (let s = 0; s < S.length; s++) if (i < S[s]) return s;
-    return 7;
-  }
-  if (shape === 'double-turn') {
-    const { nArmStraight: na, nMidStraight: nm, nArmCurve: nc, nBodyInner, nBodyOuter } = ring;
-    const S = [na, na+nc, 2*na+nc, 2*na+nc+nBodyInner,
-               2*na+nc+nBodyInner+nm, 2*na+nc+nBodyInner+nm+nBodyOuter,
-               3*na+nc+nBodyInner+nm+nBodyOuter,
-               3*na+2*nc+nBodyInner+nm+nBodyOuter,
-               4*na+2*nc+nBodyInner+nm+nBodyOuter,
-               4*na+2*nc+nBodyInner+2*nm+nBodyOuter+nBodyInner,
-               4*na+2*nc+2*nBodyInner+2*nm+nBodyOuter];
-    for (let s = 0; s < S.length; s++) if (i < S[s]) return s;
-    return 11;
-  }
-  return 0;
 }
 
 const COLORS = ${JSON.stringify(CELL_COLORS)};
@@ -191,7 +160,7 @@ function render(shape, N) {
   const { svgWidth, svgHeight }    = ring;
 
   const cells = Array.from({ length: N }, (_, i) => {
-    const fill = COLORS[sectionOf(shape, ring, i) % COLORS.length];
+    const fill = COLORS[renderer.sectionOf(i) % COLORS.length];
     const d    = cellPath(i);
     const { tx, ty } = letterCenter(i);
     return \`<path class="cell" d="\${d}" fill="\${fill}"/>
@@ -215,7 +184,7 @@ function shapeStep(shape) {
 
 function shapeConstraint(shape) {
   if (shape === 'turn')        return 'N must be divisible by 4';
-  if (shape === 'double-turn') return 'N must be even (minimum 22; N=24 is invalid)';
+  if (shape === 'double-turn') return 'N must be even (minimum 42; N=44 is invalid)';
   if (shape === 'circle')      return 'N must be even; no straight sections';
   return 'N must be even';
 }

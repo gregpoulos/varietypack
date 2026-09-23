@@ -1,0 +1,69 @@
+.puzzle-main { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
+
+/* Grid on top, clues below — a flanking left/right layout doesn't work once
+   cell width scales with maxCellLetters: a puzzle with any rebus capacity
+   produces a grid too wide to sit beside two clue columns without one side
+   getting squeezed. */
+.puzzle-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+/* Sticky, like the other tools' grid column, but over the clues rather than
+   beside them — hence the opaque background (theme-components.css). It sticks
+   flush below the active-clue bar, with the breathing room as padding-top
+   rather than extra `top`: a gap outside the box would let scrolled clue text
+   show through. See crushword/CLAUDE.md → Page layout. */
+.puzzle-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: var(--active-clue-bar-space);
+  padding-top: 16px;
+  z-index: 1;
+}
+
+#puzzle-svg { display: block; overflow: visible; max-width: 100%; height: auto; }
+
+.cell-letter { font-weight: bold; dominant-baseline: central; }
+
+.clue-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 32px;
+  width: 100%;
+  max-width: 700px;
+}
+
+.clue-section h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+
+.clue-section ul { list-style: none; }
+
+.clue-item {
+  display: flex;
+  align-items: baseline;
+  cursor: pointer;
+}
+
+.clue-num {
+  font-size: 0.7rem;
+  font-weight: bold;
+  margin-right: 4px;
+  flex-shrink: 0;
+  min-width: 1.6em;
+  text-align: right;
+}
+
+@media (max-width: 600px) {
+  .clue-columns { grid-template-columns: 1fr; }
+}

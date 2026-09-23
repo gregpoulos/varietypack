@@ -13,4 +13,5 @@ entries:
   - clue: Dance move
     length: 4
 hashed: true
-boardHash: 55b4bc63c48a895b18e0041a2ddf67cade138aed18f6fc23db797747b49a3b8b
+format: 2
+boardHash: a12f74483436e84329ff7f7461d0310ac915426ddd29c6bfd2245ab848553ed3

@@ -17,6 +17,11 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  /* flex-shrink:0 otherwise sizes this to its widest child — #controls at max-content —
+     so the row could never wrap and a narrow viewport scrolled sideways instead. Capping
+     it lets #controls wrap and the ring scale down. Spiral and Marching Bands need no
+     equivalent: their center grid track is already width-capped. */
+  max-width: 100%;
 }
 
 #ring-container {

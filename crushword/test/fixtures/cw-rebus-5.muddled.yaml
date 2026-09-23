@@ -1,0 +1,45 @@
+kind: crushword
+title: Crushword Test Fixture — Rebus 5×5
+author: Fixtures
+date: '2026'
+grid:
+  - ...#.
+  - .....
+  - .....
+  - .....
+  - .#...
+across:
+  '1':
+    clue: First three letters, plainly
+    length: 3
+  '5':
+    clue: Contains a two-letter rebus cell
+    length: 5
+  '7':
+    clue: Contains a three-letter rebus cell
+    length: 5
+  '8':
+    clue: Five letters in a row
+    length: 5
+  '9':
+    clue: Last three letters, plainly
+    length: 3
+down:
+  '1':
+    clue: First column, top to bottom
+    length: 5
+  '2':
+    clue: Second column, crosses the two-letter rebus cell
+    length: 4
+  '3':
+    clue: Third column
+    length: 5
+  '4':
+    clue: Fifth column
+    length: 5
+  '6':
+    clue: Fourth column, crosses the three-letter rebus cell
+    length: 4
+hashed: true
+format: 2
+boardHash: e2f7e001d527b53ae8d0fa0f9fd36548cb029e1ecad5a0d3c44636c84083707a

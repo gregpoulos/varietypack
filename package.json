@@ -6,13 +6,14 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js */test/*.test.js",
-    "test:e2e": "playwright test",
-    "watch:spiral-fixtures": "node spiral/watch-fixtures.js",
-    "watch:sc-fixtures": "node snake-charmer/watch-fixtures.js",
-    "watch:mb-fixtures": "node marching-bands/watch-fixtures.js"
+    "test:e2e": "playwright test"
   },
   "dependencies": {
-    "js-yaml": "^5.2.1"
+    "js-yaml": "^5.2.1",
+    "markdown-it": "^15.0.2",
+    "markdown-it-emoji": "^3.1.0",
+    "markdown-it-sub": "^2.0.0",
+    "markdown-it-sup": "^2.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

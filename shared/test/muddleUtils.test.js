@@ -6,11 +6,10 @@ const { walkAnswers, buildMuddledYaml } = require('../build/muddleUtils');
 
 // ── walkAnswers ───────────────────────────────────────────────────────────────
 
-test('walkAnswers: flat object with answer — replaces with length, drops answer and no hash', () => {
+test('walkAnswers: flat object with answer — replaces with length, drops answer', () => {
   const entry = { clue: 'Greeting', answer: 'WAH-WAH', styles: { circle: [0] } };
   const out   = walkAnswers(entry);
   assert.ok(!('answer' in out), 'answer key must be removed');
-  assert.ok(!('hash' in out),   'hash must not be present');
   assert.equal(out.length, 6);  // wahwah
   assert.equal(out.clue,   'Greeting');
   assert.deepEqual(out.styles, { circle: [0] });
@@ -24,8 +23,6 @@ test('walkAnswers: array — maps over elements', () => {
   const out = walkAnswers(entries);
   assert.equal(out.length, 2);
   assert.ok(!('answer' in out[0]));
-  assert.ok(!('hash' in out[0]));
-  assert.ok(!('hash' in out[1]));
   assert.equal(out[0].length, 2);
   assert.equal(out[1].length, 2);
 });
@@ -42,10 +39,8 @@ test('walkAnswers: nested object (rows/entries) — recurses into nested arrays'
   };
   const out = walkAnswers(puzzle);
   assert.ok(!('answer' in out.rows[0].entries[0]));
-  assert.ok(!('hash'   in out.rows[0].entries[0]));
   assert.equal(out.rows[0].entries[0].length, 3);
   assert.ok(!('answer' in out.bands[0].entries[0]));
-  assert.ok(!('hash'   in out.bands[0].entries[0]));
   assert.equal(out.bands[0].entries[0].length, 3);
 });
 
@@ -57,10 +52,8 @@ test('walkAnswers: inward/outward (spiral) — replaces answers in both lists', 
   };
   const out = walkAnswers(puzzle);
   assert.ok(!('answer' in out.inward[0]));
-  assert.ok(!('hash'   in out.inward[0]));
   assert.equal(out.inward[0].length, 4);
   assert.ok(!('answer' in out.outward[0]));
-  assert.ok(!('hash'   in out.outward[0]));
   assert.equal(out.outward[0].length, 7);
 });
 
@@ -78,7 +71,6 @@ test('walkAnswers: entry without answer — passes through unchanged', () => {
   assert.equal(out.clue,   'Test');
   assert.equal(out.length, 5);
   assert.ok(!('answer' in out));
-  assert.ok(!('hash'   in out));
 });
 
 // ── buildMuddledYaml ──────────────────────────────────────────────────────────
@@ -99,14 +91,13 @@ test('buildMuddledYaml: overwrites hashed:false from source with true', () => {
   assert.equal(out.hashed, true);
 });
 
-test('buildMuddledYaml: walks entries — answers replaced with length, no hash', () => {
+test('buildMuddledYaml: walks entries — answers replaced with length', () => {
   const puzzle = {
     kind: 'snake-charmer', title: 'T',
     entries: [{ clue: 'One', answer: 'AA' }, { clue: 'Two', answer: 'BBB' }],
   };
   const out = buildMuddledYaml(puzzle, 'bh');
   assert.ok(!('answer' in out.entries[0]));
-  assert.ok(!('hash'   in out.entries[0]));
   assert.equal(out.entries[0].length, 2);
   assert.equal(out.entries[0].clue,   'One');
 });
@@ -117,4 +108,20 @@ test('walkAnswers: non-plain objects (Date) pass through unchanged, not flattene
   const out = walkAnswers(puzzle);
   assert.ok(out.date instanceof Date, 'Date must remain a Date, not be flattened to {}');
   assert.equal(out.date.getTime(), d.getTime());
+});
+
+test('muddled length is the cell count, not the letter count', () => {
+  const out = buildMuddledYaml(
+    { kind: 'spiral', title: 'T', inward: [{ clue: 'c', answer: 'S[HAR]ON' }] },
+    'deadbeef'
+  );
+  assert.strictEqual(out.inward[0].length, 4);
+  assert.strictEqual(out.inward[0].answer, undefined);
+});
+
+test('muddled output declares format 2', () => {
+  const out = buildMuddledYaml({ kind: 'spiral', title: 'T', inward: [] }, 'deadbeef');
+  assert.strictEqual(out.format, 2);
+  assert.strictEqual(out.hashed, true);
+  assert.strictEqual(out.boardHash, 'deadbeef');
 });
