@@ -10,6 +10,7 @@ rows:
         styles:
           circle:
             - 0
+            - 2
       - clue: Nautical yes
         answer: FGHI
       - clue: Glowing coal

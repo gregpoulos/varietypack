@@ -1,33 +1,44 @@
 #!/usr/bin/env node
 'use strict';
 
-const { buildPuzzle } = require('./src/builder');
-const { runToolCli }  = require('../shared/build/toolCli');
-const { GLOBAL_OPTIONS } = require('../shared/build/globalHelp');
+const { HOOKS } = require('./src/builder');
+const { runBuildPuzzle } = require('../shared/cli/runBuildPuzzle');
+const { runToolCli }  = require('../shared/cli/toolCli');
+const { GLOBAL_OPTIONS_HELP, formatOptionsHelp } = require('../shared/cli/globalHelp');
+const { SHAPE_NAMES } = require('./src/layout');
 
-const TOOL_OPTIONS =
-  '  --shape <name>    Ring shape: circle, stadium, turn, double-turn\n' +
-  '                    Default: auto (tries double-turn, falls back to stadium)\n';
+const SHAPE_OPTION = {
+  shape: { type: 'string', arg: 'name',
+    description: 'Ring shape: ' + SHAPE_NAMES.join(', ') + '\nDefault: auto (tries double-turn, falls back to stadium)' },
+};
 
 const HELP = `Build a Snake Charmer puzzle HTML from a YAML definition.
 
 Usage: snakecharmer <input.yaml> [options]
 
 Options:
-${TOOL_OPTIONS}
-${GLOBAL_OPTIONS}
+${formatOptionsHelp(SHAPE_OPTION)}
+
+${GLOBAL_OPTIONS_HELP}
 
 Examples:
   snakecharmer puzzle.yaml
   snakecharmer puzzle.yaml --shape stadium --theme skeleton -o out/puzzle.html
 `;
 
-const code = runToolCli({
+function buildPuzzle(inputPath, outputPath, options, io) {
+  return runBuildPuzzle(inputPath, outputPath, options, HOOKS, io);
+}
+
+// Exported for the `varietypack build` dispatcher, which runs it in-process;
+// only a direct run (`node snake-charmer/cli.js …`) exits.
+const CLI_CONFIG = {
   helpText:       HELP,
   usageLine:      'snakecharmer <input.yaml> [options]',
-  extraFlagSpecs: [
-    { flag: '--shape', name: 'shape', values: ['circle', 'stadium', 'turn', 'double-turn'] },
-  ],
+  extraOptions:   SHAPE_OPTION,
   buildPuzzle,
-});
-process.exit(code);
+};
+
+if (require.main === module) process.exit(runToolCli(CLI_CONFIG));
+
+module.exports = { CLI_CONFIG, buildPuzzle };

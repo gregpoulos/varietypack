@@ -1,16 +1,15 @@
 'use strict';
 
 /**
- * Behavioral tests for the shared runToolCli() helper (shared/build/toolCli.js).
+ * Behavioral tests for the shared runToolCli() helper (shared/cli/toolCli.js).
  *
  * These call runToolCli() directly, in-process, with Snake Charmer's real
- * buildPuzzle (the same one snake-charmer/cli.js wires up) and injected
+ * CLI config (exported by snake-charmer/cli.js) and injected
  * argv/stdout/stderr — exercising the full behavior (flag parsing, help text,
  * overwrite protection, actual file output) without spawning a subprocess.
  * Snake Charmer is used as the representative tool since it exercises both
- * the shared path and a tool-specific flag (--shape). Behaviors tested here
- * must not be duplicated in per-tool cli.test.js files — one home per
- * behavior.
+ * the shared path and a tool-specific flag (--shape). The real per-tool entry
+ * points are covered by the dispatcher test in test/cli.test.js.
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -18,46 +17,19 @@ const path = require('node:path');
 const fs   = require('node:fs');
 const os   = require('node:os');
 
-const { runToolCli } = require('../build/toolCli');
-const { buildPuzzle } = require('../../snake-charmer/src/builder');
-const { GLOBAL_OPTIONS } = require('../build/globalHelp');
+const { runToolCli } = require('../cli/toolCli');
+const { CLI_CONFIG } = require('../../snake-charmer/cli');
 
 const SC_FIXTURE = path.resolve(__dirname, '../../snake-charmer/test/fixtures/circle-36.yaml');
 
-const HELP = `Build a Snake Charmer puzzle HTML from a YAML definition.
-
-Usage: snakecharmer <input.yaml> [options]
-
-Options:
-${GLOBAL_OPTIONS}
-
-Examples:
-  snakecharmer puzzle.yaml
-  snakecharmer puzzle.yaml --shape stadium --theme skeleton -o out/puzzle.html
-`;
-
-// Mirrors the shape of snake-charmer/cli.js's own runToolCli() call (same
-// helpText/usageLine/extraFlagSpecs/buildPuzzle wiring); the local HELP text
-// above is a fixture for these tests, not a copy of the real help string, so
-// don't read it as proof the real CLI's help text is covered here.
 function run(...argv) {
   let out = '';
   let err = '';
-  const status = runToolCli(
-    {
-      helpText:       HELP,
-      usageLine:      'snakecharmer <input.yaml> [options]',
-      extraFlagSpecs: [
-        { flag: '--shape', name: 'shape', values: ['circle', 'stadium', 'turn', 'double-turn'] },
-      ],
-      buildPuzzle,
-    },
-    {
-      argv,
-      stdout: { write: (s) => { out += s; } },
-      stderr: { write: (s) => { err += s; } },
-    }
-  );
+  const status = runToolCli(CLI_CONFIG, {
+    argv,
+    stdout: { write: (s) => { out += s; } },
+    stderr: { write: (s) => { err += s; } },
+  });
   return { status, stdout: out, stderr: err };
 }
 
@@ -129,6 +101,15 @@ test('-f overwrites existing output file', () => {
   assert.equal(r.status, 0, r.stderr);
 });
 
+test('-f never overwrites the input file itself', () => {
+  const input = path.join(tmpDir('tc-self'), 'puzzle.yaml');
+  fs.copyFileSync(SC_FIXTURE, input);
+  const r = run(input, '-f', '-o', input);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /output path is the input file/);
+  assert.equal(fs.readFileSync(input, 'utf8'), fs.readFileSync(SC_FIXTURE, 'utf8'));
+});
+
 // ── tool-specific flag (--shape) ─────────────────────────────────────────────
 
 test('--shape stadium exits 0 and produces output file', () => {
@@ -138,18 +119,12 @@ test('--shape stadium exits 0 and produces output file', () => {
   assert.ok(fs.existsSync(out), 'output file should exist');
 });
 
-// ── --minify ──────────────────────────────────────────────────────────────────
+// ── stray arguments ───────────────────────────────────────────────────────────
 
-test('--minify exits 0 and produces a smaller file than without it', () => {
-  const dir      = tmpDir('tc-minify');
-  const normal   = path.join(dir, 'normal.html');
-  const minified = path.join(dir, 'minified.html');
-  const r1 = run(SC_FIXTURE, '-o', normal);
-  assert.equal(r1.status, 0, r1.stderr);
-  const r2 = run(SC_FIXTURE, '--minify', '-o', minified);
-  assert.equal(r2.status, 0, r2.stderr);
-  const normalSize   = fs.statSync(normal).size;
-  const minifiedSize = fs.statSync(minified).size;
-  assert.ok(minifiedSize < normalSize,
-    `minified (${minifiedSize}) should be smaller than normal (${normalSize})`);
+test('a second input path is an error, not silently ignored', () => {
+  const out = path.join(tmpDir('tc-stray'), 'out.html');
+  const r = run(SC_FIXTURE, 'extra.yaml', '-o', out);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Unexpected argument 'extra\.yaml'/);
+  assert.ok(!fs.existsSync(out));
 });

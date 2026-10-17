@@ -1,35 +1,21 @@
 'use strict';
 
-// Browser engine behavior for Snake Charmer — the part node:test cannot cover. Covers:
-// state-derived banners + hidden partial correctness; Tab entry navigation (wrapping,
-// Shift+Tab); Backspace's filled-vs-empty semantics; the hashed-mode per-keystroke
-// cursor-advance invariant; the print-media reset of .correct cell fills; the options
-// menu panel's own position/Check-Cell-toggle geometry; board-lock after solve; rebus
-// composing (Enter open/commit, arrowing-away commit, Backspace-while-composing,
-// suppressed completion mid-compose, autosave-restore-while-composing, commit-by-
-// cursor-move completion, non-hashed rebus scoring, and — WebKit-only — tapping
-// #rebus-btn); and solved-board clue-item restore.
-//
-// Note: Snake Charmer cell/letter ids are 0-indexed (cell-0 is the first ring cell),
-// unlike Spiral and Marching Bands.
-//
-// Behavior Snake Charmer shares byte-for-byte with one or more of the other engines —
-// keyboard-shortcuts modal, options menu open/close/focus, congrats/Play-again,
-// completion-event payload, Check Cell localStorage writes, rebus-button label
-// resync, rebus-button presence, and hashed-rebus preimage — lives in
-// e2e/shared.spec.js instead.
+// Browser-engine behavior specific to Snake Charmer — what node:test can't cover: the
+// ring's own navigation and cross-loop highlighting, its menu/controls geometry, and the
+// touch-tap path into composition (WebKit only). Behavior it shares with the other
+// engines lives in e2e/shared.spec.js. Cell and letter ids here are 0-indexed (cell-0
+// is the first ring cell), unlike Spiral and Marching Bands.
 
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
-const { buildPuzzle } = require('../snake-charmer/src/builder');
+const { buildPuzzle } = require('../snake-charmer/cli');
 const { typeCell } = require('./helpers');
 
 const FIX = path.join(__dirname, '..', 'snake-charmer', 'test', 'fixtures');
 
 let htmlPath;     // non-hashed → PUZZLE_DATA.letters present (one char per ring position)
-let hashedPath;   // hashed     → no letters; correctness via boardHash
 let rebusPath;        // non-hashed rebus fixture
 let rebusHashedPath;  // hashed rebus fixture
 let tmpDir;       // unique temp directory per worker
@@ -37,9 +23,7 @@ let tmpDir;       // unique temp directory per worker
 test.beforeAll(() => {
   tmpDir     = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-e2e-'));
   htmlPath   = path.join(tmpDir, 'puzzle.html');
-  hashedPath = path.join(tmpDir, 'puzzle-hashed.html');
   buildPuzzle(path.join(FIX, 'circle-8.yaml'),         htmlPath);
-  buildPuzzle(path.join(FIX, 'circle-8.muddled.yaml'), hashedPath);
   rebusPath       = path.join(tmpDir, 'rebus.html');
   rebusHashedPath = path.join(tmpDir, 'rebus-hashed.html');
   buildPuzzle(path.join(FIX, 'rebus-8.yaml'),         rebusPath);
@@ -69,34 +53,6 @@ async function ready(page) {
   await page.evaluate(() => document.getElementById('hidden-input').focus());
 }
 
-test('banners are state-derived and partial correctness stays hidden', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-  await expect(page.locator('#congrats')).toBeHidden();
-  await expect(page.locator('#done-wrong')).toBeHidden();
-
-  // letters holds one char per ring position; the cursor starts at ring position 0,
-  // so typing them in order fills the ring. Make the first cell wrong.
-  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
-  const wrongFirst = letters[0].toLowerCase() === 'z' ? 'y' : 'z';
-  for (const ch of [wrongFirst, ...letters.slice(1)]) await page.keyboard.type(ch);
-
-  // Full but wrong: done-wrong shows, congrats does not, nothing marked correct.
-  await expect(page.locator('#done-wrong')).toBeVisible();
-  await expect(page.locator('#congrats')).toBeHidden();
-  await expect(page.locator('.cell.correct')).toHaveCount(0);
-
-  // The cursor wrapped back to ring position 0 (the wrong one). Clearing it empties a
-  // cell, so the banner must hide immediately (state-derived, no timeout).
-  await page.keyboard.press('Backspace');
-  await expect(page.locator('#done-wrong')).toBeHidden();
-
-  // Re-type the correct first letter → ring full and entirely correct → congrats.
-  await page.keyboard.type(letters[0]);
-  await expect(page.locator('#congrats')).toBeVisible();
-  await expect(page.locator('#done-wrong')).toBeHidden();
-});
-
 test('Tab cycles through every entry (wrapping) and Shift+Tab reverses', async ({ page }) => {
   await page.goto('file://' + htmlPath);
   await ready(page);
@@ -116,80 +72,6 @@ test('Tab cycles through every entry (wrapping) and Shift+Tab reverses', async (
   expect(await activeClueIdx(page)).toBe(n - 1);
 });
 
-test('Backspace clears a filled cell in place, then retreats and clears the previous cell when empty', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-
-  // Fill ring positions 0–2; the cursor advances to position 3.
-  await page.keyboard.type('ABC');
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('ArrowLeft');
-  expect(await activeCellNum(page)).toBe(1);
-  await expect(page.locator('#letter-1')).toHaveText('B');
-
-  // Backspace on a filled cell clears it; the cursor stays put.
-  await page.keyboard.press('Backspace');
-  await expect(page.locator('#letter-1')).toHaveText('');
-  expect(await activeCellNum(page)).toBe(1);
-
-  // Backspace again on the now-empty cell retreats to the previous cell and clears it.
-  await page.keyboard.press('Backspace');
-  expect(await activeCellNum(page)).toBe(0);
-  await expect(page.locator('#letter-0')).toHaveText('');
-});
-
-test('hashed mode advances the cursor on every keystroke, independent of the board-complete check', async ({ page }) => {
-  await page.goto('file://' + hashedPath);
-  await ready(page);
-
-  expect(await activeCellNum(page)).toBe(0);
-
-  // A single, non-final keystroke moves the cursor immediately (position 0 → 1): the
-  // engine advances via advanceCell() before, and regardless of, the hash check. No
-  // correctness is revealed until the whole ring is filled.
-  await page.keyboard.type('Z');
-  expect(await activeCellNum(page)).toBe(1);
-  await expect(page.locator('.cell.correct')).toHaveCount(0);
-  await expect(page.locator('#congrats')).toBeHidden();
-  await expect(page.locator('#done-wrong')).toBeHidden();
-  await expect(page.locator('#check-btn')).toBeHidden();
-});
-
-test('.correct cells render with white fill under print media', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-
-  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
-  for (const ch of letters) await page.keyboard.type(ch);
-  await expect(page.locator('#congrats')).toBeVisible();
-  await expect(page.locator('#cell-0')).toHaveClass(/correct/);
-
-  // On screen a correct cell carries the highlight fill (not white).
-  const screenFill = await page.evaluate(() => getComputedStyle(document.getElementById('cell-0')).fill);
-  expect(screenFill).not.toBe('rgb(255, 255, 255)');
-
-  // Under print the correct-state fill must reset to white (shared/themes/print-base.css).
-  await page.emulateMedia({ media: 'print' });
-  const printFill = await page.evaluate(() => getComputedStyle(document.getElementById('cell-0')).fill);
-  expect(printFill).toBe('rgb(255, 255, 255)');
-});
-
-test('the menu button sits within the active-clue bar, vertically centered against its height', async ({ page }) => {
-  await page.goto(`file://${htmlPath}`);
-  await ready(page);
-
-  const [btn, bar] = await Promise.all([
-    page.locator('#menu-btn').boundingBox(),
-    page.locator('#active-clue-bar').boundingBox(),
-  ]);
-  // The button used to float below the bar as a separate row, costing an
-  // entire extra row of vertical space on mobile; it now sits within the
-  // bar's own band instead, costing nothing extra.
-  expect(btn.y).toBeGreaterThanOrEqual(bar.y);
-  expect(btn.y + btn.height).toBeLessThanOrEqual(bar.y + bar.height);
-  expect(btn.y - bar.y).toBeCloseTo((bar.y + bar.height) - (btn.y + btn.height), 1); // centered
-});
-
 test('the options menu panel opens below the menu button, not over it', async ({ page }) => {
   await page.goto(`file://${htmlPath}`);
   await ready(page);
@@ -200,9 +82,9 @@ test('the options menu panel opens below the menu button, not over it', async ({
     page.locator('#menu-btn').boundingBox(),
     page.locator('#menu-panel').boundingBox(),
   ]);
-  // #menu-btn sits below #active-clue-bar in this tool (see the test above), which
-  // base.css's plain #menu-panel top:60px has no way to track — without the JS fix,
-  // the panel opens overlapping the button, hiding the only control that closes it.
+  // A panel over the button would hide the only control that closes it. In this tool
+  // the button sits inside #active-clue-bar (see the test above), and both it and the
+  // panel are positioned against --active-clue-bar-space (theme-components.css).
   expect(panel.y).toBeGreaterThanOrEqual(btn.y + btn.height);
 
   // And #menu-btn must still be clickable to close the menu — the actual symptom
@@ -212,61 +94,8 @@ test('the options menu panel opens below the menu button, not over it', async ({
   await expect(page.locator('#menu-panel')).toBeHidden();
 });
 
-test('hiding the Check Cell button does not move the ring', async ({ page }) => {
-  await page.goto(`file://${htmlPath}`);
-  await ready(page);
-
-  // #check-btn is deliberately styled taller than its #controls siblings ("Primary
-  // button", theme-components.css) — hiding it would otherwise shrink #controls'
-  // own height and shift #ring-wrap's column, moving the ring, unless that height
-  // is reserved first.
-  const before = await page.locator('#ring-svg').boundingBox();
-  await page.click('#menu-btn');
-  await page.click('#check-btn-toggle');
-  const after = await page.locator('#ring-svg').boundingBox();
-
-  expect(after).toEqual(before);
-});
-
-test('board is locked after solve — letter input is ignored', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-
-  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
-  for (const ch of letters) await page.keyboard.type(ch);
-  await expect(page.locator('#congrats-dialog')).toBeVisible();
-
-  // Close dialog without play-again so the board stays locked
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#congrats-dialog')).toBeHidden();
-
-  // Snapshot all cell letters — position-independent, safe across all tools
-  const before = await page.locator('.cell-letter').allTextContents();
-  await page.keyboard.type('ZZZZZ');
-  expect(await page.locator('.cell-letter').allTextContents()).toEqual(before);
-});
-
 // Ring cells in traversal order for snake-charmer/test/fixtures/rebus-8.yaml.
 const REBUS_CELLS = ['A', 'BB', 'C', 'DDD', 'E', 'F', 'GGGG', 'H'];
-
-test('Enter opens a multi-letter cell; a second Enter commits without advancing', async ({ page }) => {
-  await page.goto('file://' + rebusPath);
-  await ready(page);
-
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#cell-0')).toHaveClass(/composing/);
-
-  for (const ch of ['B', 'B']) await page.locator('#hidden-input').fill(ch);
-  await expect(page.locator('#letter-0')).toHaveText('BB');
-  await expect(page.locator('#letter-0')).toHaveClass(/len-2/);
-  // Capacity must never auto-advance: still on cell 0 after filling it.
-  await expect(page.locator('#cell-0')).toHaveClass(/active-cell/);
-
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#cell-0')).not.toHaveClass(/composing/);
-  // Committing no longer advances either: the cursor stays on the cell.
-  await expect(page.locator('#cell-0')).toHaveClass(/active-cell/);
-});
 
 test('arrowing away from a composing cell commits it', async ({ page }) => {
   await page.goto('file://' + rebusPath);
@@ -295,96 +124,9 @@ test('Backspace deletes one letter at a time while composing', async ({ page }) 
   await expect(page.locator('#letter-0')).toHaveClass(/len-2/);
 });
 
-test('a half-composed cell restores from autosave still composing', async ({ page }) => {
-  await page.goto('file://' + rebusPath);
-  await ready(page);
-
-  // Compose without committing, then reload. Autosave fires at every mutation site
-  // including mid-composition, and on mobile also on every app switch and screen lock
-  // (setupTimer's visibility listener), so this is the common case there, not an edge.
-  await page.keyboard.press('Enter');
-  for (const ch of ['B', 'B']) await page.locator('#hidden-input').fill(ch);
-  await expect(page.locator('#cell-0')).toHaveClass(/composing/);
-
-  await page.reload();
-  await ready(page);
-
-  // If the first assertion fails with an empty cell, suspect localStorage being blocked
-  // for file:// origins in this Chromium build before suspecting the engine — no other
-  // e2e in this repo exercises autosave, so this is untested ground. Serve tmpDir over
-  // http and re-run to tell the two apart. The test cannot pass vacuously either way:
-  // a no-op localStorage fails here rather than silently succeeding.
-  await expect(page.locator('#letter-0')).toHaveText('BB');
-  await expect(page.locator('#letter-0')).toHaveClass(/len-2/);
-
-  // The composing id is part of the saved board. Committing it on restore would hand the
-  // solver a cell they never submitted — filled, counting toward isBoardFilled, and
-  // adjudicable as wrong. The cursor resumes on it, and the button agrees.
-  await expect(page.locator('#cell-0')).toHaveClass(/composing/);
-  await expect(page.locator('#cell-0')).toHaveClass(/active-cell/);
-  await expect(page.locator('#rebus-btn')).toHaveText('Done');
-
-  // Still composing means still not filled: typing appends rather than replacing.
-  await page.locator('#hidden-input').fill('C');
-  await expect(page.locator('#letter-0')).toHaveText('BBC');
-});
-
-test('a composing prefix that would complete the board does not fire completion', async ({ page }) => {
-  await page.goto('file://' + rebusHashedPath);
-  await ready(page);
-
-  const events = [];
-  await page.exposeFunction('__vpComplete', d => events.push(d));
-  await page.evaluate(() => {
-    document.querySelector('.puzzle-main')
-      .addEventListener('varietypack:complete', e => window.__vpComplete(e.detail));
-  });
-
-  // The last cell is entered as a rebus, so the board passes through a state where every
-  // cell holds correct content but the final one is still composing.
-  for (let i = 0; i < REBUS_CELLS.length - 1; i++) await typeCell(page, REBUS_CELLS[i]);
-
-  // Final cell, composed but deliberately left uncommitted.
-  await page.keyboard.press('Enter');
-  await page.locator('#hidden-input').fill('H');
-
-  // The dialog assertions are what actually catch the regression. `events` is fed by an
-  // async exposeFunction bridge, so a bare length check here races it — and because the
-  // latch is one-way, a premature fire still leaves events.length at 1 for the final
-  // poll, making that assertion unable to tell premature from correct. The auto-retrying
-  // DOM assertions below have neither problem: the dialog opens synchronously inside the
-  // completion handler, so it is already open by the time fill() resolves.
-  await expect(page.locator('#congrats-dialog')).toHaveCount(1);
-  await expect(page.locator('#congrats-dialog')).not.toHaveJSProperty('open', true);
-  expect(events).toHaveLength(0);
-
-  // Committing the same content completes the board — proving the suppression was the
-  // composing state, not wrong content.
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#congrats-dialog')).toHaveJSProperty('open', true);
-  await expect.poll(() => events.length).toBe(1);
-});
-
-test('a non-hashed rebus puzzle marks every cell and clue item correct on solve', async ({ page }) => {
-  await page.goto('file://' + rebusPath);
-  await ready(page);
-
-  for (const cell of REBUS_CELLS) await typeCell(page, cell);
-
-  await expect(page.locator('#congrats')).toBeVisible();
-  // 8 ring cells (rebus-8.yaml) — non-hashed mode must mark them .correct just like
-  // hashed mode does, per the levelled-up completion behavior.
-  await expect(page.locator('.cell.correct')).toHaveCount(8);
-  // 5 entries (rebus-8.yaml) — previously only the hashed path marked clue items.
-  await expect(page.locator('.clue-item.correct')).toHaveCount(5);
-});
-
 // The auto-save payload records cell correctness only, so a solved board used to come
 // back with green cells and unmarked clue items. checker.repaintIfSolved() re-derives
 // the rest of the solved painting at restore time.
-// Uses the rebus fixture because it is the non-hashed Snake Charmer fixture carrying
-// both a title and a date — storageKey() returns null without them, so circle-8.yaml
-// has no auto-save to restore from.
 test('a solved board restores with its clue items still marked correct', async ({ page }) => {
   await page.goto('file://' + rebusPath);
   await ready(page);
@@ -406,44 +148,26 @@ test('a solved board restores with its clue items still marked correct', async (
   // shared/test/engine-state.checker.test.js, not here.
   await expect(page.locator('#congrats-dialog')).toBeHidden();
 
-  // The composing exclusion that syncUI's latch.check() lacks (see docs/CROSS_TOOL_SPEC.md
-  // → Answer checking): a solved board is safe only because latch.solved makes every
-  // keydown handler return before the Enter branch that opens composition. This is the
-  // one place it can be exercised on a page that never touched a dialog — post-reload
-  // the latch is sealed by sealIfSolved(), so CDP key injection is unimpaired. The
-  // 'Enter opens a multi-letter cell' test above is the control: same fixture, same
-  // ready() focus path, Enter does open composition when the board is not solved.
+  // The composing exclusion that syncUI's latch.check() lacks (see
+  // docs/CROSS_TOOL_SPEC.md → Answer checking): a solved board is safe only because
+  // latch.solved makes every keydown handler return before the Enter branch that opens
+  // composition. This is the one place it can be exercised on a page that never touched a
+  // dialog — post-reload the latch is sealed by sealIfSolved(), so CDP key injection is
+  // unimpaired. The control is '[snake-charmer] Enter opens a multi-letter cell' in
+  // e2e/shared.spec.js: same fixture, and Enter does open composition when the board is
+  // not solved.
   await page.keyboard.press('Enter');
   await expect(page.locator('.cell.composing')).toHaveCount(0);
 
   // #rebus-btn reaches composition without going through setupKeydown at all, so the
-  // latch.solved argument above does not cover it — setupRebusButton carries its own
-  // guard. Removing that guard must turn this red.
+  // latch.solved argument above does not cover it — composer.toggle's own solved check
+  // does. Removing that check must turn this red.
   await page.locator('#rebus-btn').click();
   await expect(page.locator('.cell.composing')).toHaveCount(0);
-});
-
-test('the rebus button opens and commits composition without a keydown', async ({ page }) => {
-  await page.goto('file://' + rebusPath);
-  await ready(page);
-
-  await expect(page.locator('#rebus-btn')).toHaveText('Rebus');
-  await page.locator('#rebus-btn').click();
-  await expect(page.locator('.cell.composing')).toHaveCount(1);
-  await expect(page.locator('#rebus-btn')).toHaveText('Done');
-
-  // Letters must still reach the composing cell: the click preserves hidden-input focus.
-  for (const ch of 'HAR') await page.locator('#hidden-input').fill(ch);
-  await expect(page.locator('#letter-0')).toHaveText('HAR');
-
-  await page.locator('#rebus-btn').click();
-  await expect(page.locator('.cell.composing')).toHaveCount(0);
-  await expect(page.locator('#rebus-btn')).toHaveText('Rebus');
-  expect(await activeCellNum(page)).toBe(0);   // commit doesn't move the cursor, matching Enter
 });
 
 // The regression that a Chromium-only suite could not see. #rebus-btn preserves focus by
-// cancelling mousedown; cancelling pointerdown instead leaves the button inert on a
+// canceling mousedown; canceling pointerdown instead leaves the button inert on a
 // WebKit touch tap, because WebKit suppresses the click and Chromium does not. This must
 // tap() — click() activates the button under either binding, in both engines — and it
 // earns its keep only under the webkit project (see playwright.config.js).
@@ -494,13 +218,13 @@ test('composing the final cell and moving the cursor instead of pressing Enter s
 
   // Confirm ArrowRight actually moved off the composing cell (wrapped to ring position 0)
   // rather than clamping in place — a same-cell focus would make commitIfMoved a no-op
-  // and any completion below would be coincidental, not evidence of the commit-by-move path.
+  // and any completion below would be coincidental, not evidence of the commit-by-move
+  // path.
   expect(await activeCellNum(page)).not.toBe(REBUS_CELLS.length - 1);
 
   await expect(page.locator('#congrats-dialog')).toHaveJSProperty('open', true);
   await expect.poll(() => events.length).toBe(1);
 });
-
 
 // The clue bar and the secondary-entry highlight are re-derived from the cursor on
 // every syncUI(), not painted once on focus — both must stay in step with the active
@@ -562,4 +286,42 @@ test('the clue bar and secondary-entry highlight track the active cell', async (
   // A keystroke syncs without moving focus — the bar must not go stale.
   await page.locator('#hidden-input').fill('A');
   await check('after typing');
+});
+
+// An entry may run longer than one loop (the validator allows it), so at some cells both
+// loops belong to the same entry. There the cross-loop highlight has nothing to add: no
+// secondary cells or clue, and the bar's second row is hidden without the bar resizing.
+test('an entry longer than the ring is never shown as its own secondary', async ({ page }) => {
+  const src = path.join(tmpDir, 'long-entry.yaml');
+  fs.writeFileSync(src, [
+    'kind: snake-charmer',
+    'title: Long entry',
+    'entries:',
+    '  - { clue: "Ten cells", answer: ABCDEFGHAB }',   // ring 0-7, then 0-1 again
+    '  - { clue: "Three cells", answer: CDE }',
+    '  - { clue: "Three more", answer: FGH }',
+  ].join('\n'));
+  const out = path.join(tmpDir, 'long-entry.html');
+  buildPuzzle(src, out);
+  await page.goto(`file://${out}`);
+  await ready(page);
+
+  const row = page.locator('#active-clue-secondary');
+  const barHeight = async () => (await page.locator('#active-clue-bar').boundingBox()).height;
+  // cell-0, active at load: both loops are entry 1.
+  await expect(page.locator('.cell.active-entry')).toHaveCount(8);
+  await expect(page.locator('.cell.secondary-entry')).toHaveCount(0);
+  await expect(page.locator('#clues .clue-item.secondary-entry')).toHaveCount(0);
+  await expect(row).toBeHidden();
+  const blankHeight = await barHeight();
+
+  // cell-4: entry 1 in this loop, entry 2 in the other, so the row is back.
+  await page.locator('#cell-4').click();
+  await expect(row).toBeVisible();
+  await expect(row.locator('.active-clue-num')).toHaveText('2.');
+  expect(await barHeight()).toBe(blankHeight);
+
+  // Back on cell-0 the row must hide again, not keep showing entry 2's clue.
+  await page.locator('#cell-0').click();
+  await expect(row).toBeHidden();
 });

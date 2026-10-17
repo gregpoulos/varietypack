@@ -5,9 +5,10 @@ const sub   = require('markdown-it-sub');
 const sup   = require('markdown-it-sup');
 const emoji = require('markdown-it-emoji').full;
 
-// Node-only, build-time rendering of clue/instructions markdown into static
-// HTML baked into PUZZLE_DATA — the shipped puzzle HTML gains no runtime
-// markdown dependency; the browser just injects the already-rendered string.
+// Build-time rendering (run by the CLI and the studio, never in a puzzle page)
+// of clue/instructions markdown into static HTML baked into PUZZLE_DATA — the
+// shipped puzzle HTML gains no runtime markdown dependency; the browser just
+// injects the already-rendered string.
 //
 // 'zero' preset disables every rule, then this enables only what's wanted:
 // bold, italic, code, links, and (via the two small official plugins)
@@ -55,10 +56,8 @@ function renderClueMarkdown(text) {
   return md.renderInline(text);
 }
 
-// Same rule set, but block-level: blank-line-separated paragraphs each
-// become their own `<p>`, replacing the client-side blank-line split
-// `shared/engine-chrome.js`'s `renderInstructions` used to do itself — the
-// engine now just injects this HTML directly.
+// Same rule set, but block-level: blank-line-separated paragraphs each become their
+// own `<p>`. The engine injects this HTML directly.
 function renderInstructionsMarkdown(text) {
   return md.render(text);
 }

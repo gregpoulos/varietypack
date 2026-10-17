@@ -21,6 +21,7 @@ body {
 h1.title {
   font-family:     var(--theme-font-display);
   font-size:       2rem;
+  line-height:     1;
   letter-spacing:  var(--theme-title-tracking);
   text-transform:  var(--theme-title-transform);
   color:           var(--theme-color-title);
@@ -37,32 +38,23 @@ h1.title {
   border-bottom: 1px solid var(--theme-color-bar-border);
 }
 
-/* #menu-btn sits *within* #active-clue-bar's own band instead of floating
-   below it as a separate row — costs no extra vertical space, which matters
-   most on mobile where the on-screen keyboard already eats much of it. Pure
-   CSS calc() against #active-clue-bar's min-height (base.css), not
-   JS-measured: an earlier version computed this via getBoundingClientRect()
-   on every syncUI() and could snapshot a stale value mid mobile-keyboard
-   viewport animation, leaving the button off-screen with nothing to
-   re-correct it. 32px is the button's own height (base.css); Marching
-   Bands, with no bar, keeps the plain `top: 20px` default. */
-.tool-snake-charmer #menu-btn,
-.tool-spiral        #menu-btn,
-.tool-crushword     #menu-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
+/* #menu-btn sits *within* #active-clue-bar's own band instead of floating below it
+   as a separate row — no extra vertical space, which matters most on mobile where the
+   on-screen keyboard already eats much of it. Pure CSS calc() against the bar's
+   min-height (base.css), not JS-measured: a measured value could go stale mid mobile
+   keyboard viewport animation and leave the button off-screen. 32px is the button's own
+   height (base.css); Marching Bands, with no bar, keeps the plain `top: 20px` default. */
+.has-clue-bar #menu-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
 
 /* #menu-panel opens directly below the bar's bottom edge (8px gap, matching
    Marching Bands' static button-to-panel gap from base.css) — same
    CSS-not-JS reasoning as #menu-btn above. */
-.tool-snake-charmer #menu-panel,
-.tool-spiral        #menu-panel,
-.tool-crushword     #menu-panel { top: calc(var(--active-clue-bar-space) + 8px); }
+.has-clue-bar #menu-panel { top: calc(var(--active-clue-bar-space) + 8px); }
 
 /* Right gutter for the bar's own text now that #menu-btn shares its row.
    Lives here rather than in base.css's shared #active-clue-bar rule since
    only these three tools ever place the button there. */
-.tool-snake-charmer #active-clue-bar,
-.tool-spiral        #active-clue-bar,
-.tool-crushword     #active-clue-bar { padding-right: 60px; }
+.has-clue-bar #active-clue-bar { padding-right: 60px; }
 
 /* Direction label ("Across"/"Down", "In"/"Out") before the bar's clue number. */
 .active-clue-dir {
@@ -83,6 +75,16 @@ h1.title {
 #instructions p + p { margin-top: 0.6em; }
 
 .clue-item { border-radius: var(--theme-clue-radius); }
+/* Clue-row highlights for the tools whose rows are <li class="clue-item"> (Marching
+   Bands highlights its .clue-group instead, below). :where() keeps :hover at the same
+   specificity as the state rules, so the state rules that follow win by source order. */
+:where(.tool-snake-charmer, .tool-spiral, .tool-crushword) .clue-item:hover { background: var(--theme-color-clue-hover); }
+.clue-item.active-clue     { background: var(--theme-color-active); }
+.clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
+/* Must precede the .correct rule: equal specificity, so the later rule wins and a solved
+   board keeps its strikethrough instead of inheriting this rule's default `none`. */
+.clue-item.filled .clue-text { text-decoration: var(--theme-clue-filled-decoration); opacity: var(--theme-clue-filled-opacity); }
+.clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
 
 .clue-section h2 {
   color:          var(--theme-color-text);
@@ -105,7 +107,7 @@ h1.title {
 
 /* Clear button — flat, borderless, left-aligned, matching #check-btn-toggle-label
    (base.css): both are plain menu-panel rows now, not a bordered pill next to a
-   bare checkbox. Colour cues (armed, hover) carry entirely through text colour
+   bare checkbox. Color cues (armed, hover) carry entirely through text color
    and the shared row-hover background instead of a border. */
 #clear-btn {
   font-family:    var(--theme-font-button);
@@ -164,8 +166,8 @@ h1.title {
 .style-circle { fill: none; stroke: var(--theme-color-circle); stroke-width: 1; }
 
 /* No font-size on .cell-letter or .cell-num: Spiral sizes these dynamically as SVG
-   presentation attributes; a CSS font-size overrides them silently. Per-tool sizes
-   live in the namespaced sections below. */
+   presentation attributes; a CSS font-size overrides them silently. The other tools
+   size them in their own template base.css. */
 .cell-letter         { font-family: var(--theme-font-cell); fill: var(--theme-color-cell-text); }
 .cell-letter.correct { fill: var(--theme-color-correct-text); }
 .cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
@@ -184,7 +186,7 @@ h1.title {
 
 /* Rebus entry in progress. Specificity 0,3,0 beats .cell.active-cell (0,2,0) without
    depending on source order; the composing cell is always the active cell, so the
-   selector states that invariant rather than working around it. Fill and stroke colour
+   selector states that invariant rather than working around it. Fill and stroke color
    are inherited from .cell.active-cell — only the dash pattern distinguishes the state,
    so no theme needs a new token. */
 .cell.active-cell.composing { stroke-width: 2.5; stroke-dasharray: 4 2; }
@@ -319,23 +321,18 @@ kbd {
 
 /* ── Per-tool selectors (body class hook: .tool-<name>) ─────────────────────
    Each tool's <body> carries a class like .tool-snake-charmer so these rules
-   scope to the right tool without a separate per-tool CSS file. */
+   scope to the right tool without a separate per-tool CSS file. Plain sizing and
+   spacing that reads no --theme-* token belongs in the tool's template base.css
+   instead: the .tool- prefix outranks the tool's print.css, whose @media print
+   rules would then silently never apply. */
 
 /* Snake Charmer */
-.tool-snake-charmer .cell-num    { font-size: 9px; }
-.tool-snake-charmer .cell-letter { font-size: 14px; }
 .tool-snake-charmer .cell.secondary-entry { fill: var(--theme-color-secondary-entry); }
 .tool-snake-charmer .cell.active-cell.secondary-entry {
   fill:         var(--theme-color-secondary-active);
   stroke:       var(--theme-color-secondary-active-stroke);
   stroke-width: 1.5;
 }
-/* Hover first so active/secondary overrides it at equal or higher specificity. */
-.tool-snake-charmer .clue-item { margin-bottom: 5px; font-size: 0.88rem; line-height: 1.4; padding: 2px 6px 2px 2px; }
-.tool-snake-charmer .clue-item:hover           { background: var(--theme-color-clue-hover); }
-.tool-snake-charmer .clue-item.active-clue     { background: var(--theme-color-active); }
-.tool-snake-charmer .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
-.tool-snake-charmer .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
 
 /* Marching Bands — band fills are unnamespaced to keep :where() specificity
    below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive.
@@ -345,7 +342,6 @@ kbd {
 .cell:where(.band-even) { fill: var(--theme-color-band-even); }
 .cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
 .cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
-.tool-marching-bands .cell-letter { font-size: 14px; }
 .tool-marching-bands .band-label  { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 .tool-marching-bands .row-label   { font-family: var(--theme-font-cell); color: var(--theme-color-text); }
 .tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
@@ -353,30 +349,21 @@ kbd {
 .tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
 .tool-marching-bands .clue-group.secondary-entry { background: var(--theme-color-secondary-entry); }
 
-/* Spiral — no .cell-letter font-size (see comment above). */
-.tool-spiral .clue-item { padding: 2px 6px 2px 2px; }
-.tool-spiral .clue-item:hover           { background: var(--theme-color-clue-hover); }
-.tool-spiral .clue-item.active-clue     { background: var(--theme-color-active); }
-.tool-spiral .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
-.tool-spiral .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
+/* Spiral */
 .tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
 .tool-spiral #direction-chevron { stroke: var(--theme-color-active-stroke); stroke-width: 0.9; opacity: 0.5; }
-/* Crushword */
+/* Crushword, and Marching Bands when stacked */
 /* Opaque background is load-bearing, not cosmetic: .puzzle-center is
-   position:sticky over .clue-columns (base.css), which scrolls directly
+   position:sticky over the clues (each tool's base.css), which scroll directly
    underneath it in the same horizontal space — without this, clue text
-   would show through the padding around the sticky grid as it scrolls. */
-.tool-crushword .puzzle-center { background: var(--theme-color-bg); }
-.tool-crushword .cell-num    { font-size: 8px; }
-.tool-crushword .cell-letter { font-size: 14px; }
+   would show through the sticky grid as it scrolls. */
+.tool-crushword .puzzle-center,
+.tool-marching-bands .puzzle-center { background: var(--theme-color-bg); }
+
+/* Crushword */
 .tool-crushword .cell-block  { fill: var(--theme-color-cell-center); }
 /* Every Crushword cell composes from its first keystroke, so the shared
    dashed outline would flag nothing; reset to plain .active-cell. */
 .tool-crushword .cell.active-cell.composing { stroke-width: 1.5; stroke-dasharray: none; }
 /* Deliberately static: a blink competes for attention in a dense grid. */
 .tool-crushword .cell-caret { fill: var(--theme-color-cell-text); pointer-events: none; }
-.tool-crushword .clue-item { margin-bottom: 4px; font-size: 0.85rem; line-height: 1.35; padding: 2px 6px 2px 2px; }
-.tool-crushword .clue-item:hover           { background: var(--theme-color-clue-hover); }
-.tool-crushword .clue-item.active-clue     { background: var(--theme-color-active); }
-.tool-crushword .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
-.tool-crushword .clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }

@@ -1,13 +1,16 @@
 'use strict';
 
+// Driving letter input: prefer `page.locator('#hidden-input').fill('A')` — it fires the
+// `input` event the engines listen to directly. `page.keyboard.type()` works in the
+// common case but breaks after a native <dialog> interaction, where focus-restoration
+// timing interferes with CDP key injection.
+
 // Enters one cell's content. A multi-letter cell is composed: Enter to open, one fill()
 // per letter, Enter to commit, then an explicit ArrowRight to advance the cursor —
 // committing a multi-letter cell does not itself advance it (see
 // docs/CROSS_TOOL_SPEC.md → "Enter / Rebus button") — which keeps board-filling loops
 // that iterate REBUS_CELLS in traversal order working. A single-letter cell is just
-// typed, which advances on its own via the typing auto-advance. fill() is used rather
-// than keyboard.type() per the repo's e2e note — it fires the input event the engines
-// listen to directly.
+// typed, which advances on its own via the typing auto-advance.
 //
 // ArrowRight matches the typing auto-advance exactly in Snake Charmer (it's the ring's
 // own advanceCell) and Spiral (it's nextInDir in the current direction). In Marching

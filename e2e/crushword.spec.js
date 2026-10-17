@@ -1,38 +1,23 @@
 'use strict';
 
-// Browser engine behavior for Crushword — the part node:test cannot cover.
-// Covers: state-derived banners; clue/instructions markdown rendering and the
-// click-through guard on clue links; the sticky active-clue bar/grid's scroll
-// geometry; Tab navigation by entry (not row/band, since Crushword's entry
-// boundaries are visible to the solver, unlike Marching Bands'); direction
-// auto-flip on cells with only one direction and the active-clue banner's
-// primary/secondary rows; cursor movement, composing and editing within and
-// across multi-letter cells (Up/Down/Left/Right, Option/Alt variants, Space,
-// Enter/Shift+Enter, Backspace/Option-Backspace, the input caret, and — unlike
-// the other three tools — no rebus button, since every cell composes on its
-// own keystrokes); hashed-mode board solving and its preimage; the solved-board
-// composition seal; print-media resets; and the options menu's own mobile-width
-// geometry (crushword-specific: no dedicated rebus-button coverage exists here).
-//
-// Behavior Crushword shares byte-for-byte with one or more of the other engines —
-// the keyboard-shortcuts modal and Check Cell localStorage writes — moved to
-// e2e/shared.spec.js. Its own former "completion event" test also moved there:
-// the payload contract is identical across all four tools. Its "menu button
-// opens..." test stays here (see the note above that test) because it diverges
-// from the other three tools' copy in both starting fixture and an extra
-// assertion, and this tool has no rebus button to fold that resync coverage
-// into instead.
+// Browser-engine behavior specific to Crushword — what node:test can't cover: sticky
+// active-clue bar/grid geometry, entry-based Tab navigation, direction auto-flip, and
+// cursor movement and editing inside multi-letter cells (every cell composes on its own
+// keystrokes, so there is no rebus button). Behavior it shares with the other engines
+// lives in e2e/shared.spec.js; its menu-button test stays here because it starts from a
+// different fixture and asserts that confirming Clear also closes the menu.
 
 const { test, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
-const { buildPuzzle } = require('../crushword/src/builder');
+const { buildPuzzle } = require('../crushword/cli');
+const { sha256hex } = require('../shared/sha256hex.mjs');
 
 const FIX = path.join(__dirname, '..', 'crushword', 'test', 'fixtures');
 
-let htmlPath, hashedPath, rebusPath, rebusHashedPath, tmpDir;
+let htmlPath, hashedPath, rebusPath, tmpDir;
 
 test.beforeAll(() => {
   tmpDir     = fs.mkdtempSync(path.join(os.tmpdir(), 'cw-e2e-'));
@@ -42,9 +27,7 @@ test.beforeAll(() => {
   buildPuzzle(path.join(FIX, 'cw-9.muddled.yaml'),  hashedPath);
 
   rebusPath       = path.join(tmpDir, 'rebus.html');
-  rebusHashedPath = path.join(tmpDir, 'rebus-hashed.html');
   buildPuzzle(path.join(FIX, 'cw-rebus-5.yaml'),         rebusPath);
-  buildPuzzle(path.join(FIX, 'cw-rebus-5.muddled.yaml'), rebusHashedPath);
 });
 
 test.afterAll(() => {
@@ -646,6 +629,20 @@ test('typing at cursorPos overwrites once the cell is already at maxCellLetters,
   await expect(page.locator('#letter-2')).toHaveText('TXE'); // replaced "H" in place, length unchanged
 });
 
+test('typing at a full cell\'s very end overwrites its last letter, then advances', async ({ page }) => {
+  await page.goto('file://' + rebusPath);
+  await ready(page);
+
+  await page.keyboard.press('ArrowRight'); // cell 2
+  for (const ch of 'THE') await page.locator('#hidden-input').fill(ch); // reaches maxCellLetters=3
+  await page.locator('#cell-2').click(); // revisit; cursor defaults to the end
+
+  await page.locator('#hidden-input').fill('X');
+  await expect(page.locator('#letter-2')).toHaveText('THX');
+  await expect(page.locator('#cell-3')).toHaveClass(/active-cell/);
+  await expect(page.locator('#letter-3')).toHaveText(''); // nothing carried into the next cell
+});
+
 test('the input caret tracks the cursor within a cell and follows it into the next one', async ({ page }) => {
   await page.goto('file://' + rebusPath);
   await ready(page);
@@ -966,7 +963,7 @@ test('a hashed puzzle solves end to end and its preimage matches boardHash', asy
 
   await expect.poll(() => events.length).toBe(1);
   const detail = events[0];
-  const recomputed = await page.evaluate(s => sha256hex(s), detail.solution);
+  const recomputed = sha256hex(detail.solution);
   expect(recomputed).toBe(detail.boardHash);
 });
 
@@ -1004,6 +1001,9 @@ test('.correct cells and .cell-block render correctly under print media', async 
   const firstCorrectId = await page.locator('#puzzle-svg .cell.correct').first().getAttribute('id');
   const printFill = await page.evaluate(id => getComputedStyle(document.getElementById(id)).fill, firstCorrectId);
   expect(printFill).toBe('rgb(255, 255, 255)');
+  // Correct letters print blank too, not just their cells.
+  expect(await page.locator('.cell-letter.correct').count()).toBeGreaterThan(0);
+  await expect(page.locator('.cell-letter.correct:visible')).toHaveCount(0);
 });
 
 test('the menu button does not overlap the grid on a narrow (mobile-width) viewport', async ({ page }) => {
@@ -1031,11 +1031,8 @@ test('the menu button does not overlap the grid on a narrow (mobile-width) viewp
   expect(overlaps).toBe(false);
 });
 
-// Kept per-tool rather than folded into e2e/shared.spec.js's version of this test
-// (spiral/snake-charmer/marching-bands): this copy starts from rebusPath instead of
-// the plain fixture, AND folds in an assertion the other three instead cover inside
-// their rebus-label-resync test (this tool has no rebus button to resync) — unifying
-// it would need a body-level branch, which the dedup task explicitly says to avoid.
+// The options menu is shared code (setupOptionsMenu, via setupControls), so this one tool
+// covers it; every engine opens it in e2e/shared.spec.js's "hiding Check Cell" test.
 test('menu button opens the options menu holding Clear; outside click and Escape both close it and restore focus', async ({ page }) => {
   // rebusPath (not htmlPath): cw-9.yaml's top-left cell is blocked, so #letter-1
   // doesn't exist there; cw-rebus-5.yaml's is open.
@@ -1076,3 +1073,27 @@ test('menu button opens the options menu holding Clear; outside click and Escape
   await expect(panel).toBeHidden();
 });
 
+// Every Crushword cell composes on its own keystrokes, and a composing cell is not
+// filled (composer.isCellFilled), so a clue gains .filled only when its last cell commits
+// — not as the letter is typed. A decision, not an accident: docs/CROSS_TOOL_SPEC.md →
+// "Filled clues".
+test('a clue gains .filled when its last cell commits, not while that cell is still being typed', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+
+  const letters = await boardLetters(page);
+  const pairs = cellLetterPairs(letters);
+  const last = pairs.pop();
+  for (const { id, letter } of pairs) await fillCell(page, id, letter);
+
+  const total = await page.locator('.clue-item').count();
+  const before = await page.locator('.clue-item.filled').count();
+
+  await page.locator(`#cell-${last.id}`).click();
+  await page.locator('#hidden-input').fill(last.letter.toUpperCase());
+  await expect(page.locator(`#letter-${last.id}`)).toHaveText(last.letter.toUpperCase());
+  await expect(page.locator('.clue-item.filled')).toHaveCount(before);
+
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.clue-item.filled')).toHaveCount(total);
+});

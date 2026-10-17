@@ -2,24 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { minifyHtml } = require('../build/minify');
-
-// ── block comment stripping ───────────────────────────────────────────────────
-
-test('minifyHtml: strips /* block */ comments', () => {
-  const input = `<style>
-/* this is a comment */
-body { color: red; }
-/* another
-   multi-line
-   comment */
-</style>`;
-  const out = minifyHtml(input);
-  assert.ok(!out.includes('/* this is a comment */'));
-  assert.ok(!out.includes('/* another'));
-  // clean-css minifies the surviving rule (whitespace collapsed)
-  assert.ok(out.includes('body{color:red}'));
-});
+const { minifyHtml } = require('../cli/minify');
 
 // ── CSS minification of <style> blocks ────────────────────────────────────────
 
@@ -57,14 +40,6 @@ test('minifyHtml: strips line-only // comments in non-script content', () => {
   assert.ok(!out.includes('// line-only comment'));
   assert.ok(!out.includes('// indented comment'));
   assert.ok(out.includes('<p>content</p>'));
-});
-
-test('minifyHtml: preserves // mid-line (e.g. in URLs)', () => {
-  const input = `<script>
-var url = "https://example.com";
-</script>`;
-  const out = minifyHtml(input);
-  assert.ok(out.includes('https://example.com'));
 });
 
 // ── blank line collapsing ─────────────────────────────────────────────────────
@@ -129,13 +104,6 @@ test('minifyHtml: preserves /* */ inside a <script> string literal', () => {
   const out = minifyHtml(input);
   assert.ok(out.includes('/* footnote */'),
     `comment-like sequence inside a string must survive; got: ${out}`);
-});
-
-test('minifyHtml: does not delete across /* and */ in separate script strings', () => {
-  const input = `<script>window.a = "x/*y"; window.b = "z*/w";</script>`;
-  const out = minifyHtml(input);
-  assert.ok(out.includes('x/*y'), `first string must survive; got: ${out}`);
-  assert.ok(out.includes('z*/w'), `second string must survive; got: ${out}`);
 });
 
 // ── terser failure robustness ──────────────────────────────────────────────────

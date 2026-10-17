@@ -33,13 +33,13 @@ function minimalPuzzle() {
 }
 
 test('validate: accepts minimal valid puzzle', () => {
-  const { errors, warnings } = validate(minimalPuzzle());
+  const { errors } = validate(minimalPuzzle());
   assert.deepEqual(errors, []);
 });
 
 // validateCommonHeader's own behavior (kind mismatch, missing title, hashed in
 // source vs muddled, instructions type/emptiness) is covered by shared/test/
-// builderUtils.test.js. This is the single wiring test proving marching-bands
+// validation.test.js. This is the single wiring test proving marching-bands
 // forwards validateCommonHeader's errors and passes its own kind
 // ('marching-bands').
 
@@ -109,14 +109,6 @@ test('validate: rejects a row/band letter conflict at a shared cell', () => {
   );
 });
 
-test('validate: warns on unknown style name', () => {
-  const p = minimalPuzzle();
-  p.rows[0].entries[0].styles = { underline: [0] };
-  const { errors, warnings } = validate(p);
-  assert.deepEqual(errors, []);
-  assert.ok(warnings.some(w => w.includes('underline')));
-});
-
 test('validate: accepts valid even-N puzzle (N=4)', () => {
   const p = {
     kind: 'marching-bands',
@@ -184,12 +176,6 @@ test('validate: muddled MB — band length-sum check still enforced', () => {
   assert.ok(errors.some(e => e.includes('bands[0]') && e.includes('sum')));
 });
 
-test('validate: muddled MB — cross-check skipped (no letter comparison)', () => {
-  const p = validMuddledMB();
-  const { errors } = validate(p);
-  assert.deepEqual(errors, []);
-});
-
 test('validate: muddled — answer: in rows[0] rejected with a use-length-not-answer message', () => {
   const p = validMuddledMB();
   p.rows[0].entries[0] = { clue: 'a', answer: 'AB' };  // answer: in a muddled puzzle is not allowed
@@ -215,7 +201,7 @@ test('validate: muddled entries without boardHash rejected for marching-bands', 
 });
 
 // 3x3 rebus fixture, per Task 4's construction:
-//   Flat 1-indexed cells: 1 2 3 / 4 [5=black centre] 6 / 7 8 9
+//   Flat 1-indexed cells: 1 2 3 / 4 [5=black center] 6 / 7 8 9
 //   Grid: 1=s 2=har 3=o 4=n 6=e 7=t 8=a 9=p
 //   Band 0 clockwise traversal (8 cells) = 1,2,3,6,9,8,7,4 = s har o e p a t n
 function makeRebusPuzzle3x3(bandAnswer) {
@@ -274,4 +260,81 @@ test('rows[0] validation issues are reported exactly once, not double-reported',
     warnings.length, 1,
     `expected exactly 1 warning for unknown style in rows[0], got ${warnings.length}: ${JSON.stringify(warnings)}`
   );
+});
+
+test('validate: a circle on a row entry but not the band entry covering the cell is an error', () => {
+  const p = minimalPuzzle();
+  p.rows[0].entries[0].styles = { circle: [0] };  // cell (1,1)
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => /^bands\[0\]\.entries\[0\]\.styles\.circle is missing position 0/.test(e)), errors.join('|'));
+});
+
+test('validate: a circle on both the row and band entries passes', () => {
+  const p = minimalPuzzle();
+  p.rows[0].entries[0].styles = { circle: [0] };
+  p.bands[0].entries[0].styles = { circle: [0] };
+  assert.deepEqual(validate(p).errors, []);
+});
+
+// Row 0 fixes N, so an invalid entry there ends validation, but only after the whole row
+// has been checked: a second typo in it is reported in the same run.
+test('validate: reports every invalid entry in rows[0] before stopping', () => {
+  const p = minimalPuzzle();
+  p.rows[0].entries[0].answer = 'A[B';
+  p.rows[0].entries[1].answer = 'C]DE';
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.startsWith('rows[0].entries[0].answer: unclosed')), errors.join('\n'));
+  assert.ok(errors.some(e => e.startsWith('rows[0].entries[1].answer: unmatched')), errors.join('\n'));
+});
+
+// Each check waits only for what it needs, so an unrelated error can't hide it.
+test('validate: an unrelated header error does not hide a row/band disagreement or a circle error', () => {
+  const p = minimalPuzzle();
+  p.theme = 'nope';
+  p.rows[1].entries[0].answer = 'ZG';                // cell (2,1): row has "z", the band doesn't
+  p.rows[0].entries[0].styles = { circle: [0] };     // cell (1,1), circled by the row only
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.startsWith('"theme"')), errors.join('|'));
+  assert.ok(errors.some(e => e.startsWith('Cell (2, 1): row has "z"')), errors.join('|'));
+  assert.ok(errors.some(e => /^bands\[0\]\.entries\[0\]\.styles\.circle is missing position 0/.test(e)), errors.join('|'));
+});
+
+// A band's bottom edge runs right to left across its row, so its rebus may be spelled
+// backward there; on the other edges it must match the row exactly.
+function makeBottomRebusPuzzle3x3(bandAnswer) {
+  return {
+    kind: 'marching-bands', title: 'T',
+    rows: [
+      { entries: [{ clue: 'r1', answer: 'S[HAR]O' }] },
+      { entries: [{ clue: 'r2', answer: 'NE' }] },
+      { entries: [{ clue: 'r3', answer: 'T[AB]P' }] },
+    ],
+    bands: [{ entries: [{ clue: 'b0', answer: bandAnswer }] }],
+  };
+}
+
+test('a band may spell a rebus backward on its bottom edge', () => {
+  // Band cells, clockwise from (1,1): s har o e p [ab] t n; the bottom edge is p [ab] t.
+  assert.deepStrictEqual(validate(makeBottomRebusPuzzle3x3('S[HAR]OEP[BA]TN')).errors, []);
+  assert.deepStrictEqual(validate(makeBottomRebusPuzzle3x3('S[HAR]OEP[AB]TN')).errors, []);
+});
+
+test('a band may not spell a rebus backward on its top edge', () => {
+  const { errors } = validate(makeBottomRebusPuzzle3x3('S[RAH]OEP[AB]TN'));
+  assert.ok(errors.some(e => e.startsWith('Cell (1, 2): row has "har" but band 0 has "rah"')), errors.join('|'));
+});
+
+test('validate: an unknown top-level key warns', () => {
+  const p = minimalPuzzle();
+  p.instruction = 2;
+  assert.ok(validate(p).warnings.includes('unknown key "instruction" (is it a typo?)'), validate(p).warnings.join('|'));
+});
+
+test('validate: an unknown key on a row or band object warns', () => {
+  const p = minimalPuzzle();
+  p.rows[1].note = 'x';
+  p.bands[0].entires = [];
+  const { warnings } = validate(p);
+  assert.ok(warnings.includes('rows[1]: unknown key "note" (is it a typo?)'), warnings.join('|'));
+  assert.ok(warnings.includes('bands[0]: unknown key "entires" (is it a typo?)'), warnings.join('|'));
 });

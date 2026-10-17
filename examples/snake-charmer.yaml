@@ -28,21 +28,27 @@ entries:
     styles: { circle: [4] }
   - clue: "Like economics, to some"
     answer: "DISMAL"
+    styles: { circle: [3] }
   - clue: "South American capital"
     answer: "LIMA"
   - clue: "Logician Kurt"
     answer: "GODEL"
+    styles: { circle: [1] }
   - clue: "Big ___ (howitzer)"
     answer: "BERTHA"
+    styles: { circle: [0] }
   - clue: "Magisterial in style"
     answer: "MILTONIC"
+    styles: { circle: [6] }
   - clue: "Album featuring “I Should Be So Lucky” and “The Loco-Motion”"
     answer: "KYLIE"
   - clue: "Washlet manufacturer"
     answer: "TOTO"
   - clue: "Japanese blowfish"
     answer: "FUGU"
+    styles: { circle: [1] }
   - clue: "Form of this puzzle"
     answer: "ESS"
+    styles: { circle: [2] }
   - clue: "“New phone, ___?”"
     answer: "WHO DIS"

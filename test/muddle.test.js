@@ -9,7 +9,6 @@ const os    = require('node:os');
 const { main } = require('../cli');
 
 const SC_FIXTURE = path.resolve(__dirname, '..', 'snake-charmer/test/fixtures/circle-8.yaml');
-const SP_FIXTURE = path.resolve(__dirname, '..', 'spiral/test/fixtures/test-100.yaml');
 
 // In-process invocation of the dispatcher's pure main(). muddle/validate/build
 // (single-file) never spawn a subprocess internally, so this fully replaces
@@ -42,15 +41,6 @@ test('muddle: --help exits 0 and shows usage', () => {
 
 // ── success path ──────────────────────────────────────────────────────────────
 
-test('muddle: valid puzzle produces .muddled.yaml and exits 0', () => {
-  const dir   = tmpDir();
-  const input = path.join(dir, 'circle-8.yaml');
-  fs.copyFileSync(SC_FIXTURE, input);
-  const r = run('muddle', input);
-  assert.equal(r.status, 0, r.stderr);
-  assert.ok(fs.existsSync(path.join(dir, 'circle-8.muddled.yaml')));
-});
-
 test('muddle: -o redirects output to specified path', () => {
   const dir     = tmpDir();
   const input   = path.join(dir, 'circle-8.yaml');
@@ -69,26 +59,6 @@ test('muddle: -f overwrites existing output', () => {
   run('muddle', input);          // first run
   const r = run('muddle', input, '-f');  // force-overwrite
   assert.equal(r.status, 0, r.stderr);
-});
-
-test('muddle: --force also overwrites', () => {
-  const dir   = tmpDir();
-  const input = path.join(dir, 'circle-8.yaml');
-  fs.copyFileSync(SC_FIXTURE, input);
-  run('muddle', input);
-  const r = run('muddle', input, '--force');
-  assert.equal(r.status, 0, r.stderr);
-});
-
-// ── spiral tool path ──────────────────────────────────────────────────────────
-
-test('muddle: valid spiral puzzle exits 0', () => {
-  const dir   = tmpDir();
-  const input = path.join(dir, 'test-100.yaml');
-  fs.copyFileSync(SP_FIXTURE, input);
-  const r = run('muddle', input);
-  assert.equal(r.status, 0, r.stderr);
-  assert.ok(fs.existsSync(path.join(dir, 'test-100.muddled.yaml')));
 });
 
 // ── diagnostics streams ─────────────────────────────────────────────────────────
@@ -120,22 +90,10 @@ test('muddle: refuses to overwrite without -f and exits 1', () => {
   assert.match(r.stderr, /already exists/i);
 });
 
-test('muddle: missing input file exits 1', () => {
-  const r = run('muddle', '/no/such/file.yaml');
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /error/i);
-});
-
-test('muddle: malformed YAML exits 1', () => {
-  const dir = tmpDir();
-  const f   = path.join(dir, 'bad.yaml');
-  fs.writeFileSync(f, 'key: {unterminated\n');
-  const r = run('muddle', f);
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /error/i);
-});
-
-test('muddle: unknown kind exits 1', () => {
+// Missing files, unparseable YAML and unknown kinds all reach this one branch, through
+// loadKnownPuzzle (shared/cli/toolRegistry.js); validateCommand.test.js covers the
+// Object.prototype kind names it shares with validate.
+test('muddle: an unknown kind exits 1', () => {
   const dir = tmpDir();
   const f   = path.join(dir, 'widget.yaml');
   fs.writeFileSync(f, 'kind: widget\ntitle: "Bad"\n');
@@ -163,17 +121,11 @@ test('muddle: invalid puzzle exits 1 with "Fix errors" message', () => {
 //
 // Consolidates the four `*/test/muddle.test.js` files (one per tool) into a
 // single generic loop. Each kind gets its own fixture and expected boardHash
-// (computed via that tool's own hasher, from shared/build/toolRegistry), then
+// (computed via that tool's own prepare step, from shared/cli/toolRegistry), then
 // exercises: muddle → build → built HTML carries the same boardHash as a
 // hashed:true build of the source, and `validate` on the muddled output exits
 // 0 with the "skip" notice.
-//
-// The `build` step here goes through main() → buildCommand(), which spawns
-// the target tool's cli.js as a real subprocess (buildCommand.js's
-// spawnTool) — that's the one genuine subprocess boundary this file still
-// exercises, and it's inherent to production `build` behavior, not test
-// scaffolding.
-const { TOOLS: MUDDLE_TOOLS } = require('../shared/build/toolRegistry');
+const { TOOLS: MUDDLE_TOOLS } = require('../shared/cli/toolRegistry');
 
 const PER_TOOL_FIXTURES = {
   'snake-charmer':  'circle-8.yaml',
@@ -186,7 +138,7 @@ for (const [kind, fixtureName] of Object.entries(PER_TOOL_FIXTURES)) {
   const tool = MUDDLE_TOOLS[kind];
   const fixturePath = path.join(tool.dir, 'test', 'fixtures', fixtureName);
   const source = require('js-yaml').load(fs.readFileSync(fixturePath, 'utf8'));
-  const expectedBoardHash = tool.getHasher()({ ...source, hashed: true }).boardHash;
+  const expectedBoardHash = tool.getPreparer()({ ...source, hashed: true }).boardHash;
 
   test(`muddle round trip [${kind}]: build from muddled YAML matches source boardHash; validate exits 0 with skip notice`, () => {
     const dir         = tmpDir();
@@ -235,12 +187,12 @@ test('muddle: idempotent — re-muddling a muddled file produces identical outpu
 // format, silently leaves the sibling stale. This test is the guard: it re-derives
 // each pair's hash from the source and compares.
 test('every committed *.muddled.yaml matches a fresh hash of its source', () => {
-  const { TOOLS } = require('../shared/build/toolRegistry');
+  const { TOOLS } = require('../shared/cli/toolRegistry');
   const yaml = require('js-yaml');
   const repoRoot = path.resolve(__dirname, '..');
 
   let checked = 0;
-  for (const [kind, tool] of Object.entries(TOOLS)) {
+  for (const tool of Object.values(TOOLS)) {
     const fixDir = path.join(tool.dir, 'test', 'fixtures');
     if (!fs.existsSync(fixDir)) continue;
 
@@ -251,7 +203,7 @@ test('every committed *.muddled.yaml matches a fresh hash of its source', () => 
 
       const muddled = yaml.load(fs.readFileSync(muddledPath, 'utf8'));
       const source  = yaml.load(fs.readFileSync(sourcePath, 'utf8'));
-      const fresh   = tool.getHasher()({ ...source, hashed: true }).boardHash;
+      const fresh   = tool.getPreparer()({ ...source, hashed: true }).boardHash;
 
       const rel = path.relative(repoRoot, muddledPath);
       assert.equal(muddled.boardHash, fresh,
@@ -261,4 +213,13 @@ test('every committed *.muddled.yaml matches a fresh hash of its source', () => 
     }
   }
   assert.ok(checked >= 3, `expected at least one muddled fixture per tool, checked ${checked}`);
+});
+
+test('muddle: a second path is an error, not silently ignored', () => {
+  const dir = tmpDir();
+  fs.copyFileSync(SC_FIXTURE, path.join(dir, 'p.yaml'));
+  const r = run('muddle', path.join(dir, 'p.yaml'), 'extra.yaml');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Unexpected argument 'extra\.yaml'/);
+  assert.ok(!fs.existsSync(path.join(dir, 'p.muddled.yaml')));
 });

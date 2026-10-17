@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { setupTimer } = require('../../shared/engine-state');
+const { setupTimer } = require('../engine-state.mjs');
 
 // Helper: create a timer with controllable time and visibility, no side effects.
 function makeTimer(opts = {}) {
@@ -143,4 +143,58 @@ test('restoreMs with non-number argument defaults to 0', () => {
   assert.strictEqual(timer.getElapsedMs(), 0);
   timer.restoreMs(-1);
   assert.strictEqual(timer.getElapsedMs(), 0);
+});
+
+test('stop banks the running stretch and freezes the clock', () => {
+  let t = 1000;
+  const { timer } = makeTimer({ now: () => t });
+  timer.onFirstInput();
+  t = 1500;
+  timer.stop();
+  t = 9000;
+  assert.strictEqual(timer.getElapsedMs(), 500);
+});
+
+test('a stopped clock stays stopped through hide, show and input, and saves nothing more', () => {
+  let t = 1000, pauses = 0;
+  const { timer, hide, show } = makeTimer({ now: () => t, onPause: () => pauses++ });
+  timer.onFirstInput();
+  t = 1500;
+  timer.stop();
+  t = 2000; hide();
+  t = 3000; show();
+  timer.onFirstInput();
+  t = 9000;
+  assert.strictEqual(timer.getElapsedMs(), 500);
+  assert.strictEqual(pauses, 0);
+});
+
+test('after stop, reset lets the next input start the clock again', () => {
+  let t = 1000;
+  const { timer } = makeTimer({ now: () => t });
+  timer.onFirstInput();
+  timer.stop();
+  timer.reset();
+  t = 2000;
+  timer.onFirstInput();
+  t = 2300;
+  assert.strictEqual(timer.getElapsedMs(), 300);
+});
+
+// The default clock: setting the computer's clock back mid-solve must not take time off.
+test('the default clock ignores a wall-clock change', () => {
+  const realDate = Date.now, realPerf = performance.now;
+  let wall = 1_000_000, mono = 50;
+  Date.now = () => wall;
+  performance.now = () => mono;
+  try {
+    const timer = setupTimer({ listenVisibility: () => {} });
+    timer.onFirstInput();
+    wall -= 3_600_000;   // clock set back an hour
+    mono += 2000;        // two real seconds pass
+    assert.strictEqual(timer.getElapsedMs(), 2000);
+  } finally {
+    Date.now = realDate;
+    performance.now = realPerf;
+  }
 });

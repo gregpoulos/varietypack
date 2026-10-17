@@ -2,15 +2,15 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { makeBoardChecker } = require('../../shared/engine-state');
-const sha256hex = require('../../shared/sha256hex');
-const { joinCells } = require('../../shared/boardString');
+const { makeBoardChecker } = require('../engine-state.mjs');
+const { sha256hex } = require('../sha256hex.mjs');
+const { joinCells } = require('../boardString.mjs');
 
 // A three-cell board whose answer is a · bc · d. One rebus cell, so the delimited
 // preimage — not a plain concatenation — is what these tests exercise.
 const CELL_IDS = [0, 1, 2];
-const ANSWER = { 0: 'A', 1: 'BC', 2: 'D' };
-const CORRECT_HASH = sha256hex(joinCells(CELL_IDS.map(n => ANSWER[n].toLowerCase())));
+const ANSWER = { 0: 'a', 1: 'bc', 2: 'd' };
+const CORRECT_HASH = sha256hex(joinCells(CELL_IDS.map(n => ANSWER[n])));
 
 function harness({ hashed = false, content = {}, marked = [], composing = null } = {}) {
   const store = { ...content };
@@ -31,22 +31,35 @@ function harness({ hashed = false, content = {}, marked = [], composing = null }
   return { checker, store, calls };
 }
 
-const SOLVED = { 0: 'A', 1: 'BC', 2: 'D' };
+const SOLVED = { 0: 'a', 1: 'bc', 2: 'd' };
+
+// isEntryFilled: the "filled clue" question (`.filled` on a clue item), asked of one
+// entry's cells with the checker's own isCellFilled.
+test('isEntryFilled: true only when every cell of the entry is filled', () => {
+  assert.equal(harness({ content: SOLVED }).checker.isEntryFilled([0, 1, 2]), true);
+  assert.equal(harness({ content: { 0: 'a', 2: 'd' } }).checker.isEntryFilled([0, 1, 2]), false);
+  assert.equal(harness().checker.isEntryFilled([0, 1, 2]), false);
+});
+
+test('isEntryFilled: judges only its own cells, not the rest of the board', () => {
+  const { checker } = harness({ content: { 0: 'a', 1: 'bc' } });
+  assert.equal(checker.isEntryFilled([0, 1]), true);
+  assert.equal(checker.isEntryFilled([0, 2]), false);
+});
+
+test('isEntryFilled: a cell mid-rebus-composition is not filled', () => {
+  const { checker } = harness({ content: SOLVED, composing: 1 });
+  assert.equal(checker.isEntryFilled([0, 1]), false);
+  assert.equal(checker.isEntryFilled([0, 2]), true);
+});
 
 test('getSolution joins normalized cells with the delimiter', () => {
   const { checker } = harness({ content: SOLVED });
   assert.equal(checker.getSolution(), 'a.bc.d');
 });
 
-test('getSolution keeps cell boundaries that a plain concatenation would lose', () => {
-  const { checker: right } = harness({ content: { 0: 'A', 1: 'BC', 2: 'D' } });
-  const { checker: wrong } = harness({ content: { 0: 'AB', 1: 'C', 2: 'D' } });
-  // Both concatenate to "abcd"; the delimiter is what keeps them distinct.
-  assert.notEqual(right.getSolution(), wrong.getSolution());
-});
-
 test('isBoardFilled is false while any cell is empty', () => {
-  const { checker } = harness({ content: { 0: 'A', 1: 'BC' } });
+  const { checker } = harness({ content: { 0: 'a', 1: 'bc' } });
   assert.equal(checker.isBoardFilled(), false);
 });
 
@@ -63,7 +76,7 @@ test('isSolved reads the tool marker, not the content', () => {
 });
 
 test('checkIfFilled does nothing at all on a partly filled board', () => {
-  const { checker, calls } = harness({ content: { 0: 'A' } });
+  const { checker, calls } = harness({ content: { 0: 'a' } });
   checker.checkIfFilled();
   assert.equal(calls.markSolved, 0);
   assert.equal(calls.syncUI, 0);
@@ -83,7 +96,7 @@ test('checkIfFilled marks a correct board solved — hashed', () => {
 
 test('checkIfFilled syncs but does not mark a wrong full board — both modes', () => {
   for (const hashed of [false, true]) {
-    const { checker, calls } = harness({ hashed, content: { 0: 'A', 1: 'BC', 2: 'X' } });
+    const { checker, calls } = harness({ hashed, content: { 0: 'a', 1: 'bc', 2: 'x' } });
     checker.checkIfFilled();
     assert.equal(calls.markSolved, 0, `hashed=${hashed}`);
     assert.equal(calls.syncUI, 1, `hashed=${hashed}`);
@@ -93,8 +106,8 @@ test('checkIfFilled syncs but does not mark a wrong full board — both modes', 
 test('hashed and non-hashed agree on every board — the symmetry contract', () => {
   const boards = [
     SOLVED,
-    { 0: 'A', 1: 'BC', 2: 'X' },   // wrong final cell
-    { 0: 'AB', 1: 'C', 2: 'D' },   // right letters, wrong cell boundaries
+    { 0: 'a', 1: 'bc', 2: 'x' },   // wrong final cell
+    { 0: 'ab', 1: 'c', 2: 'd' },   // right letters, wrong cell boundaries
   ];
   for (const content of boards) {
     const plain  = harness({ hashed: false, content });
@@ -142,9 +155,9 @@ test('repaintIfSolved consults no answer evidence — both modes', () => {
   }
 });
 
-// The mid-composition-prefix case: a partly-typed cell can leave a *correct* board. Without the
-// isCellFilled exclusion this marks solved, which seals the one-way completion latch
-// on a half-entered board. Previously reachable only through Playwright.
+// The mid-composition-prefix case: a partly-typed cell can leave a *correct* board.
+// Without the isCellFilled exclusion this marks solved, which seals the one-way
+// completion latch on a half-entered board. Previously reachable only through Playwright.
 test('checkIfFilled does not mark solved while a cell is composing, even when content is correct', () => {
   for (const hashed of [false, true]) {
     const { checker, calls } = harness({ hashed, content: SOLVED, composing: 2 });
@@ -152,4 +165,31 @@ test('checkIfFilled does not mark solved while a cell is composing, even when co
     assert.equal(calls.markSolved, 0, `hashed=${hashed}`);
     assert.equal(calls.syncUI, 0, `hashed=${hashed}`);
   }
+});
+
+// ── Check Cell ────────────────────────────────────────────────────────────────
+
+test('canCheck is true only for a filled, not-yet-correct cell', () => {
+  const { checker } = harness({ content: { 0: 'a', 1: 'bc' }, marked: [1], composing: null });
+  assert.equal(checker.canCheck(0), true);
+  assert.equal(checker.canCheck(1), false, 'already marked correct');
+  assert.equal(checker.canCheck(2), false, 'empty');
+});
+
+test('canCheck is false for a cell that is still composing', () => {
+  const { checker } = harness({ content: { 1: 'b' }, composing: 1 });
+  assert.equal(checker.canCheck(1), false);
+});
+
+test('checkCell returns true for a correct cell and false for a wrong one', () => {
+  const { checker } = harness({ content: { 0: 'a', 1: 'xy' } });
+  assert.equal(checker.checkCell(0), true);
+  assert.equal(checker.checkCell(1), false);
+});
+
+test('checkCell returns null, without reading the answer, when the cell cannot be checked', () => {
+  const { checker, calls } = harness({ content: { 0: 'a' }, marked: [0] });
+  assert.equal(checker.checkCell(0), null, 'already correct');
+  assert.equal(checker.checkCell(2), null, 'empty');
+  assert.equal(calls.getExpected, 0);
 });

@@ -8,21 +8,29 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { computeRing: computeStadiumRing }    = require('../src/layoutStadium');
-const { computeRing: computeTurnRing }       = require('../src/layoutTurn');
-const { computeRing: computeDoubleTurnRing } = require('../src/layoutDoubleTurn');
-const { getStadiumRenderer }    = require('../src/template/shapes/stadium');
-const { getTurnRenderer }       = require('../src/template/shapes/turn');
-const { getDoubleTurnRenderer } = require('../src/template/shapes/double-turn');
+const { SHAPES: RING_SHAPES, SHAPE_NAMES } = require('../src/layout');
+const { getStadiumRenderer }    = require('../src/template/shapes/stadium.mjs');
+const { getTurnRenderer }       = require('../src/template/shapes/turn.mjs');
+const { getDoubleTurnRenderer } = require('../src/template/shapes/double-turn.mjs');
 
 const EPS = 1e-6;
 
-const SHAPES = {
-  circle:        { ring: N => computeStadiumRing(N, 'circle'),  renderer: getStadiumRenderer },
-  stadium:       { ring: N => computeStadiumRing(N, 'stadium'), renderer: getStadiumRenderer },
-  turn:          { ring: computeTurnRing,                       renderer: getTurnRenderer },
-  'double-turn': { ring: computeDoubleTurnRing,                 renderer: getDoubleTurnRenderer },
+const RENDERERS = {
+  circle:        getStadiumRenderer,
+  stadium:       getStadiumRenderer,
+  turn:          getTurnRenderer,
+  'double-turn': getDoubleTurnRenderer,
 };
+
+// Every shape the layout offers is covered here, so a new shape can't go untested.
+const SHAPES = Object.fromEntries(SHAPE_NAMES.map(name => [name, {
+  ring: RING_SHAPES[name].computeRing,
+  renderer: RENDERERS[name],
+}]));
+
+test('every ring shape has a renderer under test', () => {
+  for (const name of SHAPE_NAMES) assert.equal(typeof RENDERERS[name], 'function', name);
+});
 
 // Every ring size the layout accepts, from the validator's minimum (8) up to a
 // generous puzzle size.
@@ -82,6 +90,40 @@ for (const shape of Object.keys(SHAPES)) {
         const { lx, ly } = labelPos(i);
         assert.ok(inBox([tx, ty], pts), `N=${ring.N}: letter anchor of cell ${i} is outside it`);
         assert.ok(inBox([lx, ly], pts), `N=${ring.N}: number anchor of cell ${i} is outside it`);
+      }
+    }
+  });
+
+  test(`${shape}: edgeAfter(i) is exactly the edge cell i shares with cell i + 1, and the ring closes`, () => {
+    for (const ring of rings) {
+      const { cellPath, edgeAfter } = SHAPES[shape].renderer(ring);
+      for (let i = 0; i < ring.N; i++) {
+        const next = (i + 1) % ring.N;
+        const a = corners(cellPath(i)), b = corners(cellPath(next));
+        const shared = a.filter(p => b.some(q => same(p, q)));
+        const { outer, inner } = edgeAfter(i);
+        const ends = [[outer.x, outer.y], [inner.x, inner.y]];
+        assert.equal(shared.length, 2, `N=${ring.N}: cells ${i} and ${next} share an edge`);
+        for (const e of ends) {
+          assert.ok(shared.some(p => same(p, e)), `N=${ring.N}: edgeAfter(${i}) endpoint ${e} is not on the shared edge`);
+        }
+        assert.ok(!same(ends[0], ends[1]), `N=${ring.N}: edgeAfter(${i}) has two distinct endpoints`);
+      }
+    }
+  });
+
+  // The entry number sits just inside a cell's leading edge, which is the previous cell's
+  // edgeAfter, so that edge's `outer` endpoint must be the one nearer the label. (Not the
+  // cell's own edgeAfter: on a small ring a cell is wide, and its far edge's inner
+  // endpoint can be nearer.)
+  test(`${shape}: edgeAfter's outer endpoint is on the side the entry number sits`, () => {
+    for (const ring of rings) {
+      const { edgeAfter, labelPos } = SHAPES[shape].renderer(ring);
+      for (let i = 0; i < ring.N; i++) {
+        const { lx, ly } = labelPos(i);
+        const { outer, inner } = edgeAfter((i - 1 + ring.N) % ring.N);
+        const dist = (p) => Math.hypot(p.x - lx, p.y - ly);
+        assert.ok(dist(outer) < dist(inner), `N=${ring.N}: cell ${i}'s label is nearer the inner endpoint of its leading edge`);
       }
     }
   });

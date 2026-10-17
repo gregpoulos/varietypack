@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { restoreAndSeal } = require('../../shared/engine-state');
+const { restoreAndSeal } = require('../engine-state.mjs');
 
 // restoreAndSeal consolidates each engine's restore-time epilogue: restore saved
 // state, seal the completion latch if the restored board is solved, then repaint

@@ -34,6 +34,7 @@ bands:
   - entries:
       - clue: "Band A, top edge — same two-letter cell as row one"
         answer: "A[BB]CDE"
+        styles: { circle: [2] }
       - clue: "Band A, right edge into the bottom"
         answer: "JNSXWV"
       - clue: "Band A, bottom into the left edge"

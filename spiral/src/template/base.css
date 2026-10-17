@@ -58,17 +58,13 @@
   gap: 8px;
   cursor: pointer;
   list-style: none;
+  padding: 2px 6px 2px 2px;
 }
 
 .clue-range {
   min-width: 5em;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
-}
-
-.clue-item.correct .clue-text {
-  text-decoration: line-through;
-  opacity: 0.5;
 }
 
 #direction-chevron { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }

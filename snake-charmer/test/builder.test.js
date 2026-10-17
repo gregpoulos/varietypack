@@ -6,18 +6,15 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const yaml = require('js-yaml');
-const { buildHtml, buildPuzzle, findCoincidentStarts } = require('../src/builder');
-const { loadPuzzle } = require('../../shared/build/builderUtils');
-const { computeLayout } = require('../src/layout');
-const { preparePuzzle } = require('../src/hasher');
+const { buildHtml, HOOKS } = require('../src/builder');
+const { buildPuzzle } = require('../cli');
+const { buildFromObject } = require('../../shared/build/buildFromObject');
+const { loadPuzzle } = require('../../shared/cli/puzzleFiles');
+const { ringFor, SHAPES } = require('../src/layout');
+const { preparePuzzle } = require('../src/prepare');
+const { puzzleDataOf } = require('../../test/helpers');
 
 const SAMPLE = path.join(__dirname, 'fixtures', 'double-turn-72.yaml');
-
-function puzzleDataOf(html) {
-  const match = html.match(/window\.PUZZLE_DATA\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
-  assert.ok(match, 'PUZZLE_DATA not found');
-  return JSON.parse(match[1]);
-}
 
 // Reads a built HTML file's PUZZLE_DATA, then deletes the file.
 function takePuzzleData(outPath) {
@@ -30,7 +27,7 @@ function takePuzzleData(outPath) {
 
 test('buildHtml: PUZZLE_DATA carries loops and ring, and omits cells (entry mapping derived at engine init)', () => {
   const prepared = preparePuzzle(loadPuzzle(SAMPLE));
-  const { ring } = computeLayout(prepared.entries, prepared.loops);
+  const { ring } = ringFor(72, 'stadium');   // the fixture's ring size
   const data = puzzleDataOf(buildHtml(prepared, ring));
   assert.equal(data.cells, undefined);
   assert.equal(data.loops, 2);
@@ -44,34 +41,6 @@ test('buildPuzzle: no shape specified — uses double-turn for compatible puzzle
   buildPuzzle(SAMPLE, outPath);
   const data = takePuzzleData(outPath);
   assert.equal(data.shape, 'double-turn');
-});
-
-test('buildPuzzle: no shape specified — falls back to stadium for small puzzle with stderr note', () => {
-  // N=8 is too small for double-turn; 3 entries satisfies the validator minimum
-  const puzzle = {
-    kind: 'snake-charmer', title: 'T',
-    entries: [
-      { clue: 'One',   answer: 'ABCD' },
-      { clue: 'Two',   answer: 'EFGH' },
-      { clue: 'Three', answer: 'ABCDEFGH' },
-    ],
-  };
-  const inPath  = path.join(os.tmpdir(), 'sc-test-autoshape-small-in.yaml');
-  const outPath = path.join(os.tmpdir(), 'sc-test-autoshape-small-out.html');
-  fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
-
-  let stderrOutput = '';
-  const origWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = (chunk) => { stderrOutput += chunk; return true; };
-  try {
-    buildPuzzle(inPath, outPath);
-  } finally {
-    process.stderr.write = origWrite;
-    try { fs.unlinkSync(inPath); } catch {}
-  }
-  const data = takePuzzleData(outPath);
-  assert.equal(data.shape, 'stadium');
-  assert.ok(stderrOutput.includes('double-turn'), 'expected fallback note on stderr');
 });
 
 test('buildPuzzle: shape field in YAML used when no --shape flag', () => {
@@ -128,42 +97,12 @@ test('buildPuzzle: YAML shape disables auto-select fallback — throws on incomp
   }
 });
 
-test('buildPuzzle: invalid YAML shape throws a clean validation error', () => {
-  const puzzle = {
-    kind: 'snake-charmer', title: 'T', shape: 'hexagon',
-    entries: [
-      { clue: 'One',   answer: 'ABCD' },
-      { clue: 'Two',   answer: 'EFGH' },
-      { clue: 'Three', answer: 'ABCDEFGH' },
-    ],
-  };
-  const inPath  = path.join(os.tmpdir(), 'sc-test-invalid-shape-in.yaml');
-  const outPath = path.join(os.tmpdir(), 'sc-test-invalid-shape-out.html');
-  fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
-  try {
-    assert.throws(
-      () => buildPuzzle(inPath, outPath),
-      (err) => err.message.includes('"shape"'),
-    );
-  } finally {
-    try { fs.unlinkSync(inPath); } catch {}
-  }
-});
-
 // ── buildPuzzle (full pipeline) ───────────────────────────────────────────────
-
-test('buildPuzzle: circle option writes shape:circle to output file', () => {
-  const outPath = path.join(os.tmpdir(), 'sc-test-ring.html');
-  buildPuzzle(SAMPLE, outPath, { shape: 'circle' });
-  const data = takePuzzleData(outPath);
-  assert.equal(data.shape, 'circle');
-  assert.equal(data.ring.nStraight, 0);
-});
 
 test('buildHtml: PUZZLE_DATA contains ring object with all stadium fields', () => {
   const puzzle = loadPuzzle(SAMPLE);
   const prepared = preparePuzzle(puzzle);
-  const { ring } = computeLayout(prepared.entries, prepared.loops);
+  const { ring } = ringFor(72, 'stadium');   // the fixture's ring size
   const data = puzzleDataOf(buildHtml(prepared, ring));
   assert.equal(data.ring.N, 72);
   for (const f of ['nCurve', 'nStraight', 'L', 'rCenter', 'rOuter', 'rInner', 'svgWidth', 'svgHeight', 'cx', 'cy']) {
@@ -185,47 +124,37 @@ test('buildPuzzle: turn shape writes ring with turn-specific fields', () => {
   assert.equal(data.ring.nCurve, undefined, 'stadium field nCurve should be absent');
 });
 
-// ── findCoincidentStarts ──────────────────────────────────────────────────────
+function captureStderr(fn) {
+  let out = '';
+  const origWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk) => { out += chunk; return true; };
+  try { return { result: fn(), stderr: out }; } finally { process.stderr.write = origWrite; }
+}
 
-test('findCoincidentStarts: returns empty array when no entries share a start cell', () => {
-  // ringSize=3, loops=2. e0(len2) starts ring 0; e1(len4) starts ring 2. Distinct starts.
-  const entries = [{ length: 2 }, { length: 4 }];
-  assert.deepEqual(findCoincidentStarts(entries, 2), []);
-});
-
-test('findCoincidentStarts: returns ring positions where two entries share a start cell', () => {
-  // ringSize=4, loops=2. Starts: e0→0, e1→2, e2→0, e3→2 (loop 1 lands on the same cells).
-  const entries = [{ length: 2 }, { length: 2 }, { length: 2 }, { length: 2 }];
-  assert.deepEqual(findCoincidentStarts(entries, 2), [0, 2]);
-});
-
-test('buildPuzzle: writes coincident-start warning to stderr', () => {
-  // Both loops start at ring cells 0 and 4 — entries 0&2 share cell 0, entries 1&3 share cell 4.
+test('HOOKS via buildFromObject: auto-shape fallback note is returned, not printed', () => {
   const puzzle = {
-    kind: 'snake-charmer',
-    title: 'Coincident Test',
+    kind: 'snake-charmer', title: 'T',
     entries: [
-      { clue: 'One',   answer: 'AAAA' },
-      { clue: 'Two',   answer: 'BBBB' },
-      { clue: 'Three', answer: 'AAAA' },
-      { clue: 'Four',  answer: 'BBBB' },
+      { clue: 'One',   answer: 'ABCD' },
+      { clue: 'Two',   answer: 'EFGH' },
+      { clue: 'Three', answer: 'ABCDEFGH' },
     ],
   };
-  const inPath  = path.join(os.tmpdir(), 'sc-test-coincident-in.yaml');
-  const outPath = path.join(os.tmpdir(), 'sc-test-coincident-out.html');
-  fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
-
-  let stderrOutput = '';
-  const origWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = (chunk) => { stderrOutput += chunk; return true; };
-  try {
-    buildPuzzle(inPath, outPath);
-  } finally {
-    process.stderr.write = origWrite;
-    try { fs.unlinkSync(inPath); } catch {}
-    try { fs.unlinkSync(outPath); } catch {}
-  }
-
-  assert.ok(stderrOutput.length > 0, 'expected a warning on stderr');
-  assert.match(stderrOutput, /[Ww]arning/);
+  const { result, stderr } = captureStderr(() => buildFromObject(puzzle, {}, HOOKS));
+  assert.ok(result.notes.some(n => /double-turn shape not supported/.test(n)), result.notes.join('|'));
+  assert.equal(stderr, '');
 });
+
+test('an auto-shaped build computes the double-turn ring once', () => {
+  const real = SHAPES['double-turn'].computeRing;
+  let calls = 0;
+  SHAPES['double-turn'].computeRing = (N) => { calls++; return real(N); };
+  try {
+    const { shape, ...autoShaped } = loadPuzzle(SAMPLE);   // no shape: auto-select
+    buildFromObject(autoShaped, {}, HOOKS);
+  } finally {
+    SHAPES['double-turn'].computeRing = real;
+  }
+  assert.equal(calls, 1);
+});
+

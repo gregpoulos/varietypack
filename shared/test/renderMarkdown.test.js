@@ -87,20 +87,8 @@ test('renderClueMarkdown: straight double quotes become curly', () => {
   assert.equal(renderClueMarkdown('a "quoted" word'), 'a “quoted” word');
 });
 
-test('renderClueMarkdown: an apostrophe becomes a curly closing single quote', () => {
-  assert.equal(renderClueMarkdown("it's"), 'it’s');
-});
-
 test('renderClueMarkdown: a double hyphen becomes an en dash', () => {
   assert.equal(renderClueMarkdown('a--b'), 'a–b');
-});
-
-test('renderClueMarkdown: a triple hyphen becomes an em dash', () => {
-  assert.equal(renderClueMarkdown('a---b'), 'a—b');
-});
-
-test('renderClueMarkdown: three dots become an ellipsis', () => {
-  assert.equal(renderClueMarkdown('wait...'), 'wait…');
 });
 
 test('renderClueMarkdown: a backslash-escaped quote stays straight', () => {

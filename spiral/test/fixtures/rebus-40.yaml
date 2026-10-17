@@ -33,6 +33,7 @@ outward:
     answer: "TSRQPO"
   - clue: "Cells 14-11, with the three-letter rebus cell in forward order"
     answer: "NM[LLL]K"
+    styles: { circle: [1] }
   - clue: "Cells 10-6"
     answer: "JIHGF"
   - clue: "Cells 5-1, opening with the two-letter rebus cell in forward order"

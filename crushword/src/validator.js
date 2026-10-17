@@ -1,8 +1,8 @@
 'use strict';
 
-const { validateCommonHeader, entryCells } = require('../../shared/build/builderUtils');
-const { validateEntry, checkMuddledGuard } = require('../../shared/build/validateEntry');
-const { deriveSlots, isSymmetric, isConnected, uncluedCells } = require('./grid');
+const { HEADER_KEYS, validateCommonHeader } = require('../../shared/build/validation');
+const { validateEntry, checkMuddledGuard, checkCellStyles, warnUnknownKeys } = require('../../shared/build/validateEntry');
+const { deriveSlots, slotCells, isSymmetric, isConnected, uncluedCells, uncrossedCells } = require('./grid.mjs');
 
 // Deliberately a LETTER count, not a cell count. The "no very short entries"
 // convention is about the word being too slight to be interesting, and in a rebus
@@ -10,11 +10,11 @@ const { deriveSlots, isSymmetric, isConnected, uncluedCells } = require('./grid'
 // and is perfectly sound, while a 2-letter entry is thin however it is bracketed.
 // Counting cells here warns on eight legitimate entries in crushword.yaml alone;
 // the "minimum-length convention counts letters" test pins that. Every other length
-// in this file, and `entryLength` generally, is a cell count — this warning is the
+// in this file, and `entryCellCount` generally, is a cell count — this warning is the
 // deliberate exception.
 const MIN_ANSWER_LETTERS = 3;
 
-// The hasher applies the same default, so an unset field and an explicit
+// The prepare step applies the same default, so an unset field and an explicit
 // `maxCellLetters: 3` validate and render identically.
 const DEFAULT_MAX_CELL_LETTERS = 3;
 
@@ -82,22 +82,20 @@ function checkNumberingMatch(slots, entriesObj, label, errors) {
 /**
  * Validates every slot's entry and captures its parsed cells in a single pass.
  *
- * `cells` is null for a muddled entry (which has no plaintext) and for an entry
- * that failed validation. validateEntry returns a non-null length for a source
- * entry only after parseAnswerCells has succeeded on it, so that return value is
- * what makes the entryCells call here safe: entryCells throws on a non-string
- * answer, which an entry written `answer:` with no value in YAML supplies as null.
+ * `ok` is true when the entry validated and fills its slot exactly. `cells` is null for
+ * a muddled entry (which has no plaintext) and for an entry that failed validation.
  *
- * @returns {Array<{slot: object, cells: string[]|null}>} One item per slot, in slot order.
+ * @returns {Array<{slot: object, ok: boolean, cells: string[]|null}>}
+ *   One item per slot, in slot order.
  */
 function collectSlotEntries(slots, entriesObj, label, isMuddled, errors, warnings) {
   return slots.map(slot => {
     const entry = entriesObj[slot.num];
-    const len = validateEntry(entry, `${label}[${slot.num}]`, isMuddled, errors, warnings);
-    if (len !== null && len !== slot.len) {
-      errors.push(`${label}[${slot.num}]: grid slot has ${slot.len} cells but answer has ${len}`);
+    const result = validateEntry(entry, `${label}[${slot.num}]`, isMuddled, errors, warnings);
+    if (result !== null && result.length !== slot.len) {
+      errors.push(`${label}[${slot.num}]: grid slot has ${slot.len} cells but answer has ${result.length}`);
     }
-    return { slot, cells: !isMuddled && len !== null ? entryCells(entry) : null };
+    return { slot, ok: result !== null && result.length === slot.len, cells: result?.cells ?? null };
   });
 }
 
@@ -105,7 +103,8 @@ function validate(puzzle) {
   const errors = [];
   const warnings = [];
 
-  if (!validateCommonHeader(puzzle, 'crushword', errors, warnings)) return { errors, warnings };
+  if (!validateCommonHeader(puzzle, 'crushword', errors)) return { errors, warnings };
+  warnUnknownKeys(puzzle, [...HEADER_KEYS, 'grid', 'across', 'down', 'maxCellLetters'], '', warnings);
 
   const grid = validateGridShape(puzzle, errors);
   if (!grid) return { errors, warnings };
@@ -136,7 +135,7 @@ function validate(puzzle) {
   }
 
   // Not just a connectivity warning: nothing downstream can represent such a cell.
-  // The hasher has no content to hash for it and the engine has no entry to
+  // The prepare step has no content to hash for it and the engine has no entry to
   // highlight when it is clicked, so a build would be unsolvable and crash on click.
   for (const { r, c } of uncluedCells(grid)) {
     errors.push(`Cell (${r + 1}, ${c + 1}) is open but belongs to no across or down entry — block it or open a neighbor`);
@@ -152,6 +151,9 @@ function validate(puzzle) {
 
   const acrossEntries = collectSlotEntries(acrossSlots, puzzle.across, 'across', isMuddled, errors, warnings);
   const downEntries   = collectSlotEntries(downSlots, puzzle.down, 'down', isMuddled, errors, warnings);
+  // What the crossing and circle checks need, rather than no errors anywhere: an
+  // unrelated error (a bad theme) must not hide a crossing mistake.
+  const entriesOk = [...acrossEntries, ...downEntries].every(e => e.ok);
 
   if (!isMuddled) {
     for (const [label, collected] of [['across', acrossEntries], ['down', downEntries]]) {
@@ -177,20 +179,16 @@ function validate(puzzle) {
     warnings.push("grid's open cells are not fully connected (contains a disconnected region)");
   }
 
-  if (!isMuddled && errors.length === 0) {
-    // Zero errors implies every slot's entry validated, so every `cells` is non-null.
+  if (!isMuddled && entriesOk) {
+    // Every entry parsed and fills its slot, so every `cells` is non-null and in range.
     const board = {};
-    for (const { slot, cells } of acrossEntries) {
-      cells.forEach((cell, i) => {
-        const key = `${slot.r},${slot.c + i}`;
-        (board[key] = board[key] || {}).across = { num: slot.num, cell };
-      });
-    }
-    for (const { slot, cells } of downEntries) {
-      cells.forEach((cell, i) => {
-        const key = `${slot.r + i},${slot.c}`;
-        (board[key] = board[key] || {}).down = { num: slot.num, cell };
-      });
+    for (const [dir, entries] of [['across', acrossEntries], ['down', downEntries]]) {
+      for (const { slot, cells } of entries) {
+        slotCells(slot, dir).forEach(({ r, c }, i) => {
+          const key = `${r},${c}`;
+          (board[key] = board[key] || {})[dir] = { num: slot.num, cell: cells[i] };
+        });
+      }
     }
     for (const [key, val] of Object.entries(board)) {
       const [r, c] = key.split(',').map(Number);
@@ -199,16 +197,27 @@ function validate(puzzle) {
           `Cell (${r + 1}, ${c + 1}): across[${val.across.num}] has "${val.across.cell}" but down[${val.down.num}] has "${val.down.cell}" — they disagree`
         );
       }
-      if (val.across && !val.down) {
-        warnings.push(`across[${val.across.num}]: cell (${r + 1}, ${c + 1}) has no crossing down entry`);
-      }
-      if (val.down && !val.across) {
-        warnings.push(`down[${val.down.num}]: cell (${r + 1}, ${c + 1}) has no crossing across entry`);
-      }
     }
+    // The rule itself is grid.mjs's (the studio shows the same cells); the slot number
+    // comes from the board map above.
+    for (const { r, c, dir } of uncrossedCells(grid)) {
+      const val = board[`${r},${c}`];
+      if (dir === 'across') warnings.push(`across[${val.across.num}]: cell (${r + 1}, ${c + 1}) has no crossing down entry`);
+      else warnings.push(`down[${val.down.num}]: cell (${r + 1}, ${c + 1}) has no crossing across entry`);
+    }
+  }
+
+  if (entriesOk) {
+    const coverage = [
+      ...acrossSlots.map(s => ({ label: `across[${s.num}]`, entry: puzzle.across[s.num],
+        cells: slotCells(s, 'across').map(({ r, c }) => `${r},${c}`) })),
+      ...downSlots.map(s => ({ label: `down[${s.num}]`, entry: puzzle.down[s.num],
+        cells: slotCells(s, 'down').map(({ r, c }) => `${r},${c}`) })),
+    ];
+    checkCellStyles(coverage, errors);
   }
 
   return { errors, warnings };
 }
 
-module.exports = { validate, DEFAULT_MAX_CELL_LETTERS };
+module.exports = { validate, DEFAULT_MAX_CELL_LETTERS, MIN_ANSWER_LETTERS };

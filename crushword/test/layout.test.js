@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { cellCoords, gridDimensions, svgSize, deriveNumbering, cellDimensions } = require('../src/layout');
+const { cellCoords, gridDimensions, svgSize, deriveNumbering, cellDimensions } = require('../src/layout.mjs');
 
 test('cellCoords: top-left pixel origin of a cell, width and height independent', () => {
   assert.deepEqual(cellCoords(0, 0, 34, 34), { x: 0, y: 0 });

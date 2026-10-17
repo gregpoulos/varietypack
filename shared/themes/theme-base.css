@@ -64,6 +64,12 @@
   --theme-color-correct-stroke: #4caf50;
   --theme-color-correct-text:   #1a6e22;
 
+  /* Filled clue: every cell the clue owns has content, right or wrong — like crossing it
+     off by hand. Distinct from Correct above (whole board verified). Defaults are no-ops;
+     a theme opts in. Contract: docs/CROSS_TOOL_SPEC.md → "Filled clues". */
+  --theme-clue-filled-decoration: none;
+  --theme-clue-filled-opacity:    1;
+
   /* Decorations */
   --theme-color-circle:      #cccccc;
   --theme-color-curl:        #aaaaaa;

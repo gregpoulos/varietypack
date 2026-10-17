@@ -22,8 +22,8 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
-const { bandCells, centerFlatIndex } = require('../src/layout');
-const { entryCells } = require('../../shared/build/builderUtils');
+const { bandCells, centerFlatIndex } = require('../src/layout.mjs');
+const { parseAnswerCells, entryCellCount } = require('../../shared/build/cells');
 
 const FIXTURES_DIR = path.join(__dirname, '../test/fixtures');
 
@@ -33,7 +33,7 @@ const FIXTURES_DIR = path.join(__dirname, '../test/fixtures');
 function assertNoRebus(file, p) {
   const allEntries = [...p.rows, ...(p.bands || [])].flatMap((g) => g.entries);
   for (const e of allEntries) {
-    const cells = entryCells(e) ?? [];
+    const cells = parseAnswerCells(e.answer).cells ?? [];
     if (cells.some((c) => c.length > 1)) {
       throw new Error(
         `${path.basename(file)}: answer ${JSON.stringify(e.answer)} contains a bracketed ` +
@@ -54,7 +54,7 @@ function regenerate(file) {
   if (p.boardHash !== undefined) { console.log(`${path.basename(file)}: skipped (muddled)`); return null; }
   assertNoRebus(file, p);
 
-  const N = p.rows[0].entries.reduce((s, e) => s + (entryCells(e) ?? []).length, 0);
+  const N = p.rows[0].entries.reduce((s, e) => s + entryCellCount(e), 0);
   const centerIdx = N % 2 === 1 ? centerFlatIndex(N) : -1; // 0-indexed flat
 
   // Consistent filler grid: 1-indexed cell id -> letter (varied, deterministic).
@@ -70,7 +70,7 @@ function regenerate(file) {
   const take = (ids, entries) => {
     let i = 0;
     for (const e of entries) {
-      const len = (entryCells(e) ?? []).length;
+      const len = entryCellCount(e);
       answers.push(ids.slice(i, i + len).map(id => grid[id]).join(''));
       i += len;
     }

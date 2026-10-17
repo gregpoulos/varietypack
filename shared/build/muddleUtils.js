@@ -1,26 +1,17 @@
 'use strict';
 
-const { cellsOrThrow } = require('./builderUtils');
-
-// Only YAML-mapping objects are walked. Non-plain objects (e.g. a Date from an
-// unquoted YAML timestamp) have no own-enumerable keys, so recursing would flatten
-// them to {} and silently corrupt the field — pass them through untouched.
-function isPlainObject(obj) {
-  if (obj === null || typeof obj !== 'object') return false;
-  const proto = Object.getPrototypeOf(obj);
-  return proto === Object.prototype || proto === null;
-}
+const { cellsOrThrow } = require('./cells');
 
 function walkAnswers(obj) {
   if (Array.isArray(obj)) return obj.map(walkAnswers);
-  if (isPlainObject(obj)) {
+  if (obj !== null && typeof obj === 'object') {
     if (Object.prototype.hasOwnProperty.call(obj, 'answer')) {
       const { answer, ...rest } = obj;
       // length: is a CELL count, not a letter count — see root CLAUDE.md ->
       // "Muddled YAML format" for why format: 2 accompanies it. Shares its
-      // bracket-grammar parsing (and invalid-grammar throw) with
-      // entryLength/processEntries via builderUtils' cellsOrThrow.
-      const cells = cellsOrThrow(answer, 'walkAnswers');
+      // answer parsing (and invalid-answer throw) with
+      // entryCellCount/processEntries via cells.js' cellsOrThrow.
+      const cells = cellsOrThrow(answer);
       return { ...rest, length: cells.length };
     }
     const out = {};
@@ -37,4 +28,22 @@ function buildMuddledYaml(puzzle, boardHash) {
   return { ...walked, hashed: true, format: 2, boardHash };
 }
 
-module.exports = { walkAnswers, buildMuddledYaml };
+// The options every muddled-YAML dump uses (js-yaml's default 80-column folding would
+// reflow long clues).
+const MUDDLED_DUMP_OPTIONS = { lineWidth: -1 };
+
+/**
+ * Pure muddle sequence: validate → hash → build the muddled object. The one home for
+ * that order, shared by the muddle command and the studio.
+ *
+ * @returns {{ errors: string[], warnings: string[], muddled: object|null }}
+ *   muddled is null whenever errors is non-empty.
+ */
+function muddlePuzzle(puzzle, { validateFn, prepareFn }) {
+  const { errors, warnings } = validateFn(puzzle);
+  if (errors.length) return { errors, warnings, muddled: null };
+  const { boardHash } = prepareFn({ ...puzzle, hashed: true });
+  return { errors, warnings, muddled: buildMuddledYaml(puzzle, boardHash) };
+}
+
+module.exports = { walkAnswers, buildMuddledYaml, muddlePuzzle, MUDDLED_DUMP_OPTIONS };

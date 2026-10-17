@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { resetAndRefocus } = require('../../shared/engine-state');
+const { resetAndRefocus } = require('../engine-state.mjs');
 
 test('resetAndRefocus drops composition first and refocuses last', () => {
   const calls = [];

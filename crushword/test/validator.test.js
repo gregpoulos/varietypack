@@ -25,9 +25,15 @@ function minimalPuzzle() {
   };
 }
 
+// The negative half of every grid warning below (symmetry, connectivity, uncrossed
+// cells, short answers): the fully checked, symmetric 3x3 gives none of them.
+test('validate: the minimal puzzle has no errors and no warnings', () => {
+  assert.deepEqual(validate(minimalPuzzle()), { errors: [], warnings: [] });
+});
+
 // validateCommonHeader's own behavior (kind mismatch, missing title, hashed in
 // source vs muddled, instructions type/emptiness) is covered by shared/test/
-// builderUtils.test.js. This is the single wiring test proving crushword
+// validation.test.js. This is the single wiring test proving crushword
 // forwards validateCommonHeader's errors and passes its own kind
 // ('crushword').
 
@@ -202,8 +208,9 @@ test('validate: rejects a bracket group exceeding the default maxCellLetters (3)
 });
 
 test('validate: a bracket group is allowed when maxCellLetters is raised to fit it', () => {
-  // Both directions must agree on the bracketing at the shared cell (1,1) — see grid.test.js's
-  // fully-open-3x3 numbering. across[1] covers row 0; down[1] covers col 0.
+  // Both directions must agree on the bracketing at the shared cell (1,1) — see
+  // grid.test.js's fully-open-3x3 numbering. across[1] covers row 0; down[1] covers col
+  // 0.
   const p = minimalPuzzle();
   p.maxCellLetters = 4;
   p.across[1].answer = '[CATS]';
@@ -215,7 +222,8 @@ test('validate: a bracket group is allowed when maxCellLetters is raised to fit 
 test('validate: warns on an answer under 3 letters', () => {
   const p = minimalPuzzle();
   p.across[4].answer = 'GO'; // grid slot at across[4] is 3 cells; this also trips the per-slot length check,
-                             // which is fine — this test only asserts the length warning appears alongside it
+                             // which is fine — this test only asserts the length warning
+                             // appears alongside it
   const { errors, warnings } = validate(p);
   assert.ok(errors.some(e => e.includes('across[4]')), 'sanity: the length mismatch should also fire');
   assert.ok(warnings.some(w => w.includes('across[4]') && w.includes('only 2 letters')));
@@ -247,7 +255,7 @@ test('validate: warns when the grid lacks 180-degree symmetry', () => {
   // (bottom row) is open, so this is not symmetric. Built from deriveSlots'
   // own output so the across/down maps are guaranteed to match.
   const grid = ['.#.', '...', '...'];
-  const { deriveSlots, isSymmetric } = require('../src/grid');
+  const { deriveSlots, isSymmetric } = require('../src/grid.mjs');
   assert.equal(isSymmetric(grid), false);
   const { acrossSlots, downSlots } = deriveSlots(grid);
   const p = {
@@ -257,11 +265,6 @@ test('validate: warns when the grid lacks 180-degree symmetry', () => {
   };
   const { warnings } = validate(p);
   assert.ok(warnings.some(w => w.includes('180-degree')));
-});
-
-test('validate: does not warn about symmetry for a symmetric grid', () => {
-  const { warnings } = validate(minimalPuzzle());
-  assert.ok(!warnings.some(w => w.includes('180-degree')));
 });
 
 test('validate: warns when the grid is not fully connected', () => {
@@ -274,7 +277,7 @@ test('validate: warns when the grid is not fully connected', () => {
   // Built from deriveSlots' own output (not hand-typed numbers) so the
   // across/down maps are guaranteed to match the grid's derived numbering.
   const grid = ['..#..', '..#..', '#####', '..#..', '..#..'];
-  const { deriveSlots, isConnected } = require('../src/grid');
+  const { deriveSlots, isConnected } = require('../src/grid.mjs');
   assert.equal(isConnected(grid), false);
   const { acrossSlots, downSlots } = deriveSlots(grid);
   assert.ok(acrossSlots.length > 0 && downSlots.length > 0, 'sanity: fixture must produce entries in both directions');
@@ -287,16 +290,11 @@ test('validate: warns when the grid is not fully connected', () => {
   assert.ok(warnings.some(w => w.includes('not fully connected')));
 });
 
-test('validate: does not warn about connectivity for a connected grid', () => {
-  const { warnings } = validate(minimalPuzzle());
-  assert.ok(!warnings.some(w => w.includes('connected')));
-});
-
 test('validate: rejects a cell where across and down disagree', () => {
   const p = minimalPuzzle();
   p.down[1].answer = 'XDA'; // was 'CDA' — cell (0,0) now "x" vs across[1]'s "c"
   const { errors } = validate(p);
-  // entryCells normalizes to lowercase, matching the convention already established
+  // Cells are normalized to lowercase, matching the convention already established
   // by validateEntry's own warnings and Marching Bands' cross-check messages —
   // never uppercase cell content in a message.
   assert.ok(errors.some(e => e.includes('Cell (1, 1)') && e.includes('across[1]') && e.includes('"c"') && e.includes('down[1]') && e.includes('"x"')));
@@ -321,21 +319,9 @@ test('validate: warns about an uncrossed cell (real entry in only one direction)
   assert.ok(warnings.some(w => w.includes('down[2]') && w.includes('cell (3, 3)') && w.includes('no crossing across entry')));
 });
 
-test('validate: does not warn about uncrossed cells when every cell is checked', () => {
-  const { warnings } = validate(minimalPuzzle());
-  assert.ok(!warnings.some(w => w.includes('no crossing')));
-});
-
-test('validate: skips cross-check and uncrossed-cell warning in muddled mode', () => {
-  const p = muddledPuzzle();
-  const { errors, warnings } = validate(p);
-  assert.deepEqual(errors, []);
-  assert.ok(!warnings.some(w => w.includes('no crossing')));
-});
-
-test('validate: skips cross-check and uncrossed-cell warning when an earlier error exists', () => {
+test('validate: skips cross-check and uncrossed-cell warning when an answer can\'t be parsed', () => {
   const p = minimalPuzzle();
-  p.across[1].clue = ''; // triggers an entry-validation error, unrelated to crossing
+  p.across[1].answer = 'C[AT'; // no cells to compare, so no spurious disagreement
   const { errors, warnings } = validate(p);
   assert.ok(errors.length > 0);
   assert.ok(!warnings.some(w => w.includes('no crossing')));
@@ -344,8 +330,9 @@ test('validate: skips cross-check and uncrossed-cell warning when an earlier err
 
 test('validate: reports the entry error instead of throwing when an answer is not a string', () => {
   // A YAML entry written `answer:` with no value parses to null. validateEntry
-  // records it correctly; the cell-level checks must not then hand null to
-  // entryCells, which throws by design for a non-string.
+  // records it correctly; the cell-level checks must then skip that entry
+  // rather than parse its answer, since parseAnswerCells throws by design for a
+  // non-string.
   for (const bad of [null, 42, []]) {
     const p = minimalPuzzle();
     p.across[1].answer = bad;
@@ -379,9 +366,48 @@ test('validate: rejects a non-canonical clue key used in place of the canonical 
 
 test('validate: examples/crushword.yaml passes with zero errors and zero warnings', () => {
   const path = require('path');
-  const { loadPuzzle } = require('../../shared/build/builderUtils');
+  const { loadPuzzle } = require('../../shared/cli/puzzleFiles');
   const puzzle = loadPuzzle(path.join(__dirname, '..', '..', 'examples', 'crushword.yaml'));
   const { errors, warnings } = validate(puzzle);
   assert.deepEqual(errors, []);
   assert.deepEqual(warnings, []);
+});
+
+test('validate: a circle on an across entry but not the crossing down entry is an error', () => {
+  const p = minimalPuzzle();
+  p.across[1].styles = { circle: [0] };  // cell (0,0)
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => /^down\[1\]\.styles\.circle is missing position 0/.test(e)), errors.join('|'));
+});
+
+test('validate: a circle on both crossing entries passes', () => {
+  const p = minimalPuzzle();
+  p.across[1].styles = { circle: [0] };
+  p.down[1].styles = { circle: [0] };
+  assert.deepEqual(validate(p).errors, []);
+});
+
+test('validate: the circle rule applies to muddled puzzles too', () => {
+  const p = muddledPuzzle();
+  p.across[1].styles = { circle: [0] };
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => /^down\[1\]\.styles\.circle is missing position 0/.test(e)), errors.join('|'));
+});
+
+// Each check waits only for what it needs, so an unrelated error can't hide it.
+test('validate: an unrelated header error does not hide a crossing disagreement or a circle error', () => {
+  const p = minimalPuzzle();
+  p.theme = 'nope';
+  p.down[1].answer = 'XDA';               // cell (1,1): across[1] has "c", down[1] has "x"
+  p.across[4].styles = { circle: [0] };   // cell (2,1), circled by across[4] only
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.startsWith('"theme"')), errors.join('|'));
+  assert.ok(errors.some(e => e.includes('Cell (1, 1)') && e.includes('disagree')), errors.join('|'));
+  assert.ok(errors.some(e => /^down\[1\]\.styles\.circle is missing position 1/.test(e)), errors.join('|'));
+});
+
+test('validate: an unknown top-level key warns', () => {
+  const p = minimalPuzzle();
+  p.maxCelLetters = 2;
+  assert.ok(validate(p).warnings.includes('unknown key "maxCelLetters" (is it a typo?)'), validate(p).warnings.join('|'));
 });

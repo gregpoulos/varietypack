@@ -1,42 +1,29 @@
 'use strict';
 const fs   = require('fs');
 const path = require('path');
+const esbuild = require('esbuild');
 
 const root = path.join(__dirname, '..');
 
-// Strip CommonJS module system from a layout module and wrap in an IIFE so each
-// module's top-level constants (W_CELL, H_CELL, SVG_PAD_H, SVG_PAD_V) don't collide.
-// The IIFE returns computeRing and the result is assigned to exportedName.
-function inlineLayout(filePath, exportedName) {
-  const code = fs.readFileSync(filePath, 'utf8');
-  const stripped = code
-    .split('\n')
-    .filter(line =>
-      !line.match(/^\s*['"]use strict['"]/) &&
-      !line.match(/^\s*const\s*\{[^}]*\}\s*=\s*require\(/) &&
-      !line.match(/^\s*module\.exports\s*=/)
-    )
-    .join('\n');
-  return `const ${exportedName} = (() => {\n${stripped}\nreturn computeRing;\n})();`;
-}
-
-// Strip CommonJS guard from a renderer module (the `if (typeof module …)` line is harmless
-// in-browser but cleaner removed; 'use strict' is fine either way so we keep it).
-function inlineRenderer(filePath) {
-  const code = fs.readFileSync(filePath, 'utf8');
-  return code
-    .split('\n')
-    .filter(line => !line.match(/^\s*if\s*\(typeof\s+module/))
-    .join('\n');
-}
-
-const layoutStadium    = inlineLayout(path.join(root, 'src/layoutStadium.js'),    'computeStadiumRing');
-const layoutTurn       = inlineLayout(path.join(root, 'src/layoutTurn.js'),       'computeTurnRing');
-const layoutDoubleTurn = inlineLayout(path.join(root, 'src/layoutDoubleTurn.js'), 'computeDoubleTurnRing');
-const rendererRing     = inlineRenderer(path.join(root, 'src/template/shapes/ring.js'));
-const rendererStadium  = inlineRenderer(path.join(root, 'src/template/shapes/stadium.js'));
-const rendererTurn     = inlineRenderer(path.join(root, 'src/template/shapes/turn.js'));
-const rendererDT       = inlineRenderer(path.join(root, 'src/template/shapes/double-turn.js'));
+// The preview page's script needs the three ring layouts and the three renderers as
+// globals. esbuild bundles them from the same modules the engine and builder use, so the
+// preview draws what the puzzle page draws.
+const modules = `
+  import { computeRing as computeStadiumRing } from './src/layoutStadium.js';
+  import { computeRing as computeTurnRing } from './src/layoutTurn.js';
+  import { computeRing as computeDoubleTurnRing } from './src/layoutDoubleTurn.js';
+  import { getStadiumRenderer } from './src/template/shapes/stadium.mjs';
+  import { getTurnRenderer } from './src/template/shapes/turn.mjs';
+  import { getDoubleTurnRenderer } from './src/template/shapes/double-turn.mjs';
+  Object.assign(globalThis, {
+    computeStadiumRing, computeTurnRing, computeDoubleTurnRing,
+    getStadiumRenderer, getTurnRenderer, getDoubleTurnRenderer,
+  });
+`;
+const bundled = esbuild.buildSync({
+  stdin: { contents: modules, resolveDir: root },
+  bundle: true, platform: 'browser', format: 'iife', write: false, logLevel: 'silent',
+}).outputFiles[0].text;
 
 const CELL_COLORS = ['#dbeafe', '#dcfce7', '#fef9c3', '#fce7f3', '#ede9fe', '#ffedd5', '#e0f2fe', '#d1fae5'];
 
@@ -110,16 +97,7 @@ svg { display: block; }
 <div id="svg-wrap"></div>
 
 <script>
-// ── inlined layout modules ────────────────────────────────────────────────────
-${layoutStadium}
-${layoutTurn}
-${layoutDoubleTurn}
-
-// ── inlined renderer modules ──────────────────────────────────────────────────
-${rendererRing}
-${rendererStadium}
-${rendererTurn}
-${rendererDT}
+${bundled}
 
 // ── dispatch ──────────────────────────────────────────────────────────────────
 function computeRing(shape, N) {

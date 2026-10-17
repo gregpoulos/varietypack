@@ -42,8 +42,9 @@ Bracket grammar, error and warning conditions, and how cell counts feed the ring
 - Ring size (total cells ÷ loops) must be at least 8 — this is the binding minimum; with loops=2 it means at least 16 total cells
 - Ring size must be even (required for the loop to close)
 - All loops must contain identical cell sequences — the full answer set, parsed into cells and divided into `loops` equal segments of `ringSize` cells, must have every segment identical to the first (bracket groups included, not just their letters). This is the Snake Charmer period constraint: it ensures the path visits the same cells on every traversal of the ring
-- `shape`, if present, must be one of: `circle`, `stadium`, `turn`, `double-turn`
+- `shape`, if present, must be one of: `circle`, `stadium`, `turn`, `double-turn`, and must be able to lay out the ring size (for example, `turn` needs a ring size divisible by 4). The `--shape` flag, when given, is checked in its place
 - `styles`, if present, must be an object; each value must be an array of non-negative integers within the answer's cell count — out-of-range positions are an error
+- A circled cell must be circled on every entry that covers it (error) — in Snake Charmer, the entries from each loop that pass through the cell
 - Unrecognized style names (anything other than `circle`) produce a warning, not an error
 
 ## Example

@@ -4,20 +4,32 @@
   "bin": {
     "varietypack": "./cli.js"
   },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "test": "node --test test/*.test.js */test/*.test.js",
-    "test:e2e": "playwright test"
+    "lint": "eslint .",
+    "test:e2e": "playwright test",
+    "capture:mobile": "node e2e/capture-mobile.js",
+    "build:studio": "node studio/build.js"
   },
   "dependencies": {
+    "clean-css": "^5.3.3",
+    "esbuild": "^0.28.2",
     "js-yaml": "^5.2.1",
     "markdown-it": "^15.0.2",
     "markdown-it-emoji": "^3.1.0",
     "markdown-it-sub": "^2.0.0",
-    "markdown-it-sup": "^2.0.0"
+    "markdown-it-sup": "^2.0.0",
+    "terser": "^5.49.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",
-    "clean-css": "^5.3.3",
-    "terser": "^5.49.0"
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "path-browserify": "^1.0.1",
+    "preact": "^11.0.0"
   }
 }

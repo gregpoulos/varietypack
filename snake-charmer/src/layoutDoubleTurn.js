@@ -14,8 +14,9 @@
 // 10  Middle arm lower track       right → left
 // 11  Left body outside arc (CW)   bottom → top
 
-const W_CELL = 36, H_CELL = 36, SVG_PAD_H = 40;
-const SVG_PAD_V = 4; // tight vertical margin; must stay > max stroke-width / 2
+const { W_CELL, H_CELL, SVG_PAD_V } = require('./ringConstants');
+
+const SVG_PAD_H = 40;
 
 function computeRing(N) {
   if (N % 2 !== 0) throw new Error(`double-turn shape requires even N, got ${N}`);
@@ -24,8 +25,13 @@ function computeRing(N) {
   const nBodyOuter   = 4 * nArmCurve;
   const R            = N - 14 * nArmCurve;
   if (R < 0) throw new Error(`double-turn shape requires N >= ${14 * nArmCurve} for nArmCurve=${nArmCurve}, got ${N}`);
-  // Outer arms are delta cells longer than the middle arm (delta is 2, 3, or 4 depending on N,
-  // chosen so all counts are integers; always satisfies nArmStraight > nMidStraight).
+  // Outer arms are delta cells longer than the middle arm (delta is 2, 3, or 4 depending
+  // on N, chosen so all counts are integers; always satisfies nArmStraight >
+  // nMidStraight). Valid N is even and >= 42, but not every such N works: N=44 gives
+  // nMidStraight 0 (rem6=4, delta=4). Two conditions must hold — nMidStraight >= 1 (the
+  // middle arm needs a cell) and rArmInner > 0 (arm curves need a positive inner radius,
+  // i.e. nArmCurve >= 2, N >= 36). N=36, 38 and 40 pass the second but not the first;
+  // N=42 is the first value that satisfies both.
   const rem6         = R % 6;  // always 0, 2, or 4 since N and 14*nArmCurve are both even
   const delta        = rem6 === 0 ? 3 : rem6 === 2 ? 2 : 4;
   const nMidStraight = (R - 4 * delta) / 6;
@@ -55,7 +61,8 @@ function computeRing(N) {
   const svgWidth     = Math.max(cx_R + R_out + H_CELL / 2, cx_L + L + rArmOuter) + SVG_PAD_H;
   return { N, nArmStraight, nMidStraight, nArmCurve, nBodyInner, nBodyOuter,
            rArmCenter, rArmOuter, rArmInner, R_in, R_out, D, L, Lm,
-           cx_L, cx_R, cy, cy_L, cy_R, cy_top, cy_bot, svgWidth, svgHeight };
+           cx_L, cx_R, cy, cy_L, cy_R, cy_top, cy_bot, svgWidth, svgHeight,
+           wCell: W_CELL, hCell: H_CELL };
 }
 
-module.exports = { computeRing, W_CELL, H_CELL, SVG_PAD_H, SVG_PAD_V };
+module.exports = { computeRing, SVG_PAD_H, SVG_PAD_V };

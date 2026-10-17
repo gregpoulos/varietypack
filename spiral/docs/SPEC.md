@@ -21,7 +21,7 @@ to Spiral.
 See `docs/AUTHORING.md` → "Rebus cells" for the bracket syntax, grammar,
 and how to solve a rebus cell.
 
-**Spiral's rule — outward repeats each rebus cell in forward order.** The reversal constraint reverses the *order* of the cells, never the letters inside one — a picture can't be read backwards. Inward `S[HAR]ON` pairs with outward `NO[HAR]S`, never `NO[RAH]S`.
+**Spiral's rule — outward may spell a rebus cell either way.** The reversal constraint reverses the *order* of the cells, and an outward answer reads each cell backward too, so within a rebus cell it may keep the letters forward or reverse them: inward `S[HAR]ON` pairs with outward `NO[HAR]S` or `NO[RAH]S`, but not `NO[HRA]S`. The cell holds the inward spelling, which is what a solver types.
 
 Bracket grammar, error and warning conditions, and how cell counts feed the validation rules: see `docs/CROSS_TOOL_SPEC.md` → "Rebus cells".
 
@@ -35,6 +35,7 @@ Bracket grammar, error and warning conditions, and how cell counts feed the vali
 - The inward cells, in order, must be the reverse of the outward cells — this ensures every cell satisfies both the inward and outward entry it belongs to. For a rebus cell this is bracket-group equality (see "Rebus cells" above), not letter equality
 - Total cell count must be at least 40
 - `styles`, if present on an entry, must be an object; each value must be an array of non-negative integers within the answer's cell count — out-of-range positions are an error
+- A circled cell must be circled on every entry that covers it (error) — its inward entry and its outward entry
 - Unrecognized style names (anything other than `circle`) produce a warning, not an error
 
 ## Grid layout

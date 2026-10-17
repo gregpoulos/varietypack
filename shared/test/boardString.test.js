@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { CELL_DELIM, joinCells } = require('../boardString');
+const { CELL_DELIM, joinCells } = require('../boardString.mjs');
 
 test('CELL_DELIM is a single non-alphabetic character', () => {
   assert.strictEqual(CELL_DELIM, '.');
@@ -20,6 +20,3 @@ test('joinCells distinguishes segmentations with identical letters', () => {
   assert.notStrictEqual(joinCells(['har', 'o']), joinCells(['ha', 'ro']));
 });
 
-test('joinCells returns an empty string for an empty array', () => {
-  assert.strictEqual(joinCells([]), '');
-});

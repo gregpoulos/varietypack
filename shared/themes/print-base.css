@@ -1,5 +1,5 @@
 /* Shared print resets — the final override layer for printing, applied to
-   every tool and theme. Forces plain ink on white regardless of solve state
+   every tool and theme. Prints the blank, unsolved puzzle regardless of solve state
    or theme. Declarations are !important by design so this layer wins over any
    theme rule regardless of its selector specificity or source order — a tool
    theme that later adds a higher-specificity highlight rule can't silently
@@ -25,10 +25,13 @@
   .cell.active-cell,
   .cell.correct,
   .cell.secondary-entry { fill: #fff !important; stroke: #999 !important; stroke-width: 1 !important; stroke-dasharray: none !important; }
-  .cell-letter.correct { fill: #111 !important; }
+
+  /* Entered letters → blank: a printout is always the unsolved puzzle */
+  .cell-letter { display: none !important; }
 
   /* Clue highlight / strike-through reset */
   .clue-item.active-clue,
   .clue-item.secondary-entry { background: transparent !important; }
   .clue-item.correct .clue-text { color: inherit !important; text-decoration: none !important; }
+  .clue-item.filled .clue-text { opacity: 1 !important; text-decoration: none !important; }
 }

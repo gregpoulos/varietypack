@@ -1,0 +1,7 @@
+root = true
+
+# Comments wrap at 90 columns; ESLint's max-len (JS) and
+# test/commentStyle.test.js (CSS, shell) enforce it. Scoped to source
+# files so editors don't wrap code lines or Markdown prose.
+[*.{js,mjs,jsx,css,sh}]
+max_line_length = 90

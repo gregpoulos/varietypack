@@ -5,25 +5,16 @@ const assert     = require('node:assert/strict');
 const path       = require('path');
 const fs         = require('fs');
 const os         = require('os');
-const { buildPuzzle } = require('../src/builder');
-const { loadPuzzle, validatePuzzle } = require('../../shared/build/builderUtils');
-const { validate } = require('../src/validator');
+const { buildPuzzle } = require('../cli');
+const { puzzleDataOf } = require('../../test/helpers');
 
 const SAMPLE = path.join(__dirname, '../../examples/spiral.yaml');
-
-test('validatePuzzle: accepts sample puzzle', () => {
-  const p = loadPuzzle(SAMPLE);
-  assert.doesNotThrow(() => validatePuzzle(p, SAMPLE, validate));
-});
 
 test('buildPuzzle: output contains correct cell count in PUZZLE_DATA', () => {
   const out = path.join(os.tmpdir(), `spiral-test-${Date.now()}.html`);
   try {
     buildPuzzle(SAMPLE, out);
-    const html = fs.readFileSync(out, 'utf8');
-    const match = html.match(/"cells"\s*:\s*(\[[\s\S]*?\])/);
-    assert.ok(match, 'cells array not found in PUZZLE_DATA');
-    const cells = JSON.parse(match[1]);
+    const { cells } = puzzleDataOf(fs.readFileSync(out, 'utf8'));
     // sample.yaml has 78 cells (sum of normalized inward answer lengths)
     assert.equal(cells.length, 78);
     assert.equal(cells[0].cell_number, 1);
@@ -58,5 +49,17 @@ test('buildPuzzle: --muddle — no plaintext answers in HTML', () => {
   } finally {
     fs.rmSync(tmpYaml, { force: true });
     fs.rmSync(tmpHtml, { force: true });
+  }
+});
+
+test('buildPuzzle: PUZZLE_DATA carries geometryFor its cell count', () => {
+  const { geometryFor } = require('../src/layout.mjs');
+  const out = path.join(os.tmpdir(), `spiral-test-geom-${Date.now()}.html`);
+  try {
+    buildPuzzle(SAMPLE, out);
+    const data = puzzleDataOf(fs.readFileSync(out, 'utf8'));
+    assert.deepEqual(data.geometry, geometryFor(data.cells.length));
+  } finally {
+    fs.rmSync(out, { force: true });
   }
 });

@@ -34,6 +34,9 @@ outward:
   - clue: Cells 20-15
     length: 6
   - clue: Cells 14-11, with the three-letter rebus cell in forward order
+    styles:
+      circle:
+        - 1
     length: 4
   - clue: Cells 10-6
     length: 5

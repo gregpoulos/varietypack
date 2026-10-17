@@ -35,6 +35,9 @@ rows:
 bands:
   - entries:
       - clue: Band A, top edge — same two-letter cell as row one
+        styles:
+          circle:
+            - 2
         length: 5
       - clue: Band A, right edge into the bottom
         length: 6

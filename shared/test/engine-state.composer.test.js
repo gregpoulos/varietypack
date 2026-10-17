@@ -2,10 +2,10 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { makeComposer, setLetterText, letterLenClass } = require('../../shared/engine-state');
+const { makeComposer, setLetterText, letterLenClass } = require('../engine-state.mjs');
 
-// Mock cell element: only classList is touched. Mirrors the mock-object pattern in
-// engine-chrome.clear-button.test.js — no DOM, no jsdom.
+// Mock letter element: only textContent and classList are touched. Mirrors the
+// mock-object pattern in engine-chrome.clear-button.test.js — no DOM, no jsdom.
 function makeEl() {
   const classes = new Set();
   return {
@@ -14,24 +14,33 @@ function makeEl() {
       add(c)      { classes.add(c); },
       remove(c)   { classes.delete(c); },
       contains(c) { return classes.has(c); },
+      // DOMTokenList.toggle: with `force`, add when true and remove when false.
+      toggle(c, force = !classes.has(c)) { force ? classes.add(c) : classes.delete(c); return force; },
     },
   };
 }
 
-// Builds a composer over a plain object store keyed 0..n-1, plus the mock elements
-// and a commit counter, so every test can assert on all three.
-function harness(initial = {}) {
+// Builds a composer over a plain object store keyed 0..n-1, plus a commit counter, so
+// every test can assert on both.
+function harness(initial = {}, { solved = false } = {}) {
   const store = { ...initial };
-  const els = {};
   const commits = [];
   const composer = makeComposer({
     getContent: n => store[n] || '',
     setContent: (n, s) => { store[n] = s; },
-    getCellEl:  n => (els[n] ||= makeEl()),
     onCommit:   () => commits.push(Object.assign({}, store)),
+    isSolved:   () => solved,
   });
-  return { composer, store, els, commits, elFor: n => (els[n] ||= makeEl()) };
+  return { composer, store, commits };
 }
+
+// Every way into composition (Enter, the Rebus button, Crushword's keystrokes) ends in
+// toggle(), so this one check keeps a sealed board closed whichever way it is reached.
+test('toggle does nothing once the board is solved', () => {
+  const { composer } = harness({ 0: 'A' }, { solved: true });
+  composer.toggle(0);
+  assert.equal(composer.isComposing(0), false);
+});
 
 test('isCellFilled is true for a non-empty, non-composing cell', () => {
   const { composer } = harness({ 0: 'A' });
@@ -45,13 +54,13 @@ test('isCellFilled is false for an empty cell', () => {
 
 test('isCellFilled is false for a composing cell even when it holds content', () => {
   const { composer } = harness({ 0: 'A' });
-  composer.enter(0);
+  composer.toggle(0);
   assert.equal(composer.isCellFilled(0), false);
 });
 
 test('isCellFilled stays true for other cells while one composes', () => {
   const { composer } = harness({ 0: 'A', 1: 'B' });
-  composer.enter(0);
+  composer.toggle(0);
   assert.equal(composer.isCellFilled(1), true);
 });
 
@@ -69,7 +78,7 @@ test('typeLetter keeps only the last character when not composing', () => {
 
 test('typeLetter appends and returns false while composing', () => {
   const { composer, store } = harness();
-  composer.enter(0);
+  composer.toggle(0);
   assert.equal(composer.typeLetter(0, 'H'), false);
   composer.typeLetter(0, 'A');
   composer.typeLetter(0, 'R');
@@ -78,14 +87,14 @@ test('typeLetter appends and returns false while composing', () => {
 
 test('typeLetter takes the whole value while composing (paste)', () => {
   const { composer, store } = harness();
-  composer.enter(0);
+  composer.toggle(0);
   composer.typeLetter(0, 'HAR');
   assert.equal(store[0], 'HAR');
 });
 
 test('typeLetter caps composed content, dropping input past the cap', () => {
   const { composer, store } = harness();
-  composer.enter(0);
+  composer.toggle(0);
   composer.typeLetter(0, 'ABCDEFGHIJKLMNOP');   // 16 chars in one paste
   assert.equal(store[0], 'ABCDEFGHIJKL');       // capped at 12
   composer.typeLetter(0, 'Z');                  // further input is dropped
@@ -94,7 +103,7 @@ test('typeLetter caps composed content, dropping input past the cap', () => {
 
 test('backspace still works at the cap, and re-typing refills to it', () => {
   const { composer, store } = harness();
-  composer.enter(0);
+  composer.toggle(0);
   composer.typeLetter(0, 'ABCDEFGHIJKLMNOP');
   composer.backspace(0);
   assert.equal(store[0], 'ABCDEFGHIJK');
@@ -102,24 +111,25 @@ test('backspace still works at the cap, and re-typing refills to it', () => {
   assert.equal(store[0], 'ABCDEFGHIJKZ');
 });
 
-test('enter keeps existing content rather than clearing it', () => {
+test('toggle keeps existing content rather than clearing it', () => {
   const { composer, store } = harness({ 0: 'H' });
-  composer.enter(0);
+  composer.toggle(0);
   composer.typeLetter(0, 'AR');
   assert.equal(store[0], 'HAR');
 });
 
-test('enter applies and then removes the composing class', () => {
-  const { composer, elFor } = harness();
-  composer.enter(0);
-  assert.ok(elFor(0).classList.contains('composing'));
-  composer.enter(0);
-  assert.equal(elFor(0).classList.contains('composing'), false);
+test('a second toggle on the same cell commits it', () => {
+  const { composer, commits } = harness();
+  composer.toggle(0);
+  assert.equal(composer.isComposing(0), true);
+  composer.toggle(0);
+  assert.equal(composer.isComposing(0), false);
+  assert.equal(commits.length, 1);
 });
 
 test('backspace drops one character and returns true while composing', () => {
   const { composer, store } = harness();
-  composer.enter(0);
+  composer.toggle(0);
   composer.typeLetter(0, 'HAR');
   assert.equal(composer.backspace(0), true);
   assert.equal(store[0], 'HA');
@@ -132,13 +142,13 @@ test('backspace returns false when not composing', () => {
 
 test('backspace returns false when composing an empty cell, so the caller retreats', () => {
   const { composer } = harness();
-  composer.enter(0);
+  composer.toggle(0);
   assert.equal(composer.backspace(0), false);
 });
 
 test('commitIfMoved commits when the target is a different cell', () => {
   const { composer, commits } = harness();
-  composer.enter(0);
+  composer.toggle(0);
   composer.commitIfMoved(1);
   assert.equal(commits.length, 1);
   assert.equal(composer.isComposing(0), false);
@@ -146,7 +156,7 @@ test('commitIfMoved commits when the target is a different cell', () => {
 
 test('commitIfMoved is a no-op on the same cell, so composition survives a toggle', () => {
   const { composer, commits } = harness();
-  composer.enter(0);
+  composer.toggle(0);
   composer.commitIfMoved(0);
   assert.equal(commits.length, 0);
   assert.equal(composer.isComposing(0), true);
@@ -164,28 +174,19 @@ test('onCommit runs after composingId is cleared, so the cell reads as filled', 
   const composer = makeComposer({
     getContent: n => store[n] || '',
     setContent: (n, s) => { store[n] = s; },
-    getCellEl:  () => makeEl(),
     onCommit:   () => { filledAtCommit = composer.isCellFilled(0); },
+    isSolved:   () => false,
   });
-  composer.enter(0);
-  composer.enter(0);
+  composer.toggle(0);
+  composer.toggle(0);
   assert.equal(filledAtCommit, true);
 });
 
 test('reset drops composing state without firing onCommit', () => {
-  const { composer, commits, elFor } = harness();
-  composer.enter(0);
+  const { composer, commits } = harness();
+  composer.toggle(0);
   composer.reset();
   assert.equal(commits.length, 0);
-  assert.equal(composer.isComposing(0), false);
-  assert.equal(elFor(0).classList.contains('composing'), false);
-});
-
-test('reset clears state even when the composing cell is the reset target', () => {
-  const { composer } = harness();
-  composer.enter(0);
-  composer.reset();
-  composer.commitIfMoved(0);   // would leave a phantom composing cell without reset()
   assert.equal(composer.isComposing(0), false);
 });
 
@@ -201,6 +202,13 @@ test('letterLenClass maps typed length to a class', () => {
 test('setLetterText sets text and the matching length class', () => {
   const el = makeEl();
   setLetterText(el, 'HAR');
+  assert.equal(el.textContent, 'HAR');
+  assert.ok(el.classList.contains('len-3'));
+});
+
+test('setLetterText shows the stored lowercase form uppercased', () => {
+  const el = makeEl();
+  setLetterText(el, 'har');
   assert.equal(el.textContent, 'HAR');
   assert.ok(el.classList.contains('len-3'));
 });
@@ -237,16 +245,15 @@ test('getComposing returns null when no cell is composing', () => {
 
 test('getComposing returns the id of the composing cell', () => {
   const { composer } = harness({ 0: 'A' });
-  composer.enter(0);
+  composer.toggle(0);
   assert.equal(composer.getComposing(), 0);
 });
 
 test('restore reopens composition, so a reloaded prefix is not treated as filled', () => {
-  const { composer, elFor } = harness({ 2: 'HA' });
+  const { composer } = harness({ 2: 'HA' });
   composer.restore(2);
   assert.equal(composer.isComposing(2), true);
   assert.equal(composer.isCellFilled(2), false);
-  assert.equal(elFor(2).classList.contains('composing'), true);
 });
 
 test('restore keeps the cell content it was given', () => {
@@ -270,10 +277,9 @@ test('restore(undefined) leaves nothing composing, for saves predating the field
 });
 
 test('a restored composing cell commits normally on the next cursor move', () => {
-  const { composer, commits, elFor } = harness({ 2: 'HA' });
+  const { composer, commits } = harness({ 2: 'HA' });
   composer.restore(2);
   composer.commitIfMoved(3);
   assert.equal(composer.getComposing(), null);
-  assert.equal(elFor(2).classList.contains('composing'), false);
   assert.equal(commits.length, 1);
 });

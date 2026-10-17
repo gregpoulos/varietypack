@@ -11,11 +11,11 @@
   gap: 24px;
 }
 
-/* Sticky, like the other tools' grid column, but over the clues rather than
-   beside them — hence the opaque background (theme-components.css). It sticks
+/* Sticky, like Marching Bands' grid column when wide, but over the clues rather
+   than beside them — hence the opaque background (theme-components.css). It sticks
    flush below the active-clue bar, with the breathing room as padding-top
    rather than extra `top`: a gap outside the box would let scrolled clue text
-   show through. See crushword/CLAUDE.md → Page layout. */
+   show through. */
 .puzzle-center {
   display: flex;
   flex-direction: column;
@@ -29,7 +29,8 @@
 
 #puzzle-svg { display: block; overflow: visible; max-width: 100%; height: auto; }
 
-.cell-letter { font-weight: bold; dominant-baseline: central; }
+.cell-num    { font-size: 8px; }
+.cell-letter { font-size: 14px; font-weight: bold; dominant-baseline: central; }
 
 .clue-columns {
   display: grid;
@@ -53,6 +54,10 @@
   display: flex;
   align-items: baseline;
   cursor: pointer;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  padding: 2px 6px 2px 2px;
 }
 
 .clue-num {

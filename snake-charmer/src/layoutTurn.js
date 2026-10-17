@@ -10,10 +10,9 @@
 //  6  Bottom arm lower track    right → left
 //  7  Body outer arc (CW)       bottom → top
 
-const W_CELL = 36;
-const H_CELL = 36;
+const { W_CELL, H_CELL, SVG_PAD_V } = require('./ringConstants');
+
 const SVG_PAD_H = 20;
-const SVG_PAD_V = 4; // tight vertical margin; must stay > max stroke-width / 2
 
 function computeRing(N) {
   if (N % 4 !== 0) throw new Error(`turn shape requires N divisible by 4, got ${N}`);
@@ -39,7 +38,8 @@ function computeRing(N) {
     rArmCenter, rArmOuter, rArmInner,
     D, R_in, R_out, L,
     svgWidth, svgHeight, cx, cy,
+    wCell: W_CELL, hCell: H_CELL,
   };
 }
 
-module.exports = { computeRing, W_CELL, H_CELL, SVG_PAD_H, SVG_PAD_V };
+module.exports = { computeRing, SVG_PAD_H, SVG_PAD_V };

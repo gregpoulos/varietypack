@@ -31,7 +31,7 @@ test('validate: returns empty errors and warnings for valid puzzle', () => {
 // ── header (kind/title/hashed/instructions) ────────────────────────────────────
 // validateCommonHeader's own behavior (kind mismatch, missing title, hashed in
 // source vs muddled, instructions type/emptiness) is covered by shared/test/
-// builderUtils.test.js. This is the single wiring test proving spiral forwards
+// validation.test.js. This is the single wiring test proving spiral forwards
 // validateCommonHeader's errors and passes its own kind ('spiral').
 
 test('validate: error when kind is wrong', () => {
@@ -105,7 +105,8 @@ test('validate: error when inward entry clue is missing', () => {
 // ── normalization ─────────────────────────────────────────────────────────────
 
 test('validate: reversal check uses normalized strings', () => {
-  // Hyphen stripped before reversal check — "ABCDEFGHIJ-KLMNOPQRST" → "abcdefghijklmnopqrst"
+  // Hyphen stripped before reversal check — "ABCDEFGHIJ-KLMNOPQRST" →
+  // "abcdefghijklmnopqrst"
   const p = valid();
   p.inward[0].answer = 'ABCDEFGHIJ-KLMNOPQRST';
   assert.deepEqual(validate(p), { errors: [], warnings: [] });
@@ -149,15 +150,25 @@ test('outward answers repeat each rebus cell in forward order', () => {
   assert.deepStrictEqual(errors, []);
 });
 
-test('reversing a rebus cell internally is rejected with an explanation', () => {
+// Outward reads every cell backward, so its rebus may be spelled either way.
+test('outward answers may also spell a rebus cell backward', () => {
   const { errors } = validate({
     kind: 'spiral', title: 'T',
     inward:  [{ clue: 'a', answer: 'S[HAR]ON' }, { clue: 'b', answer: 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKL' }],
     outward: [{ clue: 'c', answer: 'LKJIHGFEDCBAZYXWVUTSRQPONMLKJIHGFEDCBA' }, { clue: 'd', answer: 'NO[RAH]S' }],
   });
+  assert.deepStrictEqual(errors, []);
+});
+
+test('an outward rebus that is neither the cell nor its reverse is rejected, explaining both spellings', () => {
+  const { errors } = validate({
+    kind: 'spiral', title: 'T',
+    inward:  [{ clue: 'a', answer: 'S[HAR]ON' }, { clue: 'b', answer: 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKL' }],
+    outward: [{ clue: 'c', answer: 'LKJIHGFEDCBAZYXWVUTSRQPONMLKJIHGFEDCBA' }, { clue: 'd', answer: 'NO[HRA]S' }],
+  });
   assert.strictEqual(errors.length, 1);
   assert.match(errors[0], /reverse/);
-  assert.match(errors[0], /picture/i);
+  assert.match(errors[0], /NO\[HAR\]S or NO\[RAH\]S/);
 });
 
 // ── sample puzzle ─────────────────────────────────────────────────────────────
@@ -175,16 +186,10 @@ test('validate: sample puzzle is valid', () => {
 
 // ── multiple errors ───────────────────────────────────────────────────────────
 
-test('validate: multiple errors returned together', () => {
-  const p = { kind: 'wrong', title: '', inward: [], outward: [] };
-  const { errors } = validate(p);
-  assert.ok(errors.length >= 3);
-});
-
 // ── styles ────────────────────────────────────────────────────────────────────
 // validateEntryStyles's own behavior (non-object styles, unrecognized names,
 // non-array values, out-of-range/negative/non-integer positions) is covered by
-// shared/test/builderUtils.test.js. This is the single wiring test proving
+// shared/test/validateEntry.test.js. This is the single wiring test proving
 // spiral forwards the correct cellCount (from the entry's answer length) and
 // label into validateEntryStyles.
 
@@ -272,4 +277,36 @@ test('validate: an invalid (non-object) entry does not trigger a spurious revers
   assert.ok(errors.some(e => e.includes('must be an object')));
   assert.ok(!errors.some(e => e.includes('reverse')),
     'reversal check must be skipped when an entry is invalid, not run against a placeholder');
+});
+
+test('validate: an inward circle without its outward partner is an error', () => {
+  const p = valid();
+  p.inward[0].styles = { circle: [0] };  // cell 0, the outermost cell
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => /^outward\[\d+\]\.styles\.circle is missing position \d+/.test(e)), errors.join('|'));
+});
+
+test('validate: an inward circle with its outward partner passes', () => {
+  const p = valid();
+  p.inward[0].styles = { circle: [0] };
+  // The outermost cell is the last cell of the last outward entry.
+  const last = p.outward.length - 1;
+  p.outward[last].styles = { circle: [p.outward[last].answer.length - 1] };
+  assert.deepEqual(validate(p).errors, []);
+});
+
+// Each check waits only for what it needs, so an unrelated error can't hide it.
+test('validate: an unrelated header error does not hide a circle error', () => {
+  const p = valid();
+  p.theme = 'nope';
+  p.inward[0].styles = { circle: [0] };
+  const { errors } = validate(p);
+  assert.ok(errors.some(e => e.startsWith('"theme"')), errors.join('|'));
+  assert.ok(errors.some(e => /^outward\[\d+\]\.styles\.circle is missing position \d+/.test(e)), errors.join('|'));
+});
+
+test('validate: an unknown top-level key warns', () => {
+  const p = valid();
+  p.instruction = 2;
+  assert.ok(validate(p).warnings.includes('unknown key "instruction" (is it a typo?)'), validate(p).warnings.join('|'));
 });

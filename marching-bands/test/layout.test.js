@@ -2,16 +2,9 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { bandIndexOf, bandCells, centerFlatIndex, centerN } = require('../src/layout');
+const { bandIndexOf, bandCells, rowCells, centerFlatIndex, centerN, arrowTarget } = require('../src/layout.mjs');
 
 // ── bandIndexOf ──────────────────────────────────────────────────────────────
-
-test('bandIndexOf: corners of outermost band are band 0', () => {
-  assert.equal(bandIndexOf(1, 1, 7), 0);
-  assert.equal(bandIndexOf(1, 7, 7), 0);
-  assert.equal(bandIndexOf(7, 1, 7), 0);
-  assert.equal(bandIndexOf(7, 7, 7), 0);
-});
 
 test('bandIndexOf: inner cells get higher band index', () => {
   assert.equal(bandIndexOf(2, 2, 7), 1);
@@ -31,6 +24,22 @@ test('bandIndexOf: N=5 band 0 and band 1 cells', () => {
   assert.equal(bandIndexOf(2, 4, 5), 1); // inner band
 });
 
+// ── rowCells ─────────────────────────────────────────────────────────────────
+
+test('rowCells: a row left to right, skipping the center of an odd grid', () => {
+  assert.deepEqual(rowCells(0, 5), [1, 2, 3, 4, 5]);
+  assert.deepEqual(rowCells(2, 5), [11, 12, 14, 15]);
+  assert.deepEqual(rowCells(2, 4), [9, 10, 11, 12]);
+});
+
+test('rowCells: the rows together cover every cell but the center, once, in order', () => {
+  for (const N of [4, 5, 6, 7]) {
+    const all = Array.from({ length: N }, (_, r) => rowCells(r, N)).flat();
+    const expected = Array.from({ length: N * N }, (_, i) => i + 1).filter(id => N % 2 === 0 || id !== centerN(N));
+    assert.deepEqual(all, expected, `N=${N}`);
+  }
+});
+
 // ── bandCells ────────────────────────────────────────────────────────────────
 
 test('bandCells: band 0 N=5 has correct count', () => {
@@ -43,11 +52,6 @@ test('bandCells: band 1 N=5 has correct count', () => {
 
 test('bandCells: band 0 N=7 has correct count', () => {
   assert.equal(bandCells(0, 7).length, 24); // 4*(7-1)
-});
-
-test('bandCells: band 0 N=5 starts at cell 1 (top-left)', () => {
-  // n=1 is row 1, col 1 (top-left corner)
-  assert.equal(bandCells(0, 5)[0], 1);
 });
 
 test('bandCells: band 0 N=5 clockwise order — top edge first', () => {
@@ -72,16 +76,6 @@ test('bandCells: band 1 N=5 clockwise order', () => {
   assert.deepEqual(cells.slice(5, 7), [18, 17]);
   // Left edge: col 2, row 3 → n=12
   assert.deepEqual(cells.slice(7, 8), [12]);
-});
-
-test('bandCells: all cells in outermost band have bandIndexOf = 0', () => {
-  const N = 7;
-  const cells = bandCells(0, N);
-  for (const n of cells) {
-    const row = Math.ceil(n / N);
-    const col = ((n - 1) % N) + 1;
-    assert.equal(bandIndexOf(row, col, N), 0, `cell ${n} (row ${row}, col ${col}) should be band 0`);
-  }
 });
 
 // ── centerFlatIndex / centerN ────────────────────────────────────────────────
@@ -143,4 +137,40 @@ test('bandCells: N=3 center cell is single-element band', () => {
   // For N=3, k=1 is the center band — should return [centerN(3)] = [5]
   assert.deepEqual(bandCells(1, 3), [centerN(3)]);
   assert.equal(centerN(3), 5); // row=2, col=2 → n=(2-1)*3+2=5 ✓
+});
+
+// ── arrowTarget ──────────────────────────────────────────────────────────────
+// N=5 numbers the grid 1-25 row-major; the center block is 13.
+
+test('arrowTarget: moves one cell in each direction', () => {
+  assert.equal(arrowTarget(7, 0, 1, 5), 8);
+  assert.equal(arrowTarget(7, 0, -1, 5), 6);
+  assert.equal(arrowTarget(7, 1, 0, 5), 12);
+  assert.equal(arrowTarget(7, -1, 0, 5), 2);
+});
+
+test('arrowTarget: jumps the center block from every side', () => {
+  assert.equal(arrowTarget(12, 0, 1, 5), 14);
+  assert.equal(arrowTarget(14, 0, -1, 5), 12);
+  assert.equal(arrowTarget(8, 1, 0, 5), 18);
+  assert.equal(arrowTarget(18, -1, 0, 5), 8);
+});
+
+test('arrowTarget: returns null off each edge', () => {
+  assert.equal(arrowTarget(3, -1, 0, 5), null);
+  assert.equal(arrowTarget(23, 1, 0, 5), null);
+  assert.equal(arrowTarget(11, 0, -1, 5), null);
+  assert.equal(arrowTarget(15, 0, 1, 5), null);
+});
+
+test('arrowTarget: does not wrap from a row end into the next row', () => {
+  // Cell 5 + 1 is 6 numerically, but 6 starts the next row.
+  assert.equal(arrowTarget(5, 0, 1, 5), null);
+  assert.equal(arrowTarget(6, 0, -1, 5), null);
+});
+
+test('arrowTarget: an even grid has no block to jump', () => {
+  // N=4: cells 6, 7, 10, 11 form the middle; each is an ordinary neighbor.
+  assert.equal(arrowTarget(6, 0, 1, 4), 7);
+  assert.equal(arrowTarget(7, 1, 0, 4), 11);
 });

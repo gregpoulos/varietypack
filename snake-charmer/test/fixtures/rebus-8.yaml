@@ -13,5 +13,6 @@ entries:
     answer: "[GGGG]HA[BB]"
   - clue: "Second pass over the three-letter cell"
     answer: "C[DDD]E"
+    styles: { circle: [0] }
   - clue: "Second pass over the four-letter cell"
     answer: "F[GGGG]H"

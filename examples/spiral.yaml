@@ -46,18 +46,22 @@ outward:
     answer: "DAVID"
   - clue: "Unwashed jeans fabric"
     answer: "RAW DENIM"
+    styles: { circle: [4] }
   - clue: "Moment of respite, so to speak"
     answer: "EYE"
   - clue: "Adjective for a coordinate plane or a dualist"
     answer: "CARTESIAN"
+    styles: { circle: [3, 7] }
   - clue: "Addison who first gained fame on TikTok"
     answer: "RAE"
   - clue: "What the extra “B” is supposed to stand for in Homer’s “BBBQ”"
     answer: "BYOB"
   - clue: "Silkworm imago"
     answer: "MOTH"
+    styles: { circle: [2] }
   - clue: "Something I can’t see, often"
     answer: "WHY NOT"
+    styles: { circle: [4] }
   - clue: "Actress, activist, and longtime partner of Ossie Davis"
     answer: "RUBY DEE"
   - clue: "“Oh, hell!”"
@@ -66,3 +70,4 @@ outward:
     answer: "HAWKER"
   - clue: "Emacs or vi, for example"
     answer: "EDITOR"
+    styles: { circle: [5] }

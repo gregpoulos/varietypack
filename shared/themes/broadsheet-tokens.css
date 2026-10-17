@@ -27,4 +27,7 @@
   --theme-color-secondary-entry:     #f5f0e0;
 
   --theme-color-circle: #bbbbbb;
+
+  /* Filled clue: dim only; the strikethrough stays reserved for a solved board */
+  --theme-clue-filled-opacity: 0.5;
 }

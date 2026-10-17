@@ -11,26 +11,20 @@ Implementation contracts every puzzle tool must satisfy identically. Check this 
 ### Skeleton
 
 ```js
-'use strict';
+import { normalize } from '../../../shared/normalize.mjs';
+// … then the rest of what this engine uses from shared/ (engine-state.mjs,
+// engine-chrome.mjs) and the tool's own modules (layout, grid, typing, entryMaps,
+// Snake Charmer's shapes). shared/build/engineBundle.js bundles the file and everything
+// it imports into the page's one script.
 
-// ── Pure helpers (exported for Node tests) ────────────────────────────────────
-// OPTIONAL. Only present when the tool has engine-level pure logic worth
-// unit-testing (Snake Charmer, Crushword). Spiral and Marching Bands have
-// none — their testable logic is in layout.js/validator.js.
+function init() { /* everything below */ }
 
-// ── DOM engine (browser only) ─────────────────────────────────────────────────
-(function () {
-  if (typeof document === 'undefined') return;  // only needed when module.exports follows
-
-  function init() { /* everything below */ }
-
-  document.addEventListener('DOMContentLoaded', init);
-})();
-
-// module.exports — only if pure helpers exist above
+document.addEventListener('DOMContentLoaded', init);
 ```
 
-**The one rule that resolves scope confusion:** all mutable state and every function that touches state or the DOM lives inside `init()`. Pure, dependency-free, testable helpers — and only those — live at module scope above the IIFE.
+The file has no wrapper function: an ES module's top level is already its own scope, and `engineBundle.js` puts the strict-mode directive on the whole page script.
+
+**The one rule that resolves scope confusion:** all mutable state and every function that touches state or the DOM lives inside `init()`. Pure helpers worth unit-testing don't live in `engine.js` at all: they go in an ES module under the tool's `src/` (Snake Charmer's `entryMaps.mjs`, Crushword's `typing.mjs`), which the engine imports and Node tests `require`. No test loads `engine.js`.
 
 ### Canonical `init()` section order
 
@@ -41,11 +35,11 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 | 1 | `Data & constants` | `const data = window.PUZZLE_DATA` + derived dimensions/counts |
 | 2 | `Geometry & index maps` | Pure geometry helpers (`rowOf`, `polar`, `cellPath`, `svgEl`, …) + precomputed index maps (`inwardMap`, `bandCellsMap`, …) |
 | 3 | `State` | All mutable `let`s: active cell/position, direction/mode |
-| 4 | `Logic functions` | Cell storage, navigation helpers, `focusCell`, `syncUI`, answer-checking, board-state helpers, `saveState`/`restoreState`/`clearState` declarations (via `setupStorage`), the congrats dialog (via `setupCongratsDialog`, which builds its own DOM and wires its own listeners — which is why *Event wiring* has nothing to say about it) |
-| 5 | `Build SVG` | SVG element query, `viewBox`, layer groups (`cells < circles < flash < letters [< labels]`), cell elements, circle decorations, labels, any tool-specific SVG chrome (chevron, curl) |
-| 6 | `Header & clues` | `renderByline`, `renderInstructions`, clue list DOM construction, inline rendering calls |
-| 7 | `Event wiring` | Hidden input, check/clear buttons, toggle clicks, document `keydown` |
-| 8 | `Restore & focus` | `restoreAndSeal({ restoreState, checker, latch, composer })` (`shared/engine-state.js` — runs `restoreState(); latch.sealIfSolved(checker.isSolved()); checker.repaintIfSolved();` in that exact order and returns the composing cell), then `focusCell(<initial>)` where `<initial>` is that returned cell or the tool's default |
+| 4 | `Logic functions` | In this order: cell storage (`CELL_IDS`, then `makeCellStore` and the functions taken from it), the composer and board checker, navigation helpers, `focusCell` and the cursor actions built on it (`toggleRebus`, any key-handler helpers), `syncUI` with any helper only it uses, `checkCell`, then `saveState`/`restoreState`/`clearState` (via `setupStorage`), the congrats dialog (via `setupCongratsDialog`, which builds its own DOM and wires its own listeners — which is why *Event wiring* has nothing to say about it) and `setupSolveTracking` |
+| 5 | `Build SVG` | SVG element query, `viewBox`, layer groups (`cells < circles < flash < letters [< labels]`), cell elements, circle decorations, labels, any tool-specific SVG chrome (chevron, curl). Builds only: no listeners are attached here |
+| 6 | `Header & clues` | `renderByline`, `renderInstructions`, then clue list DOM construction (the builder functions and their calls) |
+| 7 | `Event wiring` | In this order: lookups of the page's static elements (`hiddenInput` and `refocus`, the clue bar, `checkBtn`, `doneWrong`, toggle buttons), `#rebus-btn` (`setupRebusButton`), `setupEmbedResize`, toggle clicks, `setupKeysOverlay`, `setupKeydown`, the hidden input's `input` listener, cell clicks (`setupCellClicks`, one delegated listener on the `<svg>`; a second click on the active cell switches direction, mode or loop), any other listeners, then `resetBoard` and `setupControls` |
+| 8 | `Restore & focus` | `restoreAndSeal({ restoreState, checker, latch, composer })` (`shared/engine-state.mjs` — runs `restoreState(); latch.sealIfSolved(checker.isSolved()); checker.repaintIfSolved();` in that exact order and returns the composing cell), then `focusCell(<initial>)` where `<initial>` is that returned cell or the tool's default |
 
 **Invariant:** `init()` declares, builds, wires, then starts — it invokes no logic function until *Restore & focus*. Function declarations in *Logic functions* may safely reference `const`s from *Build SVG* (`flashLayer`, `cellPaths`, etc.) because those functions are only *called* from *Event wiring* and *Restore & focus*, after the SVG build has run.
 
@@ -55,7 +49,7 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 ## CLI argument convention
 
-**Rule:** Every tool CLI accepts `<input.yaml>` as its only required positional argument and uses `-o <output.html>` for an explicit output path. When `-o` is omitted, the output path defaults to `<input-basename>.html` written next to the input file. No tool may require a positional output argument.
+**Rule:** Every tool CLI accepts `<input.yaml>` as its only required positional argument and uses `-o <output.html>` (long form `--output`) for an explicit output path. When `-o` is omitted, the output path defaults to `<input-basename>.html` written next to the input file. No tool may require a positional output argument. `-f`/`--force` overwrites an existing output but never the input file itself (`runToolBuild` refuses).
 
 **Usage line order:** `<input.yaml>` first, then `[options]` (including `-o`). Example: `Usage: mytool <input.yaml> [options]`.
 
@@ -69,19 +63,21 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 ## Theme selection flag
 
-**Rule:** Every tool CLI accepts `--theme <name>` to select a visual theme. The default is `broadsheet`. The theme allowlist is shared across all tools (`THEME_REGISTRY` in `shared/build/themeRegistry.js`), and all tools must ship at least `broadsheet` and `skeleton`. Unknown theme names must be rejected at the CLI with a usage error.
+**Rule:** Every tool CLI accepts `--theme <name>` to select a visual theme, and a puzzle YAML may carry an optional `theme:` field (validated by `validateCommonHeader`). Precedence: the flag, then the YAML field, then `broadsheet`; `buildFromObject` resolves it once. The theme allowlist is shared across all tools (`THEME_REGISTRY` in `shared/build/themeRegistry.js`), and all tools must ship at least `broadsheet` and `skeleton`. An unknown name is a validation error: the field's from `validateCommonHeader`, the flag's from `validateBuildOptions` (`shared/build/validation.js`).
 
 **Applies to:** all tool `cli.js` files.
 
 **Theme semantics:** Themes are token files over a neutral shared layer. `shared/themes/theme-base.css` defines neutral `--theme-*` defaults; each theme is a `shared/themes/<name>-tokens.css` that overrides them. `shared/themes/theme-components.css` supplies all tool-agnostic, var-driven component styles (masthead, buttons, SVG cell states, congrats card) **plus** per-tool namespaced sections for tool-specific selectors (bands, chevrons, secondary cells). Each tool's `<body>` carries a `class="tool-<name>"` hook (e.g. `tool-snake-charmer`) that scopes the per-tool sections; there is no separate per-tool CSS file. Adding a new theme requires `<name>-tokens.css` and an entry in `THEME_REGISTRY` in `shared/build/themeRegistry.js`. Both `broadsheet` and `skeleton` ship as `<name>-tokens.css` files under this model. All themes must cover the full selector vocabulary required by the engine — any class or ID added to the engine must be styled via `--theme-*` vars in `theme-components.css` (either in the shared section or in the tool's namespaced section).
 
-**Tool-specific optional flags** (e.g. `--shape` in Snake Charmer) are allowed and must not conflict with shared flag names. Tools document their own optional flags in their `CLAUDE.md` and `docs/SPEC.md`.
+**Token overrides (`themeTokens:`).** A puzzle may override individual `--theme-*` tokens with an optional `themeTokens:` map (no CLI flag; muddled files carry it unchanged). `composeThemeCss` appends them as one `:root` block immediately after `<theme>-tokens.css` and before `theme-components.css`, so they win over the theme and the components pick them up. The names are `THEME_TOKENS` in `themeRegistry.js`, which `shared/test/themeRegistry.test.js` keeps equal to what `theme-base.css` declares; `validateCommonHeader` validates names and values (no `;`, braces, brackets, `<`, `>`, `@`, backslash, `/*` or `url(`-style functions, balanced quotes and parentheses, at most 200 characters), since the values are interpolated into the page's CSS. `buildFromObject` puts them on the build options, which each tool's `buildHtml` passes through to `buildToolHtml`.
+
+**Tool-specific optional flags** (e.g. `--shape` in Snake Charmer) are allowed and must not conflict with shared flag names, nor with another tool's flags: directory-mode `build` parses every tool's flags together, then gives each puzzle only the flags its tool takes. Tools document their own optional flags in their `CLAUDE.md` and `docs/SPEC.md`.
 
 ---
 
 ## Font flag
 
-**Rule:** Every tool CLI accepts `--font embed|link` to control font delivery for themes that use custom fonts. The flag is silently ignored for system-font themes (`fonts: null` in the registry). For custom-font themes, omitting `--font` is an error.
+**Rule:** Every tool CLI accepts `--font embed|link` to control font delivery for themes that use custom fonts. The flag is silently ignored for system-font themes (`fonts: null` in the registry). For custom-font themes, omitting `--font` defaults to `embed`, or to `link` when the theme declares only `fonts.cdn`. Any other value is a validation error (`validateBuildOptions`), whatever the theme.
 
 - `--font embed` — base64-encodes font files into `@font-face` declarations; output is self-contained with no network dependencies. Font files must be committed to `shared/themes/fonts/<theme>/` and declared in the registry's `fonts.faces` array.
 - `--font link` — emits a `@import url(...)` pointing at the CDN URL declared in the registry's `fonts.cdn.url`. The font loads in the solver's browser on every puzzle open; requires network access at solve time. Prefer Bunny Fonts over Google Fonts for GDPR-sensitive deployments.
@@ -92,25 +88,25 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 ## Minify flag
 
-**Rule:** Every tool CLI accepts `--minify` (boolean, default off). When set, the builder runs the generated HTML through `shared/build/minify.js` before writing it. Minification must be behavior-preserving — it never alters puzzle data or rendered output.
+**Rule:** Every tool CLI accepts `--minify` (boolean, default off). When set, the CLI runs the generated HTML through `shared/cli/minify.js` before writing it. Minification must be behavior-preserving — it never alters puzzle data or rendered output.
 
-**Applies to:** all tool `cli.js` files; builders take it as `options.minify` and apply `minifyHtml()` to the composed HTML just before `fs.writeFileSync`.
+**Applies to:** all tool `cli.js` files; `runBuildPuzzle` (`shared/cli/runBuildPuzzle.js`) takes it as `options.minify` and applies `minifyHtml()` to the composed HTML just before writing it. The studio never minifies.
 
 **What it does:** terser-minifies the body of each `<script>` block (compress + mangle), clean-css-minifies the body of each `<style>` block, and strips comments / trailing whitespace / runs of blank lines from the surrounding HTML.
 
-**Implementation gotcha:** the comment/whitespace pass is string-unaware, so it runs *only* on the segments outside `<script>`/`<style>` blocks. Running it over `<script>`/`PUZZLE_DATA` content or a CSS string value (e.g. `content: "…"`) would delete `/* … */` or `//` sequences that appear inside string literals (author text can contain anything), corrupting data or breaking the document. terser and clean-css own comment/whitespace removal inside their own blocks, parsing the language so string tokens survive.
+**Implementation gotcha:** the comment/whitespace pass runs only outside `<script>`/`<style>` blocks — see the note on `simplePass` in `shared/cli/minify.js` for why.
 
 ---
 
 ## Instructions field
 
-**Rule:** Every tool YAML accepts an optional `instructions` string field. When present, each hasher renders it as block-level markdown (see "Markdown formatting in clue and instructions text" below) into `window.PUZZLE_DATA.instructions` — blank lines become separate `<p>` elements, matching what author-facing docs describe. The engine's shared `renderInstructions(data)` helper (`shared/engine-chrome.js`) just injects that HTML via `innerHTML` into `<div id="instructions" hidden>`; paragraph splitting happens at build time, not in the browser. The `hidden` attribute is removed only when the field is present and non-empty. When absent, the element stays hidden and no empty div is rendered visibly.
+**Rule:** Every tool YAML accepts an optional `instructions` string field. When present, each tool's prepare step renders it as block-level markdown (see "Markdown formatting in clue and instructions text" below) into `window.PUZZLE_DATA.instructions` — blank lines become separate `<p>` elements, matching what author-facing docs describe. The engine's shared `renderInstructions(data)` helper (`shared/engine-chrome.mjs`) just injects that HTML via `innerHTML` into `<div id="instructions" hidden>`; paragraph splitting happens at build time, not in the browser. The `hidden` attribute is removed only when the field is present and non-empty. When absent, the element stays hidden and no empty div is rendered visibly.
 
 **Snake Charmer exception:** Snake Charmer nests `<div id="instructions">` at the top of its `#clue-list` column (above the clue `<ol>`) rather than in a full-width band between the header and the ring — its ring-plus-clue-column layout has no such band, so the instructions sit atop the clue column by design. The element id, `hidden` toggle, and paragraph rendering are identical; only the container differs.
 
 **Validation:** `instructions` must be a non-empty string if provided (checked against the raw source text, before markdown rendering). Whitespace-only strings are rejected.
 
-**Applies to:** all tool validators, hashers/preparers, builders, `shared/build/builderUtils.js`'s `instructionsField` (where the markdown rendering happens, called from each hasher), the shared `renderInstructions(data)` helper (called from each engine's *Header & clues* section), and HTML templates.
+**Applies to:** all tool validators, prepare steps, builders, `shared/build/prepare.js`'s `prepareCommon` (where the markdown rendering happens, called from each prepare step), the shared `renderInstructions(data)` helper (called from each engine's *Header & clues* section), and HTML templates.
 
 **Why:** Variety puzzles often require format explanations (e.g., "Answers read inward from cell 1"). Without a standard instructions field, authors have no way to include per-puzzle explanatory text in the output HTML.
 
@@ -118,22 +114,22 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 
 ## Markdown formatting in clue and instructions text
 
-**Rule:** Every entry's `clue` field, and the `instructions` field, accept a small markdown subset: `**bold**`, `*italic*`, `` `code` ``, `[text](url)` links, `~~strikethrough~~`, `H~2~O`-style subscript, `29^th^`-style superscript, and `:shortcode:` emoji. Rendering happens once, at **build time**, in Node — never in the browser, so the shipped puzzle HTML gains no runtime markdown dependency. Plain text with no markdown syntax renders unchanged.
+**Rule:** Every entry's `clue` field, and the `instructions` field, accept a small markdown subset: `**bold**`, `*italic*`, `` `code` ``, `[text](url)` links, `~~strikethrough~~`, `H~2~O`-style subscript, `29^th^`-style superscript, and `:shortcode:` emoji. Rendering happens once, at **build time** — never in the puzzle page, so the shipped puzzle HTML gains no runtime markdown dependency. Plain text with no markdown syntax renders unchanged.
 
-**Typographic replacements:** straight `"quotes"` and `'apostrophes'` are curled, `--`/`---` become en/em dashes, and `...` becomes `…` — all via markdown-it's `typographer` option (its `replacements`/`smartquotes` core rules, off by default under the `'zero'` preset, are explicitly enabled). Prefix a character with `\` to force the literal: `\"` stays a straight quote, `\*` stays a literal asterisk instead of opening emphasis. This is markdown-it's own `escape` rule, also explicitly enabled — without it a `\` has no special meaning and passes through as a literal backslash, doing nothing to suppress a curl or emphasis pair.
+**Typographic replacements:** straight quotes are curled, `--`/`---` become en/em dashes, and `...` becomes `…`. Prefix a character with `\` to force the literal: `\"` stays a straight quote, `\*` stays a literal asterisk. Which markdown-it rules are enabled, and why `escape` is one of them, is in `shared/build/renderMarkdown.js`.
 
-**Implementation:** `shared/build/renderMarkdown.js` wraps `markdown-it` (`'zero'` preset, so only the rules above are enabled — no block structure like headings/lists/tables/images, and no autolinking of bare URLs; this format has short single-line/short-paragraph prose, not documents, and a wider rule set would only widen the input surface for no benefit here) plus the small official `markdown-it-sub`/`markdown-it-sup`/`markdown-it-emoji` plugins (strikethrough needs no plugin — it's a core `markdown-it` rule).
+**Implementation:** `shared/build/renderMarkdown.js` wraps `markdown-it` with a deliberately narrow rule set — no block structure and no autolinking (rationale beside the code) — plus the `-sub`/`-sup`/`-emoji` plugins.
 
 - `renderClueMarkdown(text)` — inline-only (`md.renderInline`), used for `clue`. No wrapping block element, since clue text lives inside a `<span class="clue-text">`.
 - `renderInstructionsMarkdown(text)` — block-level (`md.render`), used for `instructions`. Blank-line-separated paragraphs each become their own `<p>`.
 
-Both run at **prepare time**, inside each tool's hasher, so a `prepared` object is uniformly display-ready: `processEntries` (in `shared/build/builderUtils.js`, called by every tool for every entry — a muddled entry has no plaintext answer but still has clue text, so this runs unconditionally there too) renders clues, and `instructionsField` (same file, spread into every hasher's prepared object) renders instructions. `commonPuzzleData` passes the already-rendered instructions through untouched.
+Both run at **prepare time**, inside each tool's prepare step (`src/prepare.js`), so a `prepared` object is uniformly display-ready: `processEntries` (in `shared/build/prepare.js`, called by every tool for every entry — a muddled entry has no plaintext answer but still has clue text, so this runs unconditionally there too) renders clues, and `prepareCommon` (same file, which every prepare step calls for its header fields) renders instructions. `commonPuzzleData` passes the already-rendered instructions through untouched.
 
-**Security:** `html: false` (markdown-it's own option) escapes any literal HTML in the source rather than passing it through, so a clue can never inject a tag — this matters because a muddled/source YAML is explicitly a distributable format (see root `CLAUDE.md` → Tool CLI contract), so clue text can arrive from someone other than the person building it. markdown-it's own default `validateLink` already rejects script-executing URL schemes (`javascript:`, `vbscript:`, etc.) for the `[text](url)` rule — no custom override needed. Every engine then injects the resulting string via `innerHTML` rather than `textContent`, which is safe specifically *because* the string was already escaped/rendered at build time — an engine must never `innerHTML` a raw, unrendered YAML string.
+**Security:** raw HTML in the source is escaped at build time (rationale in `shared/build/renderMarkdown.js`), so a clue — which can arrive from someone other than the person building it, since a muddled/source YAML is a distributable format — can never inject a tag. Every engine injects the rendered string via `innerHTML` rather than `textContent`, which is safe specifically *because* it was rendered at build time: an engine must never `innerHTML` a raw, unrendered YAML string.
 
 **`PUZZLE_DATA.clue` and `PUZZLE_DATA.instructions` hold rendered HTML, not plain text.** This is a departure from the general PUZZLE_DATA convention that string fields are plain text; it's called out here because it's easy to assume otherwise when reading an engine's `entry.clue` access.
 
-**Applies to:** `shared/build/renderMarkdown.js`, `shared/build/builderUtils.js` (`processEntries`, `instructionsField`), every tool's `src/hasher.js`, `shared/engine-chrome.js` (`renderInstructions`), every tool's `src/template/engine.js` (clue-text elements, and Snake Charmer/Spiral/Crushword's active-clue-bar text), every tool's `docs/SPEC.md`.
+**Applies to:** `shared/build/renderMarkdown.js`, `shared/build/prepare.js` (`processEntries`, `prepareCommon`), every tool's `src/prepare.js`, `shared/engine-chrome.mjs` (`renderInstructions`), every tool's `src/template/engine.js` (clue-text elements, and Snake Charmer/Spiral/Crushword's active-clue-bar text), every tool's `docs/SPEC.md`.
 
 **How to verify:** Build a puzzle with `**bold**` in a clue and blank-line-separated paragraphs with `*italic*` in `instructions`; open the HTML and confirm the clue list shows bold text (not literal asterisks) and the instructions block shows two separate `<p>` elements with italic text rendered.
 
@@ -141,52 +137,47 @@ Both run at **prepare time**, inside each tool's hasher, so a `prepared` object 
 
 ## Keyboard shortcuts modal
 
-**Rule:** Every tool exposes a keyboard-shortcuts reference via a fixed `?` button and the `?` key. Both are wired by `setupKeysOverlay(shortcuts, refocus)` from `shared/engine-chrome.js` — each engine calls it with a tool-specific `[[keys, description], …]` array and its `refocus`. The return value (the `<dialog>` element) is passed to `setupKeydown` as `{ keysOverlay }`.
+**Rule:** Every tool exposes a keyboard-shortcuts reference via a fixed `?` button and the `?` key. Both are wired by `setupKeysOverlay(shortcuts, refocus)` from `shared/engine-chrome.mjs` — each engine calls it with a tool-specific `[[keys, description], …]` array and its `refocus`. The return value (the `<dialog>` element) is passed to `setupKeydown` as `{ keysOverlay }`.
 
 **Creation:** `setupKeysOverlay` appends two elements to `<body>`:
-1. `#keys-btn` — a fixed bottom-right corner button labelled `?`.
+1. `#keys-btn` — a fixed bottom-right corner button labeled `?`.
 2. `#keys-overlay` — a native `<dialog>` holding `#keys-modal` (the visible card listing the shortcuts as a table of `<kbd>` + description rows). The dialog supplies the dialog/modal ARIA semantics implicitly when opened with `showModal()`; its dim is the `::backdrop` pseudo-element, not a wrapper div.
 
-**Opening and closing:**
-- Clicking `#keys-btn`, or pressing `?` (without Meta/Ctrl), focuses the puzzle and then calls `dialog.showModal()`. `showModal()` moves focus to the `autofocus` `#keys-close` button, traps Tab inside the dialog, makes the rest of the page inert, and paints the `::backdrop` in the top layer — so keystrokes and Tab can't reach the grid while it is up.
-- Pressing `?` again, pressing Escape (native), clicking the backdrop (a click whose `target` is the dialog itself), or clicking `#keys-close` all close the dialog. Focus returns to the puzzle via the browser's native dialog focus-restoration: because the input is focused immediately *before* `showModal()`, the dialog's recorded restore target is the grid input, so every close path lands focus there with no explicit close handler and no race against the trigger button.
+**Opening and closing:** button click or `?` opens it via `showModal()`; `?` again, Escape, a backdrop click or `#keys-close` closes it, and focus returns to the grid input. How each of those works — including why no explicit close handler is needed — is in the comment on `setupKeysOverlay` (`shared/engine-chrome.mjs`).
 
 **Keystroke guard:** `setupKeydown` has a `keysOverlay` option; when the dialog is open (`keysOverlay.open`), the tool's keydown handler returns immediately, so no puzzle key fires while the modal is up.
 
-**CSS:** `#keys-btn` layout (fixed position, size, z-index) lives in `shared/base.css`, alongside the `#keys-overlay` `<dialog>` reset — transparent frame, `margin: auto` to restore the UA modal centering that the global `* { margin: 0 }` reset would otherwise defeat, and the `::backdrop` dim. All colour/font styling for `#keys-btn`, the `#keys-overlay` backdrop, `#keys-modal`, `#keys-modal-header`, `#keys-close`, and `kbd` lives in `shared/themes/theme-components.css` using the standard `--theme-*` variables (`--theme-color-overlay` for the `::backdrop`, plus `--theme-color-bg`, `--theme-color-text`, `--theme-color-soft-border`, `--theme-color-btn2-*`). No per-theme overrides are required; the neutral page-level vars give the right contrast for every theme.
+**CSS:** structural rules (position, size, the `<dialog>` reset) live in `shared/base.css`; color and font styling in `shared/themes/theme-components.css` via the standard `--theme-*` variables, with no per-theme overrides required.
 
 **Print:** `#keys-overlay` and `#keys-btn` are both hidden in `@media print` (see `shared/themes/print-base.css`).
 
-**Applies to:** `shared/engine-chrome.js` (`setupKeysOverlay`, `setupKeydown`), all four `src/template/engine.js` files.
+**Applies to:** `shared/engine-chrome.mjs` (`setupKeysOverlay`, `setupKeydown`), all four `src/template/engine.js` files.
 
 ---
 
 ## Options menu
 
-**Rule:** Every tool exposes rarely-used, potentially-destructive or puzzle-wide options — today just Clear — behind a fixed `☰` menu button rather than as a permanently visible control, so a stray click can't trigger them. Wired by `setupOptionsMenu(refocus)` from `shared/engine-chrome.js`, called from `setupControls` with the engine's `refocus`.
+**Rule:** Every tool exposes rarely-used, potentially-destructive or puzzle-wide options — today just Clear — behind a fixed `☰` menu button rather than as a permanently visible control, so a stray click can't trigger them. Wired by `setupOptionsMenu(refocus)` from `shared/engine-chrome.mjs`, called from `setupControls` with the engine's `refocus`.
 
 **Creation:** `setupOptionsMenu` appends two elements to `<body>`:
-1. `#menu-btn` — a fixed top-right corner button labelled `☰`.
+1. `#menu-btn` — a fixed top-right corner button labeled `☰`.
 2. `#menu-panel` — a plain non-modal `<div role="menu">`, hidden by default, holding `#check-btn-toggle-label` (wrapping `#check-btn-toggle`) above `#clear-btn` (built here rather than templated in `index.html`, matching `#keys-btn`/`#keys-overlay`'s fully-JS-created pattern).
 
-Every engine wires the menu, `#check-btn`, and the toggle below through one call, `setupControls({ checkBtn, hashed, onCheck, onClear, refocus, key })` (`shared/engine-chrome.js`).
+Every engine wires the menu, `#check-btn`, and the toggle below through one call, `setupControls({ checkBtn, checker, hashed, onCheck, onClear, refocus, key })` (`shared/engine-chrome.mjs`), which returns the `syncCheckBtn(n)` that `syncUI()` calls.
 
-**Why non-modal, unlike the keys overlay:** `#keys-overlay` is a `<dialog>` opened with `showModal()` because reading the shortcuts reference is a dead-end action — the solver isn't doing anything else while it's up, so making the page inert is free. The options menu is different: it's meant to house low-friction toggles a solver might want to flip while still seeing the board, so it's a plain `<div>` that never makes the page inert — the grid stays visible and clickable behind it.
+**Why non-modal, unlike the keys overlay:** it houses low-friction toggles a solver may flip while still looking at the board, so it never makes the page inert.
 
-**Opening and closing:**
-- Clicking `#menu-btn` toggles the panel.
-- Clicking anywhere outside `#menu-panel` and `#menu-btn`, or pressing Escape, closes it and calls `refocus()` — matching every other control that can steal focus from the hidden input (see "Focus management" below).
-- Clicks *inside* the panel never close it on their own. This is what lets `#clear-btn`'s two-click arm/confirm sequence play out with the panel visibly open through the 3s "Are you sure?" window; the panel only closes once Clear is actually confirmed, not on the arming click.
+**Opening and closing:** `#menu-btn` toggles the panel; a click outside it, or Escape, closes it and calls `refocus()` (see "Focus management"). Clicks *inside* never close it — see the comment on `setupOptionsMenu` (`shared/engine-chrome.mjs`) for how that carries `#clear-btn`'s two-click confirm.
 
 **No keystroke guard needed:** unlike the keys overlay, `setupKeydown` needs no `{ menu }`-style option. Clicking `#menu-btn` or `#clear-btn` focuses a `BUTTON`, which `setupKeydown`'s existing focus guard (`document.activeElement.tagName === 'BUTTON'`) already skips — the same mechanism that already protects `#keys-btn`/`#rebus-btn` outside their own modal-specific cases.
 
-**CSS:** `#menu-btn`/`#menu-panel` structural rules (fixed position, size, z-index) live in `shared/base.css`, mirroring `#keys-btn`. Colour/font styling lives in `shared/themes/theme-components.css` using the same `--theme-*` variables as `#keys-btn`/`#keys-modal`. Snake Charmer, Spiral, and Crushword override `#menu-btn`'s and `#menu-panel`'s `top` (`theme-components.css`) to sit within/below `#active-clue-bar`'s own band instead of at the plain values Marching Bands uses (it has no bar) — see the comment on those rules in `theme-components.css` for why this is pure `calc()`, not JS-computed.
+**CSS:** structural rules live in `shared/base.css`, color and font styling in `shared/themes/theme-components.css`. The three `has-clue-bar` tools position the button and panel against `#active-clue-bar` (see "Active-clue banner"); Marching Bands, with no bar, keeps the plain defaults.
 
 **Print:** `#menu-btn` and `#menu-panel` are both hidden in `@media print` (see `shared/themes/print-base.css`).
 
-**Check Cell button visibility toggle:** `#check-btn-toggle` (a checkbox inside `#check-btn-toggle-label`, reading "Show Check Cell button") lets a solver hide `#check-btn` if they know they won't use it. Absent entirely — not just disabled — in hashed builds, where `#check-btn` itself is hidden outright: the plain-text answer never ships there, so there is nothing to check against. The preference is display state, not board state, so it deliberately does **not** go through `setupStorage`/`resetBoard` — see "localStorage key format" below.
+**Check Cell button visibility toggle:** `#check-btn-toggle` (a checkbox inside `#check-btn-toggle-label`, reading "Show Check Cell button") lets a solver hide `#check-btn` if they know they won't use it. Hiding keeps the button's place in `#controls` (the `.check-btn-off` class, `visibility: hidden`; why in `shared/base.css`), so nothing moves. Absent entirely — not just disabled — in hashed builds, where `#check-btn` itself is hidden outright: the plain-text answer never ships there, so there is nothing to check against. The preference is display state, not board state, so it deliberately does **not** go through `setupStorage`/`resetBoard` — see "localStorage key format" below.
 
-**Applies to:** `shared/engine-chrome.js` (`setupOptionsMenu`, `setupCheckBtnPref`, `setupControls`), `shared/base.css`, `shared/themes/theme-components.css`, `shared/themes/print-base.css`, all four `src/template/index.html` and `src/template/engine.js` files.
+**Applies to:** `shared/engine-chrome.mjs` (`setupOptionsMenu`, `setupCheckBtnPref`, `setupControls`), `shared/base.css`, `shared/themes/theme-components.css`, `shared/themes/print-base.css`, all four `src/template/index.html` and `src/template/engine.js` files.
 
 ---
 
@@ -223,6 +214,7 @@ All tools use these element names for equivalent concepts — use them exactly a
 | Clue text inside each item | `.clue-text` (child `<span>` of `.clue-item`) |
 | Active clue item | `.clue-item.active-clue` *(Snake Charmer, Spiral, Crushword)* / `.clue-group.active-clue` *(Marching Bands — applied to the group wrapper, not individual items)* |
 | Correct state | `.correct` (on both cell paths and clue items) |
+| Filled clue (every owned cell has content, right or wrong) | `.clue-item.filled` *(Snake Charmer, Spiral, Crushword)* — see "Filled clues" |
 | Solve-celebration dialog (native `<dialog>` appended to `<body>`, not to the puzzle markup) | `#congrats-dialog` |
 | Solve-celebration card inside that dialog | `#congrats` |
 | All-filled-but-wrong banner | `#done-wrong` |
@@ -255,35 +247,19 @@ All tools use these element names for equivalent concepts — use them exactly a
 | Four-or-more-letter cell content | `.cell-letter.len-long` |
 | Input caret (next-keystroke marker) | `.cell-caret` *(Crushword only — see "Crushword — explicit-commit typing")* |
 
-**Structural note on `.clue-text`:** Each clue `<li class="clue-item">` must contain a `<span class="clue-text">` holding the clue string. This is required for the theme rule `.clue-item.correct .clue-text` (color + strikethrough on the text only). Tools whose clue items have additional spans (e.g. a `.clue-range` label) place `.clue-text` after them; tools with text-only items still wrap the text in the span.
+**Structural note on `.clue-text`:** Each clue `<li class="clue-item">` must contain a `<span class="clue-text">` holding the clue string. This is required for the theme rules `.clue-item.correct .clue-text` (color + strikethrough on the text only) and `.clue-item.filled .clue-text` (see "Filled clues"). Tools whose clue items have additional spans (e.g. a `.clue-range` label) place `.clue-text` after them; tools with text-only items still wrap the text in the span.
 
-**Theme requirement:** Every theme CSS file must define `.style-circle` with at minimum `fill` and `stroke`. Without it, circles render as black-filled shapes, which is visually destructive. The canonical definition is `fill: none; stroke: <color>; stroke-width: <value>;`. The structural rule `pointer-events: none` lives in `base.css` and does not need to be repeated in theme files.
-
-**Multi-letter sizing is `transform`, never `font-size`.** Spiral writes its per-puzzle
-letter size as an SVG presentation attribute, which any CSS `font-size` rule outranks —
-`e2e/spiral.spec.js` asserts this. The `.cell-letter.len-*` rules therefore scale with
-`transform`, which composes with each tool's base size. `transform-box: fill-box` is
-required: SVG's default `view-box` origin would drag the text toward the viewport origin
-instead of scaling it in place. The classes are computed from the **typed** content's
-length, never the answer's capacity.
-
-**Crushword overrides the shared `len-*` scale with a measured, per-cell `transform`,**
-applied as an inline style after the shared class (kept as the semantic "this cell holds
-N characters" marker) — still `transform`, never `font-size`, so the rule above is not
-violated. See `crushword/CLAUDE.md` → "Dynamic per-cell letter sizing" and the
-`fitLetterToCell` comment in its `engine.js` for why (the other tools' fixed scale
-over/under-shrinks once cell width scales with `maxCellLetters`) and for the bug that
-requires it to never be cleared to `''`.
+**Multi-letter sizing is `transform`, never `font-size`** — a CSS `font-size` rule would outrank Spiral's per-puzzle letter size, which is an SVG presentation attribute. The `.cell-letter.len-*` classes are computed from the **typed** content's length, never the answer's capacity; why they scale with `transform` is beside the rules in `shared/themes/theme-components.css`. Crushword overrides that scale with a measured per-cell inline `transform` (still never `font-size`) — see `crushword/CLAUDE.md` → "Dynamic per-cell letter sizing" and `fitLetterToCell` in its `engine.js`.
 
 ---
 
 ## PUZZLE_DATA conventions
 
-**`PUZZLE_DATA.cells` content:** `cells` holds per-cell *geometry* only, never entry-mapping data. Spiral stores its per-cell spiral geometry (`theta_start`, `r_inner_start`, …) in `data.cells`. Snake Charmer and Marching Bands carry no geometry in `data.cells`: Snake Charmer omits the array entirely (its ring geometry lives in `data.ring`, derived from `ring.N` by the shape renderers), and Marching Bands derives all geometry from the grid size `N`. Crushword likewise carries no `cells` array — its geometry (cell pixel coordinates, which cells are numbered) is cheap enough to derive at engine init from `data.grid` via the inlined `layout.js`/`grid.js` (see `crushword/CLAUDE.md` → "Build pipeline"), unlike Spiral's polar math, which is expensive enough to precompute once in the builder instead.
+**`PUZZLE_DATA.cells` content:** `cells` holds per-cell *geometry* only, never entry-mapping data. Spiral stores its per-cell spiral geometry (`theta_start`, `r_inner_start`, …) in `data.cells`, precomputed by the builder; its engine also imports `spiral/src/layout.mjs` for the drawing helpers (`cellPath`, `letterCenter`, …). Snake Charmer and Marching Bands carry no geometry in `data.cells`: Snake Charmer omits the array entirely (its ring geometry lives in `data.ring`, derived from `ring.N` by the shape renderers), and Marching Bands derives all geometry from the grid size `N`. Crushword likewise carries no `cells` array — its geometry (cell pixel coordinates, which cells are numbered) is cheap enough to derive at engine init from `data.grid` via the `layout.mjs`/`grid.mjs` its engine imports (see `crushword/CLAUDE.md` → "Build pipeline"), unlike Spiral's polar math, which is expensive enough to precompute once in the builder instead.
 
 **Entry→cell mapping is always computed at engine init, never stored in PUZZLE_DATA.** It is fully derivable from entry lengths plus the tool's traversal rule, so carrying it in the HTML payload is redundant. Spiral builds `inwardMap`/`outwardMap`/`inwardEntryCells`/`outwardEntryCells` at init from `data.inward`/`data.outward`; Snake Charmer builds `entryAtCell`/`ringPosByEntry`/`canonicalStart` at init via `buildEntryMaps(data.entries, data.loops)`; Marching Bands computes its mapping from `N`.
 
-**SVG element IDs:** All four tools assign `id="cell-{n}"` to SVG cell path elements and `id="letter-{n}"` to letter text elements. Marching Bands, Spiral, and Crushword use 1-indexed `n`; Snake Charmer uses 0-indexed `n` (matching its 0-indexed internal ring position). Crushword's `n` is row-major over the whole grid including blocked positions (`row*cols + col + 1`), the same scheme Marching Bands uses for its own skipped center cell. These IDs exist for debugging and cross-tool consistency; engines still keep parallel `cellPaths[]`/`letterTexts[]` (or, for Crushword, `cellRects{}`/`letterTexts{}` keyed by `n`) for O(1) access and use those internally rather than `getElementById`.
+**SVG element IDs:** All four tools assign `id="cell-{n}"` to SVG cell path elements and `id="letter-{n}"` to letter text elements. Marching Bands, Spiral, and Crushword use 1-indexed `n`; Snake Charmer uses 0-indexed `n` (matching its 0-indexed internal ring position). Crushword's `n` is row-major over the whole grid including blocked positions (`row*cols + col + 1`), the same scheme Marching Bands uses for its own skipped center cell. The cell ids are load-bearing: `setupCellClicks` (`shared/engine-chrome.mjs`) reads a clicked cell's `n` back from its id. Engines still keep parallel `cellPaths[]`/`letterTexts[]` (or, for Crushword, `cellRects{}`/`letterTexts{}` keyed by `n`) for O(1) access and use those internally rather than `getElementById`.
 
 ---
 
@@ -291,7 +267,9 @@ requires it to never be cleared to `''`.
 
 **Rule:** `syncUI()` is the single function responsible for translating game state into DOM. It is called after every state change. Event handlers never update visual state directly — they mutate state (cell letters, cursor position, direction) and then call `syncUI()` or `focusCell()` (which calls `syncUI()`).
 
-**Minimum responsibilities:** active-entry and active-cell cell classes, active-clue highlight, done-wrong banner visibility, and Check Cell button disabled state (non-hashed mode). The active-entry highlight covers every cell of the entry regardless of correctness — it shows where the cursor is, not what is left to solve — and `.correct` is a separate, independently-set class on the same element. The solve celebration is *not* among them — `syncUI()` passes solved-ness to `latch.check()`, and the latch decides whether to open the dialog. Tool-specific additions (e.g. direction chevron, secondary-entry highlight) are allowed but must follow the same pattern.
+**Minimum responsibilities:** active-entry, active-cell and composing cell classes (`.composing` from `composer.isComposing`; the composer holds only the state), the active cell moved last in its cells layer (why: the comment above that line in each engine), active-clue highlight, the Check Cell button's disabled state (`syncCheckBtn`, from `setupControls`), and the solve state (`syncSolveState` in `shared/engine-state.mjs`: done-wrong banner visibility, and solved-ness reported to `latch.check()`). The active-entry highlight covers every cell of the entry regardless of correctness — it shows where the cursor is, not what is left to solve — and `.correct` is a separate, independently-set class on the same element. The solve celebration is *not* among them — `syncUI()` passes solved-ness to `latch.check()`, and the latch decides whether to open the dialog. Tool-specific additions (e.g. direction chevron, secondary-entry highlight) are allowed but must follow the same pattern.
+
+**Clue-list scrolling:** Marching Bands and Crushword scroll the active clue (Marching Bands: its row or band group) into view, but only when it changes — not on every `syncUI()` — so typing and moving within the active clue never move the page. Both scroll it clear of their sticky grid where the grid sits over the clues (`scrollIntoViewBelow` in `shared/engine-chrome.mjs`). On a phone, every jump costs the solver their place. Spiral and Snake Charmer don't scroll their clue lists. Covered by "the clue list scrolls only when the active clue changes" in `e2e/shared.spec.js`.
 
 **Applies to:** each tool's `src/template/engine.js`.
 
@@ -299,7 +277,7 @@ requires it to never be cleared to `''`.
 
 ## Focus management
 
-**Rule:** Navigation keys (arrows, Backspace, Tab, Space) are handled by a `document`-level `keydown` listener, so they work even when the hidden input has lost focus (e.g. after clicking the page background or a heading).
+**Rule:** Navigation keys (arrows, Backspace, Tab, Space) are handled by a `document`-level `keydown` listener, so they work even when the hidden input has lost focus (e.g. after clicking the page background or a heading). When nothing has focus, `setupKeydown` refocuses the hidden input first, so a typed letter lands too (why beside it in `shared/engine-chrome.mjs`).
 
 The listener must guard against two cases:
 - `!document.hasFocus()` — browser chrome (URL bar, devtools) has focus; don't swallow system shortcuts.
@@ -311,10 +289,10 @@ Letter input still routes through `<input id="hidden-input">`. `focusCell()` res
 
 Every control that would otherwise steal focus from the hidden input (direction/loop toggle, Check Cell button, any future controls) must call `focusCell()` (or equivalent) so that the hidden input is refocused and the BUTTON guard is cleared before the next keystroke.
 
-`#rebus-btn` is the one control that *prevents* the focus loss instead of repairing it — it cancels `mousedown`, whose default action is the focus change, so on touch and mouse focus never moves and the soft keyboard never closes. It still supplies a `refocus`, which covers the keyboard path (Tab to the button, activate with Space/Enter), where focus really does land on the button. See "Enter / Rebus button — rebus entry" for why this must not be `pointerdown`.
+`#rebus-btn` is the one control that *prevents* the focus loss instead of repairing it — it cancels `mousedown`, whose default action is the focus change, so on touch and mouse focus never moves and the soft keyboard never closes. It still supplies a `refocus` for any path where focus does land on the button. Tab is not one: inside the page it is captured as next entry, so no page button is reachable by Tab today. See "Enter / Rebus button — rebus entry" for why this must not be `pointerdown`.
 
-**Single-assignment invariant:** the active cell (`activeRingPos` / `activeCell` /
-`activeN`) is assigned only inside `focusCell`, never at any other site. `focusCell` is
+**Single-assignment invariant:** the active cell (`activeCell`, or `activeRingPos` in
+Snake Charmer) is assigned only inside `focusCell`, never at any other site. `focusCell` is
 therefore the one place that needs `composer.commitIfMoved`. Any change that assigns the
 active cell elsewhere breaks rebus commit coverage silently.
 
@@ -327,7 +305,10 @@ active cell elsewhere breaks rebus commit coverage silently.
 ## Active-clue banner
 
 **Rule:** A tool gets a fixed `#active-clue-bar` showing the active cell's clue(s) **when,
-and only when, those clues are known from the cell alone.** Snake Charmer, Spiral, and
+and only when, those clues are known from the cell alone.** This is one face of a wider
+condition — entry boundaries are *given*, not solved for — which also gates per-clue state
+such as `.filled` (next section), where the lookup runs the other way (clue → its cells).
+Snake Charmer, Spiral, and
 Crushword qualify. Marching Bands does not: working out where one clue ends and the next
 begins is part of its solve, so a banner would have to guess, or list every still-possible
 clue — up to eight or nine for an early cell. `#active-clue-bar` is absent from its markup
@@ -337,26 +318,48 @@ entirely, not merely hidden.
 `.active-clue-row`), each holding `.active-clue-num` and `.active-clue-text` (rendered
 markdown set via `innerHTML` — see "Markdown formatting in clue and instructions text").
 Tools whose two rows could be confused add a leading `.active-clue-dir` (Spiral's In/Out,
-Crushword's Across/Down). Crushword `hidden`s the secondary row on a cell with no crossing
-entry; the other two tools always have one.
+Crushword's Across/Down). Every engine fills the bar through `setupClueBar`
+(`shared/engine-chrome.mjs`), which `hidden`s the secondary row when there's no other entry
+to show — Crushword on a cell with no crossing entry, Snake Charmer where both loops are the
+same entry; Spiral always has one.
 
-**Layout:** `shared/base.css` reserves the bar's two-row height as `body` padding and
-exposes it as `--active-clue-bar-space`; the bar's `min-height` fills that space so no
-unpainted strip sits below it, and — because its clue text can never wrap (forced
-`nowrap` + ellipsis) — pins its rendered height to exactly that reserved value always, not
-just approximately. `#menu-btn` sits *within* the bar's own band, vertically centered
-against that height, and `#menu-panel` opens directly below the bar's bottom edge
-(`theme-components.css`, pure `calc()` against `--active-clue-bar-space` for both) — not
-below the bar as a separate row, which would cost an entire extra row of vertical space on
-mobile. See the comment on those rules in `theme-components.css` for why this is pure CSS
-rather than JS-measured. The bar reserves right-side padding for the button so its own
-clue text truncates before running under it.
-Crushword's sticky grid instead reads `--active-clue-bar-space` directly
-(`crushword/CLAUDE.md` → Page layout), since it must sit *below* the bar entirely, not
-inside it. `print-base.css` hides the bar and drops the padding.
+**Layout:** the three tools carry `has-clue-bar` on `<body>`. `shared/base.css` reserves the bar's height as `body` padding and exposes it as `--active-clue-bar-space`; `#menu-btn` sits *within* the bar's band and `#menu-panel` opens directly below it (`theme-components.css`, pure `calc()` against that variable — the reasoning is beside those rules). Crushword's sticky grid reads the variable directly (`crushword/CLAUDE.md` → Page layout). `print-base.css` hides the bar and drops the padding.
 
 **Applies to:** `index.html`/`engine.js` for Snake Charmer, Spiral, and Crushword;
-`shared/base.css`, `shared/themes/theme-components.css`, `shared/engine-chrome.js`.
+`shared/base.css`, `shared/themes/theme-components.css`, `shared/engine-chrome.mjs`.
+
+---
+
+## Filled clues
+
+**Rule:** A clue-list item carries `.filled` while every cell its entry owns holds content —
+right or wrong, like a solver crossing a clue off by hand. It is **not** `.correct`, which
+still means "whole board verified" and is set only by `markSolved`. Snake Charmer, Spiral,
+and Crushword mark it; Marching Bands does not, for the reason given under "Active-clue
+banner" (its clues own no known cells).
+
+**Derived, never persisted:** each engine's `syncUI()` recomputes `.filled` on every clue
+item from cell content via the board checker's `isEntryFilled(cells)`
+(`shared/engine-state.mjs`), so restore, Clear, Play again and edits need no extra paths. A
+cell mid-composition is not filled, matching the board checker — a finished clue therefore
+loses `.filled` while its rebus cell is being re-edited, and regains it on commit. In
+Crushword every cell composes on its own keystrokes, so there a clue gains `.filled` only
+when its last cell commits (Enter, Space, or moving the cursor away), not as the letter is
+typed. That lag is a decision, pinned in `e2e/crushword.spec.js`; Snake Charmer and Spiral
+commit a plain letter at once. The
+class lives on clue-list items only; `#active-clue-bar` does not reflect it.
+
+**Theme hook:** `--theme-clue-filled-decoration` (default `none`) and
+`--theme-clue-filled-opacity` (default `1`), consumed by `.clue-item.filled .clue-text` in
+`theme-components.css`. Defaults are no-ops; a theme opts in from its tokens file
+(`broadsheet` sets opacity `0.5`). That rule must stay **before** `.clue-item.correct
+.clue-text`: the two have equal specificity, so source order is what keeps a solved board's
+strikethrough from being replaced by the filled rule's `none`. `print-base.css` resets
+`.filled` — a printout is the blank puzzle (see "Print-mode state erasure").
+
+**Applies to:** `engine.js` for Snake Charmer, Spiral, and Crushword; `shared/engine-state.mjs`,
+`shared/themes/theme-base.css`, `shared/themes/theme-components.css`,
+`shared/themes/print-base.css`, `shared/themes/broadsheet-tokens.css`.
 
 ---
 
@@ -432,45 +435,42 @@ squares are rebus. That is a spoiler in every tool, and would be fatal in a form
 the segmentation itself is the puzzle. `#check-btn` sits beside `#rebus-btn` in
 `#controls` and *is* toggled per-cell and hidden when hashed — do not copy it.
 
-**Implementation:** `makeComposer` in `shared/engine-state.js`; `setupRebusButton` in `shared/engine-chrome.js`.
+**Implementation:** `makeComposer` in `shared/engine-state.mjs`; `setupRebusButton` in `shared/engine-chrome.mjs`.
 Each engine calls `composer.commitIfMoved(n)` as the first statement of `focusCell`;
 because the active cell is assigned nowhere else, that single call site covers arrows,
 Tab, Space, cell clicks, clue clicks and toggles. A same-cell focus (a direction or mode
 toggle) is a no-op, so composition survives `.`.
 
 Both entry points route through one per-engine `toggleRebus()`, so the composer call
-cannot drift. Their *guards* are separate code and have to be kept in step by hand: the
-click handler repeats `setupKeydown`'s meta/ctrl early return, so a modified click is
-ignored exactly as `Cmd+Enter` is. The engine's `syncUI()` calls `rebusBtn.sync()`, which
+cannot drift. One guard is still kept in step by hand: the click handler repeats
+`setupKeydown`'s meta/ctrl early return, so a modified click is ignored exactly as
+`Cmd+Enter` is. The solved-board guard needs no copy, since `composer.toggle` itself refuses
+composition once the board is solved. The engine's `syncUI()` calls `rebusBtn.sync()`, which
 is what restores the label when composition ends by a cursor move rather than by the
 button.
 
-`const rebusBtn` is declared **above** `syncUI` in the three engines that have one (Snake
-Charmer, Spiral, Marching Bands — Crushword has no `#rebus-btn`), because `syncUI` calls
-`rebusBtn.sync()`. The other ids `syncUI` reads are declared further down and are safe
-only because `syncUI` first *runs* in Restore & focus — a temporal-dead-zone trap one
-reordering away. Do not "fix" a future TDZ error with `rebusBtn?.sync()`: that silently
-stops updating the label instead of throwing.
+`const rebusBtn` is created in Event wiring with the other controls, below `syncUI`, which
+calls `rebusBtn.sync()`. That is safe for the reason every later `const` a logic function
+reads is safe: those functions first *run* in Restore & focus (the `init()` invariant under
+"Engine bootstrap & structure"), so only a call moved earlier would hit the temporal dead
+zone. Do not "fix" such a TDZ error with `rebusBtn?.sync()`: that silently stops updating
+the label instead of throwing.
 
 **Why the button binds `mousedown` and `click` separately:** focus-on-click is a
-`mousedown` default action, so cancelling `mousedown` keeps focus on `#hidden-input` and
+`mousedown` default action, so canceling `mousedown` keeps focus on `#hidden-input` and
 a phone's soft keyboard stays up, while `click` still fires and keeps the button
 reachable by keyboard. `refocus` covers that keyboard path, where focus *does* land on
 the button and letters would otherwise go nowhere; it runs even on a solved board, since
 the focus-management rule above admits no exceptions.
 
-**It must be `mousedown`, never `pointerdown`.** See `shared/engine-chrome.js`
+**It must be `mousedown`, never `pointerdown`.** See `shared/engine-chrome.mjs`
 (`setupRebusButton`) for why. That distinction is why `playwright.config.js` runs a
 `webkit` project and `e2e/snake-charmer.spec.js` has a `hasTouch` tap test — a
 Chromium-only suite once reported green while the button was inert on iOS.
 
-**Why the button needs its own `latch.solved` guard:** every engine's `if (latch.solved)
-return;` lives inside the callback passed to `setupKeydown`, and a click never passes
-through it. Without the guard in `setupRebusButton`, composition could open on a sealed
-board. Pinned by `shared/test/engine-chrome.rebus-button.test.js` and by the
-`#rebus-btn` click appended to each tool's "a solved board restores…" e2e.
+**A solved board never opens composition, whichever route reaches it.** `composer.toggle` refuses it (the `isSolved` accessor every engine passes to `makeComposer`), so the button, which never passes through the keydown handler's `latch.solved` return, needs no guard of its own. Pinned by `shared/test/engine-state.composer.test.js` and by the `#rebus-btn` click appended to each tool's "a solved board restores…" e2e.
 
-**Composition is saved state, not live UI state.** See `shared/engine-state.js`
+**Composition is saved state, not live UI state.** See `shared/engine-state.mjs`
 (`makeComposer`'s `getComposing`/`restore`) for why the composing cell id is part of every
 tool's autosave payload (`composing:`) and what breaks without it. Each engine's Restore &
 focus epilogue resumes the cursor on the restored composing cell explicitly — comparing
@@ -545,7 +545,7 @@ holds. Press ← and type — the letter is inserted between them. Keep typing t
 
 **Marching Bands:** Because entry boundaries are hidden from the solver, individual entries are not independently clickable. Instead, all entries for a single row or band are grouped under a `<li class="clue-group">` wrapper. Clicking anywhere in the group switches to the appropriate mode (`row` or `band`) and calls `focusCell(firstCellOfRow/Band)`. Individual `.clue-item` elements inside the group are non-interactive.
 
-**Links inside a clue:** a click whose target is inside an `<a>` (see "Markdown formatting in clue and instructions text") returns early in every engine's clue/group click handler, so following the link never also moves the cursor.
+**Links inside a clue:** a click whose target is inside an `<a>` (see "Markdown formatting in clue and instructions text") is ignored by every engine's clue/group click handler (`onClueClick` in `shared/engine-chrome.mjs`), so following the link never also moves the cursor.
 
 **How to verify:** Click any clue — the active cell should jump to the start of that entry (or row/band). For Spiral/Snake Charmer, direction should also update.
 
@@ -565,31 +565,34 @@ validator.
 answer: "S[HAR]ON"   # cells: s | har | o | n  (4 cells, not 6)
 ```
 
-**Cell count, not letter count.** Bracket contents are normalized like the rest of the answer (letters only, lowercased). `entryLength` and every validation rule built on it — entry lengths, ring size, row/band totals — count *cells*: `S[HAR]ON` is 4 cells, the same as `MALL`, despite having 6 letters. `length:` in a muddled file is likewise a cell count. An answer with no brackets parses exactly as before, so existing puzzles and authors who never use the notation are unaffected.
+**Cell count, not letter count.** Bracket contents are normalized like the rest of the answer (letters only, lowercased). `entryCellCount` and every validation rule built on it — entry lengths, ring size, row/band totals — count *cells*: `S[HAR]ON` is 4 cells, the same as `MALL`, despite having 6 letters. `length:` in a muddled file is likewise a cell count. An answer with no brackets parses exactly as before, so existing puzzles and authors who never use the notation are unaffected.
 
-**Grammar errors** (each reported with the entry's label):
-
-| Condition | Result |
-|---|---|
-| Unclosed `[` | error |
-| Unmatched `]` | error |
-| Nested `[` inside a group | error |
-| Bracketed group with no letters (e.g. `[--]`) | error |
-| Bracketed group of exactly one letter (e.g. `[A]`) | legal and silent — identical to a bare `A` |
-| Bracketed group of 5+ letters | warning ("is that intended?") — 4 or fewer is silent |
-
-**Why `[A]` is allowed rather than warned:** it produces the same cell as a bare `A`, so it is redundant but never wrong. In a dense rebus grid an author may reasonably bracket every cell for uniformity (`[S][HAR][O][N]`), and warning on each would fire many times per puzzle — training authors to ignore warnings, which costs more than the redundancy.
+**Grammar errors** (each reported with the entry's label) and the deliberate leniency toward a bracketed single letter: see `docs/AUTHORING.md` → "Rebus cells", which owns the grammar table.
 
 **Per-tool cross-check rules,** each enforced by that tool's validator:
 
 | Tool | Rule |
 |---|---|
-| **Spiral** | Outward answers repeat each rebus cell in **forward** order. The reversal constraint reverses the *order of the cells*, never the letters inside one. Inward `S[HAR]ON` pairs with outward `NO[HAR]S`, never `NO[RAH]S`. |
+| **Spiral** | Outward reads the cells in reverse order and each cell backward, so an outward rebus may be spelled forward or reversed (`sameCell`): inward `S[HAR]ON` pairs with outward `NO[HAR]S` or `NO[RAH]S`, never `NO[HRA]S`. The cell holds the inward spelling. |
 | **Snake Charmer** | Every loop must bracket the same groups at the same cells. The period constraint applies in cell space: loop 1 must reproduce loop 0's cells exactly, not merely the same letters split differently. |
-| **Marching Bands** | A row and its crossing band must bracket a shared cell identically. Every cell belongs to one Row word and one Band word, and the build cross-checks that they agree as *cells*, not as letters. |
+| **Marching Bands** | Every cell belongs to one Row word and one Band word, and the build cross-checks that they agree as *cells*, not as letters. Along a band's bottom edge, corners included, the band reads its row right to left, so a rebus there may be spelled reversed (`sameCell`, `onBandBottomEdge`); elsewhere it must match exactly. The cell holds the row's spelling. |
 | **Crushword** | A crossing Across and Down entry must bracket their shared square identically — the validator cross-checks them as *cells*, not as letters. Crushword also bounds rebus width per puzzle with `maxCellLetters` (default 3), the only tool-level cap on how many letters one cell may hold. |
 
-**Applies to:** `shared/build/builderUtils.js` (`parseAnswerCells`, `entryCells`, `entryLength`), `shared/build/validateEntry.js`, `shared/build/muddleUtils.js`, all four tool validators, and the per-tool `docs/SPEC.md` files (which carry the tool's own rule and a pointer here and to `docs/AUTHORING.md`).
+**Why only some crossings may reverse a rebus.** A cell holds one string, and the solver types it as written. An entry that reads the cell *against* that direction — Spiral's outward pass, a band's bottom edge — naturally meets its letters backward, so `[CAT]` and `[TAC]` name the same cell. Snake Charmer's loops, Crushword's Across and Down, and the other band edges read a cell forward or crosswise, so two different spellings there would be two different contents for one cell, and the page could accept only one.
+
+**Applies to:** `shared/build/cells.js` (`parseAnswerCells`, `entryCellCount`), `shared/build/prepare.js` (`processEntries`), `shared/build/validateEntry.js`, `shared/build/muddleUtils.js`, all four tool validators, and the per-tool `docs/SPEC.md` files (which carry the tool's own rule and a pointer here and to `docs/AUTHORING.md`).
+
+---
+
+## Cell styles
+
+**Rule:** A cell-scoped style (`STYLE_SCOPES` in `shared/build/validateEntry.js`; today only `circle`) describes a board cell, not an entry, so it is listed on every entry that covers the cell. `checkCellStyles` (`shared/build/validateEntry.js`) reports a missing listing as an error naming the entry and the position to add. A cell covered by one entry needs only that entry's listing.
+
+**Engine contract:** every engine draws at most one decoration per cell and style. The listings are deliberately redundant (each entry's `styles` stays complete on its own), so two entries mark the same cell and the engine must not paint it twice — a doubled circle would paint bolder than a single one.
+
+**Applies to:** the four validators (each builds its own cell coverage and calls `checkCellStyles` last, for source and muddled puzzles alike) and the four engines' circle passes.
+
+**How to verify:** `e2e/shared.spec.js` → "no cell carries two circles (doubled styles draw once)".
 
 ---
 
@@ -597,7 +600,7 @@ answer: "S[HAR]ON"   # cells: s | har | o | n  (4 cells, not 6)
 
 **Rule:** Every muddled YAML (the output of `varietypack muddle`) carries a top-level `format: 2`. Full statement — including why it's a version field rather than silent reinterpretation — in root `CLAUDE.md` → "Muddled YAML format".
 
-**Applies to:** `shared/build/builderUtils.js` (`validateCommonHeader`), `shared/build/muddleUtils.js` (`buildMuddledYaml`), every tool's validator (which calls `validateCommonHeader`).
+**Applies to:** `shared/build/validation.js` (`validateCommonHeader`), `shared/build/muddleUtils.js` (`buildMuddledYaml`), every tool's validator (which calls `validateCommonHeader`).
 
 ---
 
@@ -605,11 +608,11 @@ answer: "S[HAR]ON"   # cells: s | har | o | n  (4 cells, not 6)
 
 **Both modes:** There are two parallel checking paths — non-hashed and hashed. Keep them symmetric: any behavior visible to the solver (when feedback appears, what gets marked, what banner shows) must be consistent between the two modes.
 
-**Non-hashed:** A "Check Cell" button (disabled when the active cell is not filled — empty or composing — or already marked correct) calls `isCellCorrect()` and marks the active cell `.correct`. On every `input` event, `checkIfFilled()` (from `makeBoardChecker`, see below) also runs: when all cells are filled it checks all and calls `syncUI()`, opening the congrats dialog (via the latch) if every cell is correct, or showing the done-wrong banner if not.
+**Non-hashed:** A "Check Cell" button (disabled when the active cell is not filled — empty or composing — or already marked correct) asks `checker.checkCell(n)` (`makeBoardChecker`) and marks the active cell `.correct` when it answers `true`; `checker.canCheck(n)` drives the disabled state. On every `input` event, `checkIfFilled()` (from `makeBoardChecker`, see below) also runs: when all cells are filled it checks all and calls `syncUI()`, opening the congrats dialog (via the latch) if every cell is correct, or showing the done-wrong banner if not.
 
 **Hashed:** No Check Cell button. On every `input` event, the same `checkIfFilled()` guards until all cells are filled, then hashes the board and compares to `boardHash`. If it matches, all cells, and clue items in the tools that mark them, are marked `.correct` and `syncUI()` is called.
 
-**Cell-at-a-time comparison, and why hashed mode needs a delimiter:** `isCellCorrect(typed, letter)` compares one cell's typed content against that cell's full stored content (which may be a multi-letter rebus group) — never a single character against a single character. Non-hashed mode is therefore already "per cell" by construction. Hashed mode has no per-cell stored letters to compare against — it has one hash of the whole board — so it must reconstruct that same cell boundary information some other way: joining normalized cells with `CELL_DELIM` before hashing (see "`solution` — canonical board string per tool" below) is what makes the hashed path symmetric with the non-hashed one instead of accepting any board whose cells concatenate to the same letters.
+**Cell-at-a-time comparison, and why hashed mode needs a delimiter:** `makeBoardChecker` compares one cell's typed content against that cell's full stored content (which may be a multi-letter rebus group) — never a single character against a single character. Non-hashed mode is therefore already "per cell" by construction. Hashed mode has no per-cell stored letters to compare against — it has one hash of the whole board — so it must reconstruct that same cell boundary information some other way: joining normalized cells with `CELL_DELIM` before hashing (see "`solution` — canonical board string per tool" below) is what makes the hashed path symmetric with the non-hashed one instead of accepting any board whose cells concatenate to the same letters.
 
 **Editing removes correctness:** `setCellLetter()` (or equivalent) always strips `.correct` from a cell whenever a letter is set or cleared, so an overwritten cell reverts to unchecked state.
 
@@ -617,8 +620,9 @@ answer: "S[HAR]ON"   # cells: s | har | o | n  (4 cells, not 6)
 is not composing (`composer.isCellFilled(n)` — the single predicate that replaced every
 per-engine emptiness check). **Every path that applies `.correct` to a cell has itself
 checked `isCellFilled` on that cell**: `makeBoardChecker`'s `checkIfFilled` via its
-all-filled guard, and the Check Cell handler via an explicit guard inside the function —
-not via the button's `disabled` state, which is UX only. `applyState` satisfies the rule
+all-filled guard, and `checker.checkCell`, whose `canCheck` guard sits inside the function —
+not in the button's `disabled` state, which is UX only (both pinned by
+`shared/test/engine-state.checker.test.js`). `applyState` satisfies the rule
 vacuously: nothing is composing at restore time.
 
 Without this, a mid-composition prefix can be a *correct* board — if the last cell should
@@ -626,34 +630,21 @@ hold `HA` and the solver is part-way through typing `HAR`, an unsuppressed check
 solved board and seals the one-way completion latch, so `varietypack:complete` fires for a
 half-entered board and never fires again when the solver actually finishes.
 
-**`syncUI()`'s latch call carries no composing exclusion — and is safe structurally, not
-by construction.** `syncUI()` calls `latch.check(checker.isSolved())`, and `isSolved()`
-reads each cell's `.correct` marker, not its fill state. Unlike `checkIfFilled`, it
-therefore cannot suppress a mid-composition board on its own: nothing in that call path
-consults `isCellFilled`. What makes it safe is that the dangerous state is unreachable.
-Reaching all-cells-marked while a cell is composing would mean composing on a board that
-is *already* solved — and once it is, `latch.solved` is true on **both** routes into
-composition: every engine's keydown handler returns at its first statement, before the
-`Enter` branch is ever read, and `setupRebusButton`'s click handler returns before
-`onToggle`. Composition cannot start on either, so `isSolved()` can never observe one in
-progress. A guard on only one route would not do — a click never passes through
-`setupKeydown`, so the keydown guard alone leaves `#rebus-btn` an open door.
-**This is load-bearing, and both guards are tested** — the "a solved board restores …"
-e2e in Snake Charmer/Spiral/Marching Bands' `e2e/*.spec.js` presses `Enter` *and* clicks
-`#rebus-btn` on the restored solved board, asserting no cell goes composing either way.
-Crushword's equivalent presses `Enter` and types a letter instead, since typing is its
-only route into composing; its `input` handler carries the same `latch.solved` guard. (It lives there because a post-`reload()` page has a sealed latch without
-having opened a dialog; appending it to "board is locked after solve" would put key
-injection immediately after a native-dialog Escape, where it is unreliable — see root
-`CLAUDE.md` → e2e letter input.) What remains untested is the *reachability* half of the
-argument: a refactor that marks cells `.correct` without going through `checkIfFilled`
-could produce a solved board while a cell composes, by a route no test covers. Such a
-change must give `latch.check` its own composing exclusion rather than relying on this.
+**`syncUI()`'s latch call carries no composing exclusion — it is safe because the dangerous
+state is unreachable.** `latch.check(checker.isSolved())` reads `.correct` markers, not fill
+state, so nothing on that path consults `isCellFilled`. All cells marked while one composes
+would mean composing on an already-solved board, and once solved, `composer.toggle` refuses
+composition whichever route reaches it (the keydown handler also returns first). Both routes
+are pinned by the "a solved board restores …" e2e in each tool (Crushword presses `Enter` and
+types a letter, since typing is its only route in). **Not covered:** *reachability* — a
+refactor that marks cells `.correct` without going through `checkIfFilled` could yield a
+solved board while a cell composes, by a route no test exercises; such a change must give
+`latch.check` its own composing exclusion.
 
-**One function serves both modes.** `makeBoardChecker` (in `shared/engine-state.js`) is
+**One function serves both modes.** `makeBoardChecker` (in `shared/engine-state.mjs`) is
 the board-state and answer-checking core shared by every tool. The guard,
 the `syncUI()` calls and the solved-board marking are shared; `hashed` selects only how
-correctness is evidenced — a per-cell `isCellCorrect` comparison against `data.letters`,
+correctness is evidenced — a per-cell comparison against `data.letters`,
 or one SHA-256 of the delimited board string against `boardHash`. The two modes are
 therefore symmetric by construction rather than by two copies kept in step by hand. The
 engines supply only what genuinely differs: the cell enumeration and what "solved"
@@ -674,50 +665,48 @@ clue groups deliberately hide entry boundaries).
 
 ## Print-mode state erasure
 
-**Rule:** Printing a puzzle must produce a clean, unsolved appearance regardless of solve state. All cell fill colors (active, highlighted, correct) must reset to white. All clue styling (active highlight, correct strikethrough) must reset to unstyled.
+**Rule:** Printing a puzzle always produces the blank, unsolved puzzle regardless of solve state — never the solver's progress. Entered letters (`.cell-letter`) are hidden. All cell fill colors (active, highlighted, correct) must reset to white. All clue styling (active highlight, correct strikethrough, filled dimming) must reset to unstyled. A half-way state (letters without their correctness, or the reverse) is never printed.
 
-**Applies to:** `shared/themes/print-base.css` (the cross-tool resets) followed by each tool's `template/print.css` (tool-specific layout rules) — both concatenated *after* the theme CSS by `composeThemeCss`. `print-base.css` is the final override layer: its declarations are `!important`, so the resets win over any theme rule regardless of selector specificity or source order (without it, a theme highlight rule that ties or exceeds the reset's specificity could silently survive in print). A tool's `print.css` that needs to override a base reset must also use `!important`. The shared base covers all cell-state selectors (`.cell`, `.cell.active-entry`, `.cell.active-cell`, `.cell.correct`, `.cell.secondary-entry`) and clue-state selectors (`.clue-item.active-clue`, `.clue-item.secondary-entry`, `.clue-item.correct .clue-text`). A tool's `print.css` handles only tool-specific non-cell overrides — e.g. MB's `.clue-group.active-clue` (MB uses `.clue-group` not `.clue-item` for clue highlights) and layout adjustments. Do not add per-tool cell-state selectors to a tool's `print.css` — the shared `!important` reset already covers every cell class.
+**Applies to:** `shared/themes/print-base.css` (the cross-tool resets) followed by each tool's `template/print.css` (tool-specific layout rules) — both concatenated *after* the theme CSS by `composeThemeCss`. `print-base.css` is the final override layer, `!important` by design (rationale in its header comment); a tool's `print.css` that needs to override a base reset must also use `!important`. The shared base hides `.cell-letter` and covers all cell-state selectors (`.cell`, `.cell.active-entry`, `.cell.active-cell`, `.cell.correct`, `.cell.secondary-entry`) and clue-state selectors (`.clue-item.active-clue`, `.clue-item.secondary-entry`, `.clue-item.correct .clue-text`, `.clue-item.filled .clue-text`). A tool's `print.css` handles only tool-specific non-cell overrides — e.g. MB's `.clue-group.active-clue` (MB uses `.clue-group` not `.clue-item` for clue highlights) and layout adjustments. Do not add per-tool cell-state selectors to a tool's `print.css` — the shared `!important` reset already covers every cell class.
 
-**How to verify:** Mark some cells correct, then print (or use browser print preview) — no green fills, no struck-through clues.
+**How to verify:** Fill some cells and mark some correct, then print (or use browser print preview) — no letters, no green fills, no struck-through clues.
 
 ---
 
 ## Solve celebration / done-wrong banner
 
-**Rule:** The done-wrong banner (`#done-wrong`) appears when all cells are filled but not every cell carries `.correct`. It is driven exclusively by `syncUI()` — event handlers never set its visibility directly.
+**Rule:** The done-wrong banner (`#done-wrong`) appears when all cells are filled but not every cell carries `.correct`. It is driven exclusively by `syncUI()`, through `syncSolveState` — event handlers never set its visibility directly.
 
-The solve celebration is **not** a banner and is not `syncUI()`-driven. `syncUI()` reports solved-ness to `latch.check()`; the latch fires `onComplete` on the first false→true transition only, which opens the `#congrats-dialog` modal. The difference is observable: the done-wrong banner is re-derived on every `syncUI()` and so reappears whenever the board is in that state, while the celebration fires once per page load and does not reopen on a reload of a solved board (see "Emission guarantee").
+The solve celebration is **not** a banner and is not `syncUI()`-driven. `syncUI()` reports solved-ness to `latch.check()`; the latch fires `onComplete` on a false→true transition only, which opens the `#congrats-dialog` modal. The difference is observable: the done-wrong banner is re-derived on every `syncUI()` and so reappears whenever the board is in that state, while the celebration fires once per solve and does not reopen on a reload of a solved board (see "Emission guarantee").
 
 ---
 
 ## localStorage key format
 
-**Rule:** Auto-save keys must include a tool discriminator to prevent cross-tool collisions. An author who publishes both a Snake Charmer and a Spiral puzzle with the same title and date would otherwise have them clobber each other's save.
+**Rule:** The auto-save key is `vp:<tool>:<boardHash>` (`storageKey` in `shared/engine-chrome.mjs`; why the board hash is beside it). The tool discriminator keeps two tools apart, since the same answers in two formats make the same board string and so the same hash.
 
 | Tool | Key format |
 |---|---|
-| Snake Charmer | `vp:sc:<title>\|<date>` |
-| Spiral | `vp:sp:<title>\|<date>` |
-| Marching Bands | `vp:mb:<title>\|<date>` |
-| Crushword | `vp:cw:<title>\|<date>` |
+| Snake Charmer | `vp:sc:<boardHash>` |
+| Spiral | `vp:sp:<boardHash>` |
+| Marching Bands | `vp:mb:<boardHash>` |
+| Crushword | `vp:cw:<boardHash>` |
 
-**Save format:** every tool's payload shares this field set: `{ v: 1, cellCount, letters, correct, activeMs, composing }`. `letters` and `correct` are shaped per tool (array vs. object, keyed how the tool addresses cells) — see each tool's own `CLAUDE.md` → its save-format section for its exact shape (Marching Bands, for instance, uses `cellCount: N²−1` for odd N or `N²` for even N, where N is the grid size). `v` is a schema version; restore code must reject saves where `v !== 1` (enables clean future upgrades without leaking old-format data into new code). `activeMs` is the accumulated active-solve time in ms. `composing` is the id of the cell left mid-composition, or null — see "Composition is saved state" above.
+**Save format:** every tool's payload shares this field set: `{ v: 1, letters, correct, activeMs, composing }`. `letters` is an object from cell id to the cell's letters and `correct` an array of cell ids, in every tool — both come from `makeCellStore` (`shared/engine-state.mjs`). `v` is the schema version, `SAVE_VERSION` in `shared/engine-chrome.mjs`: restore ignores a save whose `v` differs, and the rule for when to bump it is beside the constant. Restore also ignores a save that names a cell the board lacks (`makeCellStore`'s `fitsSave`, which each engine passes to `setupStorage` as `fits`), since two boards can share a key (why beside `storageKey`). `activeMs` is the accumulated active-solve time in ms. `composing` is the id of the cell left mid-composition, or null — see "Composition is saved state" above.
 
 **`correct` carries cells only, deliberately.** Everything else a solved board shows is derivable, so it is re-derived at restore rather than persisted — `checker.repaintIfSolved()` re-runs `markSolved()` when every restored cell is marked, which is what puts the clue-item `.correct` marks back in the tools that paint them. Do not add a clue array to the payload; that would be a schema change for state the marks already imply.
 
-**Guards:** Both `saveState()` and `restoreState()` return early if `title` or `date` is absent — a degenerate key like `vp:sc:|` would be a collision magnet across all untitled/undated puzzles of that type. Puzzles without dates do not get auto-save.
-
-**Timing contract:** `saveState()` is called only at state-mutation sites — the backspace block, space block, input event handler, and the answer-check handler's **correct branch only**. A wrong guess from Check Cell marks nothing and must not write (pinned by the Check Cell pair in each tool's `e2e/*.spec.js`); the elapsed time its write used to flush reaches storage at the next mutation site instead, or on `visibilitychange→hidden` (pinned by `shared/test/engine-state.timer.test.js`). It is NOT called from `syncUI()`, which fires on every focus movement and would write identical data on every keystroke. Restore runs through `restoreAndSeal` (the "Restore & focus" row of "Engine bootstrap & structure") just before the first `focusCell()`, so `.correct` classes are applied before `syncUI()` runs and the restored solved state is visible immediately. `clearState()` removes the key; it is called by the Clear button after the two-click arm sequence.
+**Timing contract:** `saveState()` is called only at state-mutation sites — the backspace block, space block, input event handler, and the answer-check handler's **correct branch only**. A wrong guess from Check Cell marks nothing and must not write (pinned by the Check Cell pair in `e2e/shared.spec.js`); the elapsed time reaches storage at the next mutation site, or on `visibilitychange→hidden` (pinned by `shared/test/engine-state.timer.test.js`). It is NOT called from `syncUI()`, which fires on every focus movement and would write identical data on every keystroke. Restore runs through `restoreAndSeal` (the "Restore & focus" row of "Engine bootstrap & structure") just before the first `focusCell()`, so `.correct` classes are applied before `syncUI()` runs and the restored solved state is visible immediately. `clearState()` removes the key; it is called by the Clear button after the two-click arm sequence.
 
 **Applies to:** each tool's `src/template/engine.js`.
 
-**Clear button (`#clear-btn`):** Lives inside the options menu (`#menu-panel`, see "Options menu" above), not `#controls` — moving the board-reset action out of the always-visible controls row and behind a deliberate open-the-menu step is what keeps a stray click from resetting real solving progress. Labeled "Clear Puzzle". Uses a two-click arm pattern: first click changes the label to "Are you sure?" and adds class `.armed` for 3 seconds; second click runs the engine's `resetBoard` (see the contract below) and closes the menu. The button carries `type="button"` to avoid accidental form submission. Since `#clear-btn` is `width: 100%` of the panel (`theme-components.css`), it's `#menu-panel` itself whose shrink-to-fit width would otherwise change with the label — stabilised by a `base.css` rule `#clear-btn::after { content: 'Are you sure?'; display: block; height: 0; overflow: hidden; visibility: hidden; }` reserving the wider of the two labels (measured — "Are you sure?" beats "Clear Puzzle" despite having fewer wide characters), so the panel doesn't visibly narrow while armed.
+**Clear button (`#clear-btn`):** Lives inside the options menu (`#menu-panel`, see "Options menu" above), not `#controls` — moving the board-reset action out of the always-visible controls row and behind a deliberate open-the-menu step is what keeps a stray click from resetting real solving progress. Labeled "Clear Puzzle". Uses a two-click arm pattern: first click changes the label to "Are you sure?" and adds class `.armed` for 3 seconds; second click runs the engine's `resetBoard` (see the contract below) and closes the menu. The button carries `type="button"` to avoid accidental form submission. The panel doesn't narrow while armed because `base.css` reserves the wider label's width (rationale beside that rule).
 
-**Check Cell button visibility preference — its own key, deliberately outside the board save.** `setupCheckBtnPref(key)` persists under `<the puzzle's own key>:showCheckBtn`, not a field inside the `setupStorage` blob `resetBoard()`'s `clearState()` erases. It is a display preference the solver set for this puzzle, not board state, so Clear Puzzle must leave it alone — pinned by an e2e test asserting the toggle and `#check-btn`'s hidden state both survive a full Clear cycle. Absent (first load, or a puzzle saved before this feature existed) defaults to visible, matching the checkbox starting checked. Not built on `setupStorage` itself: that helper's `v`/`cellCount` schema-version guard is board-shaped and meaningless for a lone boolean.
+**Check Cell button visibility preference — its own key, deliberately outside the board save.** `setupCheckBtnPref(key)` persists under `<the puzzle's own key>:showCheckBtn` so Clear Puzzle leaves it alone (rationale on `setupCheckBtnPref` in `shared/engine-chrome.mjs`) — pinned by an e2e test asserting the toggle and `#check-btn`'s hidden state both survive a full Clear cycle.
 
-**`resetBoard()` contract:** Each engine's `resetBoard()` (Clear and Play again) calls `resetAndRefocus` (`shared/engine-state.js`), which fixes the order: `composer.reset()` first, then the engine's `clearBoard`, `clearState()`, `timer.reset()`, `latch.reset()`, and the engine's `focusInitial` last — the function's comment says why the ends are pinned. `clearBoard` must return the board to its freshly-loaded state:
+**`resetBoard()` contract:** Each engine's `resetBoard()` (Clear and Play again) calls `resetAndRefocus` (`shared/engine-state.mjs`), which fixes the order: `composer.reset()` first, then the engine's `clearBoard`, `clearState()`, `timer.reset()`, `latch.reset()`, and the engine's `focusInitial` last — the function's comment says why the ends are pinned. `clearBoard` must return the board to its freshly-loaded state:
 
-- Zero all letter state, clearing each letter's text through `setLetterText` (never a raw `textContent` write, which leaves a stale `len-*` class).
+- Zero all letter state through the engine's `setCellLetter`, the one writer of a cell's letter, so the engine's record, the displayed text and its `len-*` class are cleared together (never a raw `textContent` write).
 - Remove `.correct` from all cells and letters, and from clue items in the tools that mark them (Snake Charmer, Spiral, Crushword — Marching Bands marks none).
 - Empty `flashLayer`.
 - Reset the navigation sub-mode to its initial value (`mode = 'row'` for Marching Bands, `direction = 'inward'` for Spiral, `direction = 'across'` for Crushword; Snake Charmer's loop resets through `focusInitial`).
@@ -728,7 +717,7 @@ No page reload occurs — the board resets entirely in memory.
 
 ## Completion event — `varietypack:complete`
 
-**Rule:** On the first false→true transition of "board solved" during a page load, every engine emits `varietypack:complete` on `.puzzle-main` and posts to `window.parent`. Implemented via `makeCompletionLatch` in `shared/engine-state.js`.
+**Rule:** On each false→true transition of "board solved", every engine emits `varietypack:complete` on `.puzzle-main` and posts to `window.parent`. Implemented via `makeCompletionLatch` in `shared/engine-state.mjs`.
 
 ### CustomEvent
 
@@ -762,7 +751,11 @@ window.parent?.postMessage(
 )
 ```
 
-**`solution` is intentionally absent from `postMessage`.** The `'*'` targetOrigin broadcasts to any parent host. In hashed builds, `solution` is proof-of-knowledge and must not be broadcast to unknown origins. In non-hashed builds the answers are in the HTML anyway, so this is a belt-and-suspenders exclusion.
+**By default `solution` is absent from `postMessage`.** The `'*'` targetOrigin broadcasts to any parent host. In hashed builds, `solution` is proof-of-knowledge and must not be broadcast to unknown origins. In non-hashed builds the answers are in the HTML anyway, so this is a belt-and-suspenders exclusion.
+
+**`embedOrigin` variant.** A build with `embedOrigin` (the `--embed-origin` flag, carried in `PUZZLE_DATA`) posts the same message **with `solution`** to that one origin instead of `'*'`: `postMessage({ ...message, solution }, embedOrigin)`. Exactly one message is posted either way, so a host never counts a solve twice, and a parent on any other origin receives nothing. The origin is checked as part of build validation (`validateEmbedOrigin`: http(s), no path, no trailing slash, and written as a browser serializes it, so lowercase with no default port). A bad one is a validation error that names the form to use; it is never rewritten, since the string ships as written.
+
+Verification is meaningful only for **hashed** builds: the host checks `e.origin`, then `sha256hex(solution) === boardHash`, using the `boardHash` from the muddled YAML, so it never needs plaintext answers. A plain build ships its letters, so its posted solution proves nothing (the build says so in a note).
 
 ### `solution` — canonical board string per tool
 
@@ -773,22 +766,27 @@ window.parent?.postMessage(
 | Marching Bands | Row-major order (1 → N²), skipping the center cell, each normalized (lowercased), joined with `CELL_DELIM` |
 | Crushword | Row-major cell order (top-left to bottom-right), skipping blocked cells entirely (not an empty segment), each normalized (lowercased), joined with `CELL_DELIM` |
 
-**Cells, not letters.** A cell may hold a multi-letter rebus group (bracket notation, see each tool's `docs/SPEC.md`), so the board string is not a plain letter concatenation. `joinCells` (in `shared/boardString.js`) joins normalized per-cell strings with `CELL_DELIM` (`.`) — a non-alphabetic character, so it can never collide with normalized cell content (`[a-z]` only). Without the delimiter, a solver's `["ha", "ro"]` would hash identically to the correct `["har", "o"]` and a wrong board would report as solved. The join is over cells that **exist** in traversal order — never over grid positions: Marching Bands' center square (odd N) contributes nothing to the string, not an empty segment.
+**Cells, not letters.** A cell may hold a multi-letter rebus group (bracket notation, see each tool's `docs/SPEC.md`), so the board string is not a plain letter concatenation. `joinCells` (in `shared/boardString.mjs`) joins normalized per-cell strings with `CELL_DELIM` (`.`) — neither a letter nor a digit, so it can never collide with normalized cell content (`[a-z0-9]` only). Without the delimiter, a solver's `["ha", "ro"]` would hash identically to the correct `["har", "o"]` and a wrong board would report as solved. The join is over cells that **exist** in traversal order — never over grid positions: Marching Bands' center square (odd N) contributes nothing to the string, not an empty segment.
 
 This is the same string `makeBoardChecker`'s `getSolution()` builds and `checkIfFilled()` passes to `sha256hex()` for every tool.
 
 ### Timing semantics — `timeMs`
 
-`timeMs` is **active solve time**: total duration the puzzle was open and visible, from the first letter input to completion, accumulated across sessions. The clock starts on first letter-mutation (not page load), pauses when the tab is hidden, resumes when visible. Open-but-idle time counts; no idle detection.
+`timeMs` is **active solve time**: total duration the puzzle was open and visible, from the first letter input to completion, accumulated across sessions. The clock starts on first letter-mutation (not page load), pauses when the tab is hidden, resumes when visible, and stops at completion, so the saved `activeMs` of a solved puzzle is its solve time. Open-but-idle time counts; no idle detection.
 
-**Persistence:** The accumulator is saved in the auto-save localStorage payload under `activeMs`. On `visibilitychange→hidden`, the `setupTimer` function (in `shared/engine-state.js`) folds the running interval and calls the engine's `saveState` so the accumulated time survives tab-close.
+**Persistence:** The accumulator is saved in the auto-save localStorage payload under `activeMs`. On `visibilitychange→hidden`, the `setupTimer` function (in `shared/engine-state.mjs`) folds the running interval and calls the engine's `saveState` so the accumulated time survives tab-close.
 
 ### Emission guarantee
 
-Fires exactly once per page load, on the first false→true solved transition. Restoring a previously-solved puzzle from localStorage does not re-emit — the latch is sealed immediately after `restoreState()`.
+Fires once per solve: on the false→true solved transition, after which the latch stays sealed until Clear or Play again re-arms it (`resetAndRefocus`), so solving again in the same page load fires again. Restoring a previously-solved puzzle from localStorage does not re-emit — the latch is sealed immediately after `restoreState()`.
 
 ### Implementation
 
-`makeCompletionLatch` and `setupTimer` live in `shared/engine-state.js`; every engine builds the pair through `setupSolveTracking`, passing its congrats dialog's `open` as `onComplete` so `engine-state.js` never calls into `engine-chrome.js`.
+`makeCompletionLatch` and `setupTimer` live in `shared/engine-state.mjs`; every engine builds the pair through `setupSolveTracking`, passing its congrats dialog's `open` as `onComplete` so `engine-state.mjs` never calls into `engine-chrome.mjs`.
 
-**Applies to:** `shared/engine-state.js`, all four `src/template/engine.js` files, all four hashers.
+**Applies to:** `shared/engine-state.mjs`, all four `src/template/engine.js` files, all four `src/prepare.js` files.
+
+## Embedding — auto-sizing
+
+Every engine calls `setupEmbedResize()` (`shared/engine-chrome.mjs`) once, at the start of its *Event wiring*. When the page is framed (`window.parent !== window`) and `ResizeObserver` exists, it posts `{ type: 'varietypack:resize', height }` to the parent with targetOrigin `'*'` (a page height isn't sensitive), where `height` is `ceil(document.documentElement.getBoundingClientRect().height)`: the page's own box, not `scrollHeight`, which is never below the iframe's viewport and so could not shrink. It posts when the height first becomes known and again only when it changes, so a host can set its iframe's height directly. An unframed page posts nothing.
+

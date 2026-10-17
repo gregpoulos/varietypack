@@ -16,8 +16,9 @@ Every puzzle YAML, regardless of tool, starts with these fields:
 | `kind` | yes | string | Identifies the tool (`"snake-charmer"`, `"spiral"`, `"marching-bands"`, or `"crushword"`); must match exactly |
 | `title` | yes | string | Displayed in the puzzle header and browser tab |
 | `author` | no | string | Displayed in the puzzle header |
-| `date` | no | string | Displayed in the puzzle header; also used as part of the auto-save key |
+| `date` | no | string | Displayed in the puzzle header |
 | `instructions` | no | string | Puzzle instructions; supports multiple paragraphs separated by blank lines. Most tools show it between the header and the grid — Snake Charmer places it at the top of the clue column instead, since its layout has no full-width band. Accepts the same markdown subset as `clue` (below). |
+| `theme` | no | string | Visual theme: `broadsheet` or `skeleton`. The `--theme` flag overrides it. Default `broadsheet`. See "Themes and fonts" |
 
 Beyond these, each tool adds its own puzzle-content fields (e.g. `entries`,
 `inward`/`outward`, `rows`/`bands`, `grid`/`across`/`down`) — see that
@@ -31,6 +32,11 @@ a flat list, `across`/`down` maps, row/band arrays) has:
 | `clue` | yes | string | The clue text shown to the solver. Accepts the markdown subset below. |
 | `answer` | yes | string | The answer in plain text; may include spaces, hyphens, apostrophes, or other punctuation for readability. See "Rebus cells" for bracket notation. |
 | `styles` | no | object | Cell decorations — see "Cell styles" below. |
+
+**Unknown keys warn.** A key that isn't one of these, or one of the tool's own
+fields, gets a warning such as `inward[0]: unknown key "style" (is it a typo?)`,
+since a misspelled field would otherwise be silently ignored. It's only a
+warning: a file may carry keys of its own, and the build ignores them.
 
 ---
 
@@ -76,23 +82,29 @@ and instructions text".
 ## Normalization
 
 Before an answer is counted into cells, validated, or hashed, it is
-normalized: **strip all non-alphabetic characters (spaces, hyphens,
-apostrophes, punctuation), then lowercase.** Only A–Z count toward cell
-length.
+normalized: **accents are removed (É → E, Ñ → N), everything that isn't a
+letter is stripped (spaces, hyphens, apostrophes, punctuation), and the
+result is lowercased.** Only A–Z and 0–9 count toward cell length, and a
+digit is a letter like any other: `R2D2` is four cells.
 
 ```
 "LIE TO"    → "lieto"
 "WAH-WAH"   → "wahwah"
 "DON'T"     → "dont"
 "EDWARD IV" → "edwardiv"
+"JALAPEÑO"  → "jalapeno"
 ```
 
 This means you're free to write multi-word or hyphenated answers with
-natural punctuation (`"LIE TO"`, `"SELF-SERVE"`, `"DON'T"`) for readability
-— the build step strips it before counting cells or hashing, so it never
-affects grid size or the answer's stored form. This is the same
-normalization rule used throughout the codebase; see root `CLAUDE.md` →
-"Normalization" for the canonical statement.
+natural punctuation (`"LIE TO"`, `"SELF-SERVE"`, `"DON'T"`) and accents
+(`"CAFÉ"`) for readability — the build step strips them before counting
+cells or hashing, so they never affect grid size or the answer's stored
+form. Solvers can type accented letters too: an É typed into a cell counts
+as E.
+
+A letter that can't be typed as A–Z or 0–9 — Æ, Ø, ß, ½, or a letter from
+another alphabet — is a validation error rather than being silently dropped.
+Spell it out: `AE`, or `[AE]` to keep both letters in one cell.
 
 ---
 
@@ -115,7 +127,17 @@ cells" below) counts as one position, not one per letter.
   answer: "S[HAR]ON"
   styles:
     circle: [1]        # cell sequence is s=0 [har]=1 o=2 n=3; circles the har rebus cell
+- clue: "Something to mull over"      # crosses "Mislead" at its T
+  answer: "THOUGHT"
+  styles:
+    circle: [0]        # the same cell as LIE TO's position 3 — list it here too
 ```
+
+**A circled cell is circled on every entry that covers it.** A cell is
+usually part of two entries (an across and a down, a row and a band, an
+inward and an outward). Circle it on each; if you miss one, the build fails
+with an error naming the entry and the position to add. The tools draw one
+circle per cell however many entries list it.
 
 Recognized style names:
 
@@ -139,10 +161,14 @@ one cell per character:
 answer: "S[HAR]ON"   # cells: s | har | o | n  (4 cells, not 6)
 ```
 
-**The mental model:** a rebus cell is a *picture* standing for a chunk of a
-word. It occupies one square, is entered as one unit, and has no reading
-direction. An answer with no brackets parses exactly as before, so if you
-never use this notation nothing changes for you.
+**The mental model:** a rebus cell holds a chunk of a word in one square and
+is entered as one unit. Where an entry reads a cell against the direction
+it's written — Spiral's outward answers, a Marching Bands band along its
+bottom edge — it may spell the chunk either way: inward `S[HAR]ON` pairs
+with outward `NO[HAR]S` or `NO[RAH]S`. The cell holds the forward spelling
+(the inward answer's, or the row's), and that is what a solver types. An
+answer with no brackets parses exactly as before, so if you never use this
+notation nothing changes for you.
 
 **Cell count, not letter count.** Everywhere a puzzle format talks about
 entry length, grid size, or row/band totals, it's counting *cells*:
@@ -213,17 +239,21 @@ cells feed that tool's board hash and in what order. Algorithmic detail
 
 ## Themes and fonts
 
-Select a visual theme with `--theme <name>` (default `broadsheet`). Themes
+Select a visual theme with the YAML's `theme:` field or the `--theme <name>`
+flag, which overrides it (default `broadsheet`). Themes
 control colors, fonts, and decorative styling — never layout — and are
 shared across all four tools:
 
 - **`broadsheet`** (default) — warm newsprint aesthetic: off-white
   background, Georgia serif, ink-on-paper feel. Uses only system fonts.
 - **`skeleton`** — dark mode: near-black background, vivid purple accents,
-  and a custom display typeface that needs a `--font` mode (below).
+  and a custom display typeface that can be delivered two ways (below).
+
+Some themes dim a clue once all its cells are filled (`broadsheet` does) — a visual
+progress cue only; it says nothing about whether the entry is right.
 
 **Custom fonts.** A theme that uses a non-system font (currently
-`skeleton`) requires a `--font` mode:
+`skeleton`) is delivered by one of two `--font` modes, `embed` by default:
 
 - `--font embed` — inlines the font as base64 so the output HTML stays
   self-contained, at the cost of the font's bytes in every file.
@@ -231,8 +261,23 @@ shared across all four tools:
   it loads in the solver's browser on every open and so needs network
   access at solve time.
 
-The flag is required when the theme uses custom fonts and silently ignored
-for system-font themes like `broadsheet`.
+Without the flag, a custom-font theme uses `embed` (or `link` when it has no
+local font files). The flag is silently ignored for system-font themes like
+`broadsheet`.
+
+### Theme overrides
+
+To make a puzzle match another site, override individual theme tokens with `themeTokens:`, a map from token name to CSS value, applied on top of the chosen theme:
+
+```yaml
+theme: broadsheet
+themeTokens:
+  color-bg: "#fdf6e3"
+  color-btn-bg: "#1e5799"
+  font-body: "Georgia, serif"
+```
+
+Token names are the `--theme-*` custom properties declared in `shared/themes/theme-base.css`, written without the `--theme-` prefix. An unknown name is an error. Values are plain CSS values of at most 200 characters; anything that could end the declaration, open a comment or string that outlives it, or load something (`;`, `{`, `}`, `[`, `]`, `<`, `>`, `@`, `\`, `/*`, `url(`, unbalanced quotes or parentheses) is rejected. The studio edits the same map under Puzzle settings → Theme overrides.
 
 See root `CLAUDE.md` → "Shared library pattern" for how to add a new theme
 (a project-level, not puzzle-authoring, task).
@@ -240,6 +285,8 @@ See root `CLAUDE.md` → "Shared library pattern" for how to add a new theme
 ---
 
 ## CLI usage
+
+If you'd rather not use a command line, the studio (`npm run build:studio`, then open `studio/build/index.html`) edits, previews and exports puzzles in the browser with the same validators and build; see `README.md` → "Studio".
 
 Every tool's CLI takes the same shape:
 
@@ -255,6 +302,6 @@ varietypack build <input.yaml> [options]
 
 Shared options, accepted by every tool, are documented in the root
 `README.md` → "Global options" (`--muddle`, `--theme`, `--font`,
-`--minify`, `-o`, `-f`/`--force`, `-h`/`--help`). A few tools also accept
+`--minify`, `-o`/`--output`, `-f`/`--force`, `-h`/`--help`). A few tools also accept
 their own extra flags (e.g. Snake Charmer's `--shape`) — see that tool's
 `docs/SPEC.md` and `CLAUDE.md`, or run `<tool> --help`.

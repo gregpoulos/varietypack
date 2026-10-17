@@ -22,14 +22,14 @@ varietypack build examples/ --build-index
 # Watch a directory for changes and rebuild automatically
 varietypack watch examples/
 
-# Validate one or more puzzle files without building
+# Validate a puzzle file, or every puzzle in a directory, without building
 varietypack validate puzzle.yaml
 
 # Produce a muddled YAML (answers obscured) for distribution
 varietypack muddle puzzle.yaml
 ```
 
-The `varietypack` dispatcher reads the `kind` field from each YAML and routes to the correct tool automatically. In directory mode, all YAML files are built; files without a recognised `kind` are skipped with a warning.
+The `varietypack` dispatcher reads the `kind` field from each YAML and routes to the correct tool automatically. In directory mode, all YAML files are built; files without a recognized `kind` are skipped with a warning.
 
 ### Muddling puzzles
 
@@ -55,15 +55,16 @@ These are supported by every tool:
 | Option | Default | Description |
 |---|---|---|
 | `--muddle` | off | Build a hashed (answer-obscured) HTML from a source YAML — no `hashed:` field needed. Muddled YAMLs (which carry `boardHash:`) build hashed automatically without this flag. |
-| `--theme <name>` | `broadsheet` | Visual theme. The theme list is shared across all tools (see `docs/AUTHORING.md` → "Themes and fonts"); all tools ship at least `broadsheet` and `skeleton`. Themes with custom fonts (e.g. `skeleton`) require `--font`. |
-| `--font <mode>` | — | Font delivery for custom-font themes: `embed` inlines fonts as base64 (self-contained output) or `link` references a CDN via `@import` (needs network at solve time). Required when the theme uses custom fonts; silently ignored for system-font themes. |
+| `--theme <name>` | the YAML's `theme:`, else `broadsheet` | Visual theme; overrides the YAML's `theme:` field. The theme list is shared across all tools (see `docs/AUTHORING.md` → "Themes and fonts"); all tools ship at least `broadsheet` and `skeleton`. |
+| `--font <mode>` | `embed` | Font delivery for custom-font themes: `embed` inlines fonts as base64 (self-contained output) or `link` references a CDN via `@import` (needs network at solve time). Defaults to `embed` (or `link` for a theme with no local font files); ignored for system-font themes. |
+| `--embed-origin <origin>` | off | Post the completion message, including the solution, to this one parent origin (e.g. `https://hunt.example.com`) and no other, for embedding. Meaningful with `--muddle`: the host can check the solution against the `boardHash`. |
 | `--minify` | off | Minify the generated HTML: terser-minifies each `<script>`, clean-css minifies each `<style>`, strips comments, and trims trailing whitespace. |
-| `-o <output.html>` | `<input-basename>.html` | Output path. Defaults to writing next to the input file. |
+| `-o`, `--output <file>` | `<input-basename>.html` | Output path. Defaults to writing next to the input file. |
 | `-f`, `--force` | off | Overwrite the output file if it already exists. |
 
 ### Tool-specific options
 
-Some tools accept additional options. Pass them after the path argument.
+Some tools accept additional options. When building a directory, each applies only to the puzzles of that kind, so `--shape` reshapes the Snake Charmers and the other puzzles ignore it; given to a single puzzle of another kind, it's an error.
 
 | Tool | Options |
 |---|---|
@@ -192,7 +193,7 @@ See [crushword/docs/SPEC.md](crushword/docs/SPEC.md) for the full format referen
 
 ## Themes
 
-All tools share one set of themes. A theme controls colors, fonts, and decorative styling — never layout. Select one with `--theme <name>` (default `broadsheet`). The repo ships `broadsheet` (warm newsprint, system serif) and `skeleton` (dark, custom display font).
+All tools share one set of themes. A theme controls colors, fonts, and decorative styling — never layout. Select one with the YAML's `theme:` field or `--theme <name>`, which overrides it (default `broadsheet`). The repo ships `broadsheet` (warm newsprint, system serif) and `skeleton` (dark, custom display font).
 
 **Creating a theme** is two steps:
 
@@ -210,12 +211,56 @@ skeleton: {
 },
 ```
 
-Custom-font themes require a `--font` mode at build time:
+Custom-font themes take a `--font` mode (default `embed`, or `link` for a theme with no local font files):
 
 - `--font embed` — base64-inlines `faces` into `@font-face`; the HTML stays self-contained (no network at solve time) at the cost of the font's bytes in every file.
 - `--font link` — emits an `@import` to `cdn.url`; smaller HTML, but the font loads from the CDN in the solver's browser on every open.
 
-Declare `faces` for embed, `cdn` for link, or both. The flag is required for custom-font themes and silently ignored for system-font ones.
+Declare `faces` for embed, `cdn` for link, or both. The flag is silently ignored for system-font themes.
+
+---
+
+## Studio
+
+The studio is a browser page for composing puzzles without the command line. Open or create a puzzle of any kind, edit its YAML with live problem checking, test-solve the built puzzle page, and export it. It runs the same build path as the CLI, in the page, so what it builds is byte-identical to what `varietypack build` writes; nothing is sent anywhere.
+
+Build it once, then open it from disk or host the single file anywhere:
+
+```fish
+npm install
+npm run build:studio    # writes studio/build/index.html
+```
+
+What it does today:
+
+- **A structured editor for every kind**: type letters onto the real board (the spiral, the ring, the grid), split entries where you want them (Crushword: place blocks as you go, with an optional symmetry lock and live numbering), and clue them in a panel beside the board. New puzzles start from a chosen size; opening a source file imports it into the editor, and it exports a file that builds the same page.
+- **YAML mode for every kind**, for power users and for files the editor can't represent, starting from a kind's example, an opened `.yaml` file, or a saved draft.
+- **Live problems list** (the same validators as `varietypack validate`) and a **sandboxed preview** you can test-solve, with a "test-solved in m:ss" badge.
+- **Export** of the puzzle page, the puzzle page with answers hidden, the source YAML (verbatim) and the muddled YAML. Nothing exports while the puzzle has errors.
+- **Drafts** saved automatically in the browser (answers in plain text), plus a draft file to keep a copy or move computers.
+- **Build-only mode** for a muddled YAML someone sends you: pick a theme, test-solve it, and build its page without ever seeing the answers.
+
+---
+
+## Embedding puzzles
+
+A puzzle page can sit in an iframe on another site, such as a puzzle hunt, and tell that site when it's solved. In the studio, Export → *Puzzle page for embedding* asks for the host site's origin and gives you the page plus the snippet to paste; from the command line, build with `--muddle --embed-origin <origin>`.
+
+```html
+<iframe src="puzzle.hashed.html" title="My puzzle" data-varietypack style="width:100%;border:0;min-height:480px"></iframe>
+<script>
+addEventListener('message', function (e) {
+  if (!e.data || e.data.type !== 'varietypack:resize') return;
+  document.querySelectorAll('iframe[data-varietypack]').forEach(function (f) {
+    if (f.contentWindow === e.source) f.style.height = e.data.height + 'px';
+  });
+});
+</script>
+```
+
+The page posts `varietypack:resize` whenever its height changes, so the frame fits it. When the solver finishes, it posts one `varietypack:complete` message, with the `solution`, to the origin you named and to nobody else.
+
+To verify a solve on the host's server: check that `e.origin` is the puzzle's origin, then check `sha256hex(solution) === boardHash`, using the `boardHash` from the puzzle's muddled YAML. The server never needs the answers. Only the answers-hidden (`--muddle`) page gives a verifiable solve: a plain page ships its answers, so a posted solution proves nothing. Whether a solver's progress is kept inside a cross-origin iframe depends on the browser, and hasn't been checked. A puzzle can also override theme tokens to match the host site: see [docs/AUTHORING.md](docs/AUTHORING.md) → "Theme overrides".
 
 ---
 

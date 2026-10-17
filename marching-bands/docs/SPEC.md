@@ -24,7 +24,7 @@ to Marching Bands.
 See `docs/AUTHORING.md` → "Rebus cells" for the bracket syntax, grammar,
 and how to solve a rebus cell.
 
-**Marching Bands' rule — a row and its crossing band must bracket a shared cell identically.** Every cell belongs to one Row word and one Band word, and the build cross-checks that they agree as cells — not merely that their letters, split some other way, happen to match.
+**Marching Bands' rule — a row and its crossing band must agree on each shared cell.** Every cell belongs to one Row word and one Band word, and the build cross-checks that they agree as cells — not merely that their letters, split some other way, happen to match. Along a band's bottom edge, corners included, the band reads its row right to left, so a rebus there may be spelled either way: a row's `[CAT]` may be the band's `[TAC]`. Elsewhere it must match exactly. The cell holds the row's spelling, which is what a solver types.
 
 Bracket grammar, error and warning conditions, and how cell counts feed the row/band totals: see `docs/CROSS_TOOL_SPEC.md` → "Rebus cells".
 
@@ -64,8 +64,9 @@ Band k's entry lengths must sum to `4 × (N−1−2k)`.
 - `bands` must have exactly ⌊N/2⌋ entries
 - Each band k's entries must sum to `4 × (N−1−2k)` cells
 - Every entry must have a non-empty `clue` and non-empty `answer`
-- Every shared cell's Row word and Band word must agree cell for cell, so a bracketed rebus group must match exactly, not just its letters read some other way — once all length checks pass, the build cross-checks the full grid and rejects the puzzle if any cell's Row word and Band word disagree
+- Every shared cell's Row word and Band word must agree cell for cell, so a bracketed rebus group must match exactly (or, along a band's bottom edge, match reversed), not just its letters read some other way — once all length checks pass, the build cross-checks the full grid and rejects the puzzle if any cell's Row word and Band word disagree
 - `styles`, if present on an entry, must be an object; each value must be an array of non-negative integers within the answer's cell count
+- A circled cell must be circled on every entry that covers it (error) — its row entry and its band entry
 - Unrecognized style names produce a warning, not an error
 
 ## Hashed mode

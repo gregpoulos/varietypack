@@ -6,9 +6,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const yaml = require('js-yaml');
-const { buildPuzzle } = require('../src/builder');
+const { buildPuzzle } = require('../cli');
 
-// 5x5 grid, one crossing rebus cell at (0,1): across[5]="E[TH]FGH" pos1, down[2]="B[TH]JO" pos1.
+// 5x5 grid, one crossing rebus cell at (0,1): across[5]="E[TH]FGH" pos1,
+// down[2]="B[TH]JO" pos1.
 const SAMPLE_YAML = yaml.dump({
   kind: 'crushword', title: 'Builder Test', author: 'Test', date: '2026',
   grid: ['...#.', '.....', '.....', '.....', '.#...'],
@@ -40,37 +41,11 @@ function withTmpFiles(fn) {
   }
 }
 
-test('buildPuzzle: produces an HTML file', () => {
-  withTmpFiles((yamlPath, htmlPath) => {
-    buildPuzzle(yamlPath, htmlPath);
-    assert.ok(fs.existsSync(htmlPath));
-  });
-});
-
-test('buildPuzzle: PUZZLE_DATA contains the grid and across/down objects', () => {
-  withTmpFiles((yamlPath, htmlPath) => {
-    buildPuzzle(yamlPath, htmlPath);
-    const html = fs.readFileSync(htmlPath, 'utf8');
-    assert.ok(html.includes('"grid"'));
-    assert.ok(html.includes('"across"'));
-    assert.ok(html.includes('"down"'));
-  });
-});
-
 test('buildPuzzle: PUZZLE_DATA contains maxCellLetters (defaulted to 3)', () => {
   withTmpFiles((yamlPath, htmlPath) => {
     buildPuzzle(yamlPath, htmlPath);
     const html = fs.readFileSync(htmlPath, 'utf8');
     assert.ok(html.includes('"maxCellLetters": 3'));
-  });
-});
-
-test('buildPuzzle: non-hashed HTML contains letters array and boardHash', () => {
-  withTmpFiles((yamlPath, htmlPath) => {
-    buildPuzzle(yamlPath, htmlPath);
-    const html = fs.readFileSync(htmlPath, 'utf8');
-    assert.ok(html.includes('"letters"'));
-    assert.ok(html.includes('"boardHash"'));
   });
 });
 
@@ -84,9 +59,8 @@ test('buildPuzzle: --muddle HTML contains boardHash, no letters, no plaintext an
   });
 });
 
-// "buildPuzzle returns { title }" is a pure composition of two facts each
-// tested elsewhere: preparePuzzle sets .title from the puzzle metadata
-// (test/hasher.test.js's "preparePuzzle: includes metadata fields") and
-// runBuildPuzzle returns { title: prepared.title } verbatim
-// (shared/test/runBuildPuzzle.test.js) — no crushword-specific wiring to
-// fail without one of those also failing.
+// "buildPuzzle returns { title }" is a pure composition of two facts each tested
+// elsewhere: prepareCommon sets .title from the puzzle metadata ("prepareCommon: carries
+// title, kind, author and date" in shared/test/prepare.test.js) and runBuildPuzzle
+// returns { title: prepared.title } verbatim (shared/test/runBuildPuzzle.test.js), so no
+// crushword-specific wiring can fail without one of those also failing.

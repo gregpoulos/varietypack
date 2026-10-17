@@ -17,7 +17,8 @@
   }
   .clue-section { break-inside: avoid; }
 
-  /* MB uses .clue-group.active-clue / .clue-group.secondary-entry (not .clue-item.*) — reset here since print-base.css covers the item selectors */
+  /* MB uses .clue-group.active-clue / .clue-group.secondary-entry (not .clue-item.*) —
+     reset here since print-base.css covers the item selectors */
   .clue-group.active-clue    { background: transparent !important; }
   .clue-group.secondary-entry { background: transparent !important; }
 

@@ -2,11 +2,12 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { makeCompletionLatch } = require('../../shared/engine-state');
+const { makeCompletionLatch } = require('../engine-state.mjs');
 
 function makeLatch(opts = {}) {
   const events = [];
   const msgs = [];
+  const targets = [];
   const puzzleRoot = { dispatchEvent: (e) => events.push(e) };
   const latch = makeCompletionLatch({
     puzzleRoot,
@@ -17,9 +18,10 @@ function makeLatch(opts = {}) {
     getSolution:  opts.getSolution  ?? (() => 'solution'),
     getElapsedMs: opts.getElapsedMs ?? (() => 1234),
     onComplete:   opts.onComplete,
-    _postMessage: (msg) => msgs.push(msg),
+    embedOrigin:  opts.embedOrigin,
+    _postMessage: (msg, targetOrigin) => { msgs.push(msg); targets.push(targetOrigin); },
   });
-  return { latch, events, msgs };
+  return { latch, events, msgs, targets };
 }
 
 test('check does not fire when isSolved is false', () => {
@@ -188,3 +190,22 @@ test('sealIfSolved(true) sets latch.solved without calling onComplete', () => {
   assert.strictEqual(latch.solved, true);
   assert.strictEqual(calls.length, 0);
 });
+
+test('latch: with embedOrigin, posts once to that origin, including the solution', () => {
+  const { latch, msgs, targets } = makeLatch({ embedOrigin: 'https://h.example', getSolution: () => 'a.b.c' });
+  latch.check(true);
+  latch.check(true);
+  assert.equal(msgs.length, 1);
+  assert.equal(targets[0], 'https://h.example');
+  assert.equal(msgs[0].solution, 'a.b.c');
+  assert.equal(msgs[0].type, 'varietypack:complete');
+});
+
+test('latch: without embedOrigin, posts once to "*" without the solution', () => {
+  const { latch, msgs, targets } = makeLatch();
+  latch.check(true);
+  assert.equal(msgs.length, 1);
+  assert.equal(targets[0], '*');
+  assert.ok(!('solution' in msgs[0]));
+});
+

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 'use strict';
 
-const { buildCommand }    = require('./shared/build/buildCommand');
-const { watchCommand }    = require('./shared/build/watchCommand');
-const { validateCommand } = require('./shared/build/validateCommand');
-const { muddleCommand }   = require('./shared/build/muddleCommand');
-const { writeHelpIfRequested } = require('./shared/build/globalHelp');
+const { buildCommand }    = require('./shared/cli/buildCommand');
+const { watchCommand }    = require('./shared/cli/watchCommand');
+const { validateCommand } = require('./shared/cli/validateCommand');
+const { muddleCommand }   = require('./shared/cli/muddleCommand');
+const { writeHelpIfRequested } = require('./shared/cli/globalHelp');
 
 const HELP = `Usage: varietypack <subcommand> [args] [options]
 
@@ -18,23 +18,9 @@ Subcommands:
 Run 'varietypack <subcommand> --help' for subcommand-specific help.
 `;
 
-/**
- * Pure: reads only `argv`, writes only to the injected `stdout`/`stderr`,
- * and returns an exit code rather than calling process.exit(). The
- * process.exit() call below (guarded by require.main) is the only exiting
- * wrapper — this function itself never exits the process, so it can be
- * called in-process from tests.
- *
- * `watch` is the one subcommand not converted: it runs indefinitely
- * (fs.watch) and has no meaningful "exit code" for the common case, so it
- * keeps its own internal process.exit() calls for its early error paths.
- *
- * @param {string[]} [argv] - default: process.argv.slice(2)
- * @param {object} [deps]
- * @param {{write: Function}} [deps.stdout]
- * @param {{write: Function}} [deps.stderr]
- * @returns {number} exit code
- */
+// Returns the exit code and never calls process.exit(), nor may any subcommand:
+// tests call main() in-process, and an exit would kill the test runner. The one
+// exception is `watch`, which runs until killed; main returns null for it.
 function main(argv = process.argv.slice(2), { stdout = process.stdout, stderr = process.stderr } = {}) {
   const helpCode = writeHelpIfRequested(argv, HELP, stdout);
   if (helpCode !== null) return helpCode;
@@ -43,7 +29,7 @@ function main(argv = process.argv.slice(2), { stdout = process.stdout, stderr = 
 
   switch (subcommand) {
     case 'build':    return buildCommand(rest, { stdout, stderr });
-    case 'watch':    watchCommand(rest); return 0;
+    case 'watch':    watchCommand(rest); return null;
     case 'validate': return validateCommand(rest, { stdout, stderr });
     case 'muddle':   return muddleCommand(rest, { stdout, stderr });
     default:
@@ -54,7 +40,9 @@ function main(argv = process.argv.slice(2), { stdout = process.stdout, stderr = 
 }
 
 if (require.main === module) {
-  process.exit(main());
+  const code = main();
+  // null = watch: exiting here would tear down its fs.watch handles.
+  if (code !== null) process.exit(code);
 }
 
 module.exports = { main };

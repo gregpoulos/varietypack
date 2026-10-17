@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { setupClearButton } = require('../../shared/engine-chrome');
+const { setupClearButton } = require('../engine-chrome.mjs');
 
 function makeBtn() {
   const listeners = [];

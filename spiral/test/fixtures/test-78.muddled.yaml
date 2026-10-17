@@ -56,18 +56,31 @@ outward:
   - clue: Painter of "The Death of Marat"
     length: 5
   - clue: Unwashed jeans fabric
+    styles:
+      circle:
+        - 4
     length: 8
   - clue: Moment of respite, so to speak
     length: 3
   - clue: Adjective for a coordinate plane or a dualist
+    styles:
+      circle:
+        - 3
+        - 7
     length: 9
   - clue: Addison who first gained fame on TikTok
     length: 3
   - clue: What the extra "B" is supposed to stand for in Homer's "BBBQ"
     length: 4
   - clue: Silkworm imago
+    styles:
+      circle:
+        - 2
     length: 4
   - clue: Something I can't see, often
+    styles:
+      circle:
+        - 4
     length: 6
   - clue: Actress, activist, and longtime partner of Ossie Davis
     length: 7
@@ -76,6 +89,9 @@ outward:
   - clue: Street vendor
     length: 6
   - clue: Emacs or vi, for example
+    styles:
+      circle:
+        - 5
     length: 6
 hashed: true
 format: 2

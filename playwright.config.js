@@ -1,22 +1,30 @@
 'use strict';
 
 const { defineConfig, devices } = require('@playwright/test');
+const { PHONES } = require('./e2e/mobile');
 
 // Browser-engine end-to-end tests. Run with `npm run test:e2e` (separate from the
 // `node:test` unit suite, which never loads these specs). Covers all four tools'
 // engines.
 //
-// WebKit is not redundant with Chromium. The two disagree on whether a cancelled
-// pointer event still produces a `click` for touch input, which is exactly the
-// mechanism #rebus-btn's focus preservation rests on — a Chromium-only suite reported
-// green while the button was inert on iOS. Note that even under WebKit this only
-// surfaces via `tap()`; `click()` fires either way. See the touch-tap test in
-// e2e/snake-charmer.spec.js.
+// WebKit is not redundant with Chromium: the two disagree on touch `click` after a
+// canceled pointer event. See setupRebusButton in shared/engine-chrome.mjs, and the
+// touch-tap test in e2e/snake-charmer.spec.js.
+//
+// The mobile projects run only e2e/mobile.spec.js, under real phone descriptors
+// (viewport, DPR, touch, isMobile). They still drive a desktop browser's input stack —
+// no soft keyboard, no IME — and Playwright's WebKit is not iOS Safari, so they catch
+// layout regressions, not every phone-only bug. The desktop projects skip that spec.
 module.exports = defineConfig({
   testDir: './e2e',
   fullyParallel: true,
+  use: { screenshot: 'only-on-failure' },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'webkit',   use: { ...devices['Desktop Safari'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /mobile\.spec\.js/ },
+    { name: 'webkit',   use: { ...devices['Desktop Safari'] }, testIgnore: /mobile\.spec\.js/ },
+    ...PHONES.map(({ project, device }) => ({
+      // Traces only here: recording one for every desktop test costs ~45% of the run.
+      name: project, use: { ...devices[device], trace: 'retain-on-failure' }, testMatch: /mobile\.spec\.js/,
+    })),
   ],
 });

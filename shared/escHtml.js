@@ -6,4 +6,4 @@ function escHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
-if (typeof module !== 'undefined') module.exports = escHtml;
+module.exports = escHtml;

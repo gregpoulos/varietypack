@@ -1,40 +1,22 @@
 'use strict';
 
-// Behaviors shared, byte-for-byte, across two or more of the four puzzle engines —
-// deduplicated from the per-tool e2e/*.spec.js files (root CLAUDE.md: "cross-tool
-// alignment is a standing obligation"). Each test body below is written ONCE and
-// looped over a per-tool adapter table (TOOLS); the loop supplies the per-tool
-// repetition, not a copy-pasted test.
-//
-// Two loop scopes:
-//   ALL_TOOLS  — spiral, snake-charmer, marching-bands, crushword. Used only where
-//                the behavior and its DOM contract are identical across all four.
-//   RING_TOOLS — spiral, snake-charmer, marching-bands (excludes crushword). Crushword
-//                has no rebus button (its cells compose on every keystroke instead of
-//                only multi-letter ones) and its options menu and congrats/Play-again
-//                tests were never given the same coverage as the other three — see
-//                e2e/crushword.spec.js's own header for what stays there instead.
-//                Per the brief: rather than
-//                bend these shared bodies with a per-tool conditional to paper over
-//                that, the tests that only apply to the ring-based three simply loop
-//                over RING_TOOLS and leave crushword out.
-//
-// Genuinely-diverged copies that were NOT unified here (kept per-tool, with a note
-// at the per-tool copy explaining why): crushword's "menu button opens..." test
-// (different starting fixture, plus an extra Clear-also-closes-menu assertion that
-// the other three tools instead cover inside their rebus-label-resync test);
-// crushword's "hashed puzzle solves end to end" test (uses its own cell-by-cell
-// solveBoard()/fillCell() plumbing against the non-rebus hashed fixture, not the
-// REBUS_CELLS/typeCell() mechanism the ring tools share — and crushword never had a
-// dedicated *rebus*-hashed-preimage test to begin with, despite building an unused
-// rebusHashedPath fixture for one).
+// Behaviors the engines share, each test body written once over a per-tool adapter table
+// (TOOLS). A test loops over the tools only where each engine implements the behavior or
+// wires it with arguments of its own; one that lives entirely in shared code runs on one
+// tool (root CLAUDE.md → "An e2e loop over tools follows the code"). RING_TOOLS (spiral,
+// snake-charmer, marching-bands) is for where Crushword differs — it has no rebus button
+// (its cells compose on every keystroke) and different solve plumbing, so those copies
+// stay in e2e/crushword.spec.js. Marching Bands marks no clue item .correct, so its
+// rebus-solve test stays in its own spec.
 
 const { test, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
+const yaml = require('js-yaml');
 const { typeCell } = require('./helpers');
+const { sha256hex } = require('../shared/sha256hex.mjs');
 
 // ---- Per-tool adapters -----------------------------------------------------
 
@@ -67,13 +49,13 @@ async function solveRingBoard(page) {
 // direction), so it must be solved cell-by-cell by id, same as e2e/crushword.spec.js's
 // own solveBoard()/fillCell(). Enter commits each cell explicitly — required for the
 // last cell of the loop, which would otherwise stay composing.
-async function solveCrushwordBoard(page) {
+async function solveCrushwordBoard(page, toTyped = ch => ch.toUpperCase()) {
   const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
   const pairs = [];
   letters.forEach((letter, i) => { if (letter !== null) pairs.push({ id: i + 1, letter }); });
   for (const { id, letter } of pairs) {
     await page.locator(`#cell-${id}`).click();
-    for (const ch of letter) await page.locator('#hidden-input').fill(ch.toUpperCase());
+    for (const ch of letter) await page.locator('#hidden-input').fill(toTyped(ch));
     await page.keyboard.press('Enter');
   }
 }
@@ -83,7 +65,7 @@ const TOOLS = [
     name: 'spiral',
     kind: 'spiral',
     ring: true,
-    buildPuzzle: require('../spiral/src/builder').buildPuzzle,
+    buildPuzzle: require('../spiral/cli').buildPuzzle,
     fixDir: path.join(__dirname, '..', 'spiral', 'test', 'fixtures'),
     plainFixture: 'test-78.yaml',
     hashedFixture: 'test-78.muddled.yaml',
@@ -97,13 +79,18 @@ const TOOLS = [
     REBUS_CELLS: SPIRAL_REBUS_CELLS,
     // A cell to mark correct, its index into PUZZLE_DATA.letters, and another cell
     // sharing its entry/row/band — see the correct-cell highlight test at the bottom.
+    // Cell number of the first cell in typing order (the rest follow consecutively),
+    // and a cell to compose in with the ArrowRights that reach it from the start.
+    firstCellNum: 1, rebusTwo: { cellNum: 5, arrowsRight: 4 },
+    // Cells and clue items the non-hashed rebus fixture marks .correct on solve.
+    rebusCorrectCells: 40, rebusCorrectClueItems: 16,
     markCellId: 'cell-1', markLetterIndex: 0, sameEntryCellId: 'cell-2',
   },
   {
     name: 'snake-charmer',
     kind: 'snake-charmer',
     ring: true,
-    buildPuzzle: require('../snake-charmer/src/builder').buildPuzzle,
+    buildPuzzle: require('../snake-charmer/cli').buildPuzzle,
     fixDir: path.join(__dirname, '..', 'snake-charmer', 'test', 'fixtures'),
     plainFixture: 'circle-8.yaml',
     hashedFixture: 'circle-8.muddled.yaml',
@@ -115,13 +102,15 @@ const TOOLS = [
     commitAfterFirstFill: false,
     solveBoard: solveRingBoard,
     REBUS_CELLS: SNAKE_CHARMER_REBUS_CELLS,
+    firstCellNum: 0, rebusTwo: { cellNum: 0, arrowsRight: 0 },
+    rebusCorrectCells: 8, rebusCorrectClueItems: 5,
     markCellId: 'cell-0', markLetterIndex: 0, sameEntryCellId: 'cell-1',
   },
   {
     name: 'marching-bands',
     kind: 'marching-bands',
     ring: true,
-    buildPuzzle: require('../marching-bands/src/builder').buildPuzzle,
+    buildPuzzle: require('../marching-bands/cli').buildPuzzle,
     fixDir: path.join(__dirname, '..', 'marching-bands', 'test', 'fixtures'),
     plainFixture: 'mb-5.yaml',
     hashedFixture: 'mb-5.muddled.yaml',
@@ -133,13 +122,16 @@ const TOOLS = [
     commitAfterFirstFill: false,
     solveBoard: solveRingBoard,
     REBUS_CELLS: MARCHING_BANDS_REBUS_CELLS,
+    firstCellNum: 1, rebusTwo: { cellNum: 2, arrowsRight: 1 },
+    // No rebusCorrect* fields: Marching Bands marks no clue item .correct, so its
+    // rebus-solve test stays in e2e/marching-bands.spec.js.
     markCellId: 'cell-1', markLetterIndex: 0, sameEntryCellId: 'cell-2',
   },
   {
     name: 'crushword',
     kind: 'crushword',
     ring: false,
-    buildPuzzle: require('../crushword/src/builder').buildPuzzle,
+    buildPuzzle: require('../crushword/cli').buildPuzzle,
     fixDir: path.join(__dirname, '..', 'crushword', 'test', 'fixtures'),
     plainFixture: 'cw-9.yaml',
     hashedFixture: 'cw-9.muddled.yaml',
@@ -190,12 +182,12 @@ async function ready(tool, page) {
   await page.evaluate(() => document.getElementById('hidden-input').focus());
 }
 
-// ---- A: keys modal (button, ? key, Esc, backdrop click) — all four tools --------
-// Crushword's own former copy of this test asserted only the button-click/Esc half;
-// the ? key and backdrop-click behavior come from the same shared setupKeysOverlay()
-// (shared/engine-chrome.js) as the other three, so the fuller body applies to it too.
+// ---- A: keys modal (button, ? key, Esc, backdrop click) — one tool --------------------
+// All of it is setupKeysOverlay (shared/engine-chrome.mjs), so one tool covers it:
+// Crushword, since section C below opens and closes the modal in each of the other three.
 
-for (const tool of ALL_TOOLS) {
+{
+  const tool = TOOLS.find(t => t.name === 'crushword');
   test(`[${tool.name}] ? button and ? key open keyboard-shortcuts modal; Esc closes it`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
@@ -216,9 +208,12 @@ for (const tool of ALL_TOOLS) {
   });
 }
 
-// ---- B: Tab trapped by the modal — spiral, snake-charmer, marching-bands --------
+// ---- B: Tab trapped by the modal — one tool -------------------------------------------
+// The native <dialog>'s own behavior, the same element in every tool, so one tool covers
+// it.
 
-for (const tool of RING_TOOLS) {
+{
+  const tool = RING_TOOLS[0];
   test(`[${tool.name}] the open shortcuts modal keeps Tab focus off the grid input (native dialog)`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
@@ -234,7 +229,7 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// ---- C: keystrokes suppressed while the modal is open — ring tools --------------
+// ---- C: keystrokes suppressed while the modal is open — ring tools --------------------
 
 for (const tool of RING_TOOLS) {
   test(`[${tool.name}] keystrokes are suppressed while the shortcuts modal is open`, async ({ page }) => {
@@ -256,43 +251,7 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// ---- D: menu open/close/focus — ring tools ---------------------------------------
-// Crushword's copy of this test stays in e2e/crushword.spec.js: it starts from the
-// rebus fixture (cw-9.yaml's top-left cell is blocked, so #letter-1 doesn't exist on
-// the plain fixture) and folds in an extra assertion — that confirming Clear also
-// closes the menu — which the other three tools instead cover inside their
-// rebus-label-resync test below. Unifying it here would need a body-level branch.
-
-for (const tool of RING_TOOLS) {
-  test(`[${tool.name}] menu button opens the options menu holding Clear; outside click and Escape both close it and restore focus`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-
-    const panel = page.locator('#menu-panel');
-    const clearBtn = page.locator('#clear-btn');
-    await expect(panel).toBeHidden();
-    await expect(clearBtn).toBeHidden();
-
-    await page.click('#menu-btn');
-    await expect(panel).toBeVisible();
-    await expect(clearBtn).toBeVisible();
-
-    const firstCell = page.locator('#' + tool.firstLetterId);
-    await expect(firstCell).toHaveText('');
-    await page.mouse.click(5, 5);
-    await expect(panel).toBeHidden();
-    await page.keyboard.type('A');
-    await expect(firstCell).toHaveText('A');
-
-    await page.evaluate(() => document.getElementById('hidden-input').focus());
-    await page.click('#menu-btn');
-    await expect(panel).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(panel).toBeHidden();
-  });
-}
-
-// ---- E: congrats dialog on solve — ring tools ------------------------------------
+// ---- D: congrats dialog on solve — ring tools -----------------------------------------
 
 for (const tool of RING_TOOLS) {
   test(`[${tool.name}] congrats dialog opens on solve with solve time and action buttons`, async ({ page }) => {
@@ -312,7 +271,118 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// ---- F: Play again resets the board — ring tools ---------------------------------
+// ---- E: Copy result — one tool --------------------------------------------------------
+// Copy result: the dialog is shared code (setupCongratsDialog), so one tool covers it.
+// navigator.clipboard exists only in secure contexts, so a page on plain http:// has
+// none; the button must say so rather than claim a copy that never happened.
+{
+  const tool = RING_TOOLS[0];
+  const solveAndCopy = async (page, clipboard) => {
+    await page.addInitScript(fake => {
+      const value = fake && { writeText: t => { window.__copied = t; return Promise.resolve(); } };
+      Object.defineProperty(navigator, 'clipboard', { value, configurable: true });
+    }, clipboard);
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await tool.solveBoard(page);
+    await page.locator('#congrats-copy-btn').click();
+  };
+
+  test(`[${tool.name}] Copy result says Copied! once the result is on the clipboard`, async ({ page }) => {
+    await solveAndCopy(page, true);
+    await expect(page.locator('#congrats-copy-btn')).toHaveText('Copied!');
+    expect(await page.evaluate(() => window.__copied)).toMatch(/Solved in \d+:\d{2}$/);
+  });
+
+  test(`[${tool.name}] Copy result says it couldn't copy when there is no clipboard`, async ({ page }) => {
+    await solveAndCopy(page, false);
+    await expect(page.locator('#congrats-copy-btn')).toHaveText("Couldn't copy");
+  });
+}
+
+// ---- F: byline — one tool -------------------------------------------------------------
+// The byline is shared code (renderByline), so one tool covers it. An empty byline would
+// still add its margin under the title, so a puzzle with no author or date hides it.
+{
+  const tool = RING_TOOLS[0];
+
+  test(`[${tool.name}] the byline shows the author and date`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await expect(page.locator('.byline')).toBeVisible();
+    await expect(page.locator('.byline')).toHaveText(/^by .+ · .+$/);
+  });
+
+  test(`[${tool.name}] a puzzle with no author or date hides the byline`, async ({ page }) => {
+    const out = path.join(tool.tmpDir, 'no-byline.html');
+    tool.buildPuzzle(path.join(tool.fixDir, 'test-100.yaml'), out, {});
+    await page.goto('file://' + out);
+    await ready(tool, page);
+    // Not toBeHidden(): an empty byline is already 0px tall, yet its margin still
+    // takes space. display:none is what removes the margin too.
+    await expect(page.locator('.byline')).toHaveCSS('display', 'none');
+  });
+}
+
+// ---- G: the controls row keeps its size — all four tools ------------------------------
+// The controls row must keep its natural size: hiding Check Cell may not move anything,
+// and nothing measured at load may pin a width the window can later shrink below (a
+// phone rotated from landscape to portrait).
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] narrowing the window never makes the page scroll sideways`, async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 400 });
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.setViewportSize({ width: 360, height: 740 });
+    const { scrollWidth, innerWidth } = await page.evaluate(
+      () => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth }));
+    expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
+  });
+
+  test(`[${tool.name}] hiding Check Cell leaves the controls row the same size`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const before = await page.locator('#controls').boundingBox();
+    await page.click('#menu-btn');
+    await page.click('#check-btn-toggle');
+    await expect(page.locator('#check-btn')).toBeHidden();
+    expect(await page.locator('#controls').boundingBox()).toEqual(before);
+  });
+}
+
+// ---- H: a letter typed after clicking outside the puzzle — all four tools -------------
+// Clicking plain page content (the title, the instructions) moves focus to <body>. Keys
+// still reach setupKeydown's document listener, but a letter arrives only as the hidden
+// input's own input event, so it was silently lost until a navigation key refocused.
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] a letter typed after clicking outside the puzzle lands in the active cell`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebus);   // the page firstCellId belongs to
+    await ready(tool, page);
+    await page.locator('#' + tool.firstCellId).click();
+    await page.click('h1.title');
+    await page.keyboard.type('Q');
+    await expect(page.locator('#' + tool.firstLetterId)).toHaveText('Q');
+  });
+}
+
+// ---- I: clicking the active cell again — ring tools -----------------------------------
+// A second click on the active cell switches direction, mode or loop, as the period key
+// does (docs/CROSS_TOOL_SPEC.md). Crushword has no toggle buttons to read the state
+// from; e2e/crushword.spec.js covers its re-click through the clue columns.
+for (const tool of RING_TOOLS) {
+  test(`[${tool.name}] clicking the active cell again switches direction, mode or loop`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const cell = page.locator('#' + tool.sameEntryCellId);   // not active at load
+    await cell.click();
+    const before = await page.locator('.toggle-opt.active').textContent();
+    await cell.click();
+    await expect(page.locator('.toggle-opt.active')).not.toHaveText(before);
+    await expect(cell).toHaveClass(/active-cell/);
+  });
+}
+
+// ---- J: Play again resets the board — ring tools --------------------------------------
 
 for (const tool of RING_TOOLS) {
   test(`[${tool.name}] Play again button resets the board and re-enables input`, async ({ page }) => {
@@ -340,14 +410,11 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// ---- G: completion event payload — all four tools --------------------------------
+// ---- K: completion event payload — all four tools -------------------------------------
 // The core payload contract (kind, boardHash shape, solution hashes to it, timeMs,
 // exactly one postMessage with solution stripped) is identical across all four
-// engines. Snake Charmer's former copy additionally asserted `detail.title` and
-// re-checked the postMessage's boardHash/kind/timeMs fields against the event's —
-// that's the same payload object's fields checked twice via two channels, not a
-// distinct behavior, so it isn't reproduced here (title passthrough itself isn't a
-// completion-event concern).
+// engines. The payload's title passthrough isn't a completion-event concern, and the
+// postMessage repeats the event's own fields, so neither is asserted separately.
 
 for (const tool of ALL_TOOLS) {
   test(`[${tool.name}] completion event fires with correct payload on solve`, async ({ page }) => {
@@ -378,7 +445,7 @@ for (const tool of ALL_TOOLS) {
     assert.ok(typeof detail.timeMs === 'number' && detail.timeMs >= 0, 'timeMs is non-negative number');
     assert.ok(typeof detail.solution === 'string' && detail.solution.length > 0, 'solution is a non-empty string');
 
-    const computedHash = await page.evaluate(sol => sha256hex(sol), detail.solution);
+    const computedHash = sha256hex(detail.solution);
     assert.strictEqual(computedHash, detail.boardHash, 'sha256hex(solution) === boardHash');
 
     assert.strictEqual(msgs.length, 1, 'exactly one postMessage');
@@ -387,10 +454,11 @@ for (const tool of ALL_TOOLS) {
   });
 }
 
-// ---- H: Check Cell localStorage wrong/correct pair — all four tools --------------
-// Persist-at-mutation-sites convention (root CLAUDE.md / global memory): a wrong
-// guess mutates no persisted state and must not write; a correct guess does. Every
-// tool's rebus fixture answers its first cell 'A', so 'Z' is uniformly wrong.
+// ---- L: a typed first cell: storage, print, digits — all four tools -------------------
+// The save timing contract (docs/CROSS_TOOL_SPEC.md → "localStorage key format"): a wrong
+// guess mutates no persisted state and must not write; a correct guess does. A save
+// another board made is not restored. Every tool's rebus fixture answers its first cell
+// 'A', so 'Z' is uniformly wrong.
 
 for (const tool of ALL_TOOLS) {
   async function enterFirstCell(page, letter) {
@@ -424,9 +492,56 @@ for (const tool of ALL_TOOLS) {
     await expect(page.locator('#' + tool.firstCellId)).toHaveClass(/correct/);
     assert.equal(await page.evaluate(() => localStorage.length), 1);
   });
+
+  // A save made for another board under the same storageKey (Crushword's hash leaves out
+  // where the blocks are) names cells this one lacks; restoring it would write to them.
+  test(`[${tool.name}] a save naming a cell the board lacks is ignored`, async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto('file://' + tool.paths.rebus);
+    await ready(tool, page);
+
+    await enterFirstCell(page, 'Z');
+    // Edited on the reload itself: leaving the page saves again (the timer's visibility
+    // flush), which would overwrite an edit made before it.
+    await page.addInitScript(() => {
+      const key = Object.keys(localStorage).find(k => !k.endsWith(':showCheckBtn'));
+      const saved = JSON.parse(localStorage.getItem(key));
+      saved.letters[99999] = 'q';
+      localStorage.setItem(key, JSON.stringify(saved));
+    });
+    await page.reload();
+    await ready(tool, page);
+
+    await expect(page.locator('#' + tool.firstLetterId)).toHaveText('');
+    expect(errors).toEqual([]);
+  });
+
+  test(`[${tool.name}] a filled letter is visible on screen and hidden under print media`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebus);
+    await ready(tool, page);
+
+    await enterFirstCell(page, 'Z');
+    const letter = page.locator('#' + tool.firstLetterId);
+    await expect(letter).toHaveText('Z');
+    await expect(letter).toBeVisible();
+
+    // Printing always yields a blank puzzle (docs/CROSS_TOOL_SPEC.md → Print-mode state
+    // erasure).
+    await page.emulateMedia({ media: 'print' });
+    await expect(letter).toBeHidden();
+  });
+
+  test(`[${tool.name}] a typed digit fills the cell like a letter`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebus);
+    await ready(tool, page);
+
+    await enterFirstCell(page, '7');
+    await expect(page.locator('#' + tool.firstLetterId)).toHaveText('7');
+  });
 }
 
-// ---- I: rebus button label resyncs after Clear — ring tools ---------------------
+// ---- M: rebus button label resyncs after Clear — ring tools ---------------------------
 
 for (const tool of RING_TOOLS) {
   test(`[${tool.name}] the rebus button label resyncs after Clear resets a composing cell`, async ({ page }) => {
@@ -444,7 +559,7 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// ---- J: rebus button label resyncs after a cursor move — ring tools -------------
+// ---- N: rebus button label resyncs after a cursor move — ring tools -------------------
 
 for (const tool of RING_TOOLS) {
   test(`[${tool.name}] the rebus button label resyncs when a cursor move commits the cell`, async ({ page }) => {
@@ -458,7 +573,7 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// ---- K: rebus button present in hashed and non-hashed builds — ring tools -------
+// ---- O: rebus button present in hashed and non-hashed builds — ring tools -------------
 
 for (const tool of RING_TOOLS) {
   test(`[${tool.name}] the rebus button is present and enabled in hashed and non-hashed builds`, async ({ page }) => {
@@ -471,7 +586,7 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// ---- L: hashed rebus preimage matches boardHash — ring tools --------------------
+// ---- P: hashed rebus preimage matches boardHash — ring tools --------------------------
 // Crushword has no equivalent: it builds an unused rebusHashedPath fixture in its
 // own spec but never had a dedicated hashed-rebus completion test to pair it with.
 
@@ -493,12 +608,12 @@ for (const tool of RING_TOOLS) {
     const detail = events[0];
     expect(detail.solution).toBe(tool.REBUS_CELLS.map(c => c.toLowerCase()).join('.'));
 
-    const recomputed = await page.evaluate(s => sha256hex(s), detail.solution);
+    const recomputed = sha256hex(detail.solution);
     expect(recomputed).toBe(detail.boardHash);
   });
 }
 
-// ---- Correct cells stay part of the active-entry highlight — all four tools ------
+// ---- Q: correct cells stay part of the active-entry highlight — all four tools --------
 // The highlight shows which entry the cursor is in; it does not double as a
 // to-do list, so a cell already marked correct highlights with the rest of its
 // entry. Marching Bands and Crushword used to suppress it, leaving a gap in the
@@ -512,7 +627,9 @@ for (const tool of ALL_TOOLS) {
     const marked = page.locator(`#${tool.markCellId}`);
     const letter = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
 
-    await marked.click();
+    // Move to the marked cell. If it is already the active cell (at load, in the ring
+    // tools), a click would switch direction, mode or loop instead.
+    if (!/\bactive-cell\b/.test(await marked.getAttribute('class'))) await marked.click();
     await page.locator('#hidden-input').fill(letter.toUpperCase());
     if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
 
@@ -527,3 +644,549 @@ for (const tool of ALL_TOOLS) {
     await expect(marked).toHaveClass(/\bactive-entry\b/);
   });
 }
+
+// ---- R: Check Cell is enabled only where there is something to check — all four -------
+
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] Check Cell is enabled only on a filled cell not yet marked correct`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    const marked = page.locator(`#${tool.markCellId}`);
+    const check = page.locator('#check-btn');
+    const letter = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
+
+    // Move to the cell; at load it may already be active, and a click would toggle.
+    if (!/\bactive-cell\b/.test(await marked.getAttribute('class'))) await marked.click();
+    await expect(check).toBeDisabled();
+
+    await page.locator('#hidden-input').fill(letter.toUpperCase());
+    if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
+    await page.locator(`#${tool.sameEntryCellId}`).click();
+    await marked.click();
+    await expect(check).toBeEnabled();
+
+    await check.click();
+    await expect(marked).toHaveClass(/\bcorrect\b/);
+    await expect(check).toBeDisabled();
+  });
+}
+
+// ---- S: the active cell paints above its neighbors — all four tools -------------------
+// A stroke straddles the cell's outline, and SVG paints in document order, so a
+// neighbor later in the cells layer would paint over the outer half of the active
+// cell's border, leaving it thinner on those sides. Hit-testing follows paint order,
+// so no point on the active cell's outline may find another cell-layer element on
+// top. (On the board's outer edge a point may hit nothing at all; nothing covers it.)
+
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] the active cell's border is not painted over by its neighbors`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    // A cell from the middle of the cells layer, so neighbors follow it in the DOM.
+    const midId = await page.evaluate(() => {
+      const cells = [...document.querySelectorAll('.cell')];
+      return cells[Math.floor(cells.length / 2)].id;
+    });
+    await page.locator(`#${midId}`).click();
+    await expect(page.locator(`#${midId}`)).toHaveClass(/\bactive-cell\b/);
+
+    const covered = await page.evaluate(() => {
+      const active = document.querySelector('.cell.active-cell');
+      const layer = active.parentNode;
+      const ctm = active.getScreenCTM();
+      const total = active.getTotalLength();
+      const hits = [];
+      for (let i = 0; i < 64; i++) {
+        const { x, y } = active.getPointAtLength((i + 0.5) * total / 64);
+        const pt = new DOMPoint(x, y).matrixTransform(ctm);
+        const top = document.elementsFromPoint(pt.x, pt.y).find(el => el.parentNode === layer);
+        if (top && top !== active) hits.push(top.id || top.getAttribute('class'));
+      }
+      return hits;
+    });
+    expect(covered).toEqual([]);
+  });
+}
+
+// ---- T: clue clicks — all four tools --------------------------------------------------
+// The last clue, so the click has to move the cursor. Marching Bands' clickable unit is
+// the row or band group, which hides where its entries split.
+
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] clicking a clue makes it the active clue`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const clue = page.locator(tool.name === 'marching-bands' ? '.clue-group' : '.clue-item').last();
+    await expect(clue).not.toHaveClass(/\bactive-clue\b/);
+    await clue.click();
+    await expect(clue).toHaveClass(/\bactive-clue\b/);
+  });
+}
+
+// ---- U: clue-list scrolling — marching-bands, crushword -------------------------------
+// docs/CROSS_TOOL_SPEC.md → "syncUI() contract"
+
+for (const tool of TOOLS.filter(t => t.name === 'marching-bands' || t.name === 'crushword')) {
+  test(`[${tool.name}] the clue list scrolls only when the active clue changes`, async ({ page }) => {
+    // Short enough that, scrolled to the bottom, the first clue is off screen in both
+    // tools.
+    await page.setViewportSize({ width: 400, height: 400 });
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const scrollY = () => page.evaluate(() => window.scrollY);
+
+    const away = await page.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      return window.scrollY;
+    });
+    expect(away).toBeGreaterThan(0);
+
+    // Typing and ← stay within the active clue (Marching Bands: the next cell of the row
+    // and back; Crushword: within the cell), so the page holds still.
+    await page.locator('#hidden-input').fill('a');
+    expect(await scrollY()).toBe(away);
+    await page.keyboard.press('ArrowLeft');
+    expect(await scrollY()).toBe(away);
+
+    // Tab moves to the next clue, which is scrolled into view.
+    await page.keyboard.press('Tab');
+    expect(await scrollY()).toBeLessThan(away);
+  });
+}
+
+// ---- V: behaviors the ring tools share, with per-tool cell numbering — ring tools -----
+// Cell numbering is per-tool (Snake Charmer's ring starts at cell-0; the others at
+// cell-1; Marching Bands' first row is cells 1..N), so each body reads its cell ids
+// from the adapter (firstCellNum, rebusTwo) instead of hard-coding them.
+
+const activeCellNum = async (tool, page) => {
+  const id = await page.locator(`${tool.readySelector}.active-cell`).getAttribute('id');
+  return Number(id.slice('cell-'.length));
+};
+const filledLetters = page =>
+  page.evaluate(() => window.PUZZLE_DATA.letters.filter(l => l !== null));
+
+for (const tool of RING_TOOLS) {
+  test(`[${tool.name}] banners are state-derived and partial correctness stays hidden`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await expect(page.locator('#congrats')).toBeHidden();
+    await expect(page.locator('#done-wrong')).toBeHidden();
+
+    // Typing the letters in order fills the board; make the first cell wrong.
+    const letters = await filledLetters(page);
+    const wrongFirst = letters[0].toLowerCase() === 'z' ? 'y' : 'z';
+    for (const ch of [wrongFirst, ...letters.slice(1)]) await page.keyboard.type(ch);
+
+    // Full but wrong: done-wrong shows, congrats does not, nothing marked correct.
+    await expect(page.locator('#done-wrong')).toBeVisible();
+    await expect(page.locator('#congrats')).toBeHidden();
+    await expect(page.locator(`${tool.readySelector}.correct`)).toHaveCount(0);
+
+    // The cursor wrapped back to the wrong first cell. Clearing it leaves the board
+    // unfull, so the banner must hide immediately (state-derived, no timeout).
+    await page.keyboard.press('Backspace');
+    await expect(page.locator('#done-wrong')).toBeHidden();
+
+    // Re-type the correct first letter → board full and entirely correct → congrats.
+    await page.keyboard.type(letters[0]);
+    await expect(page.locator('#congrats')).toBeVisible();
+    await expect(page.locator('#done-wrong')).toBeHidden();
+  });
+
+  test(`[${tool.name}] Backspace clears a filled cell in place, then retreats and clears the previous cell when empty`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const first = tool.firstCellNum;
+
+    // Fill the first three cells; the cursor advances past them. Step back onto 'B'.
+    await page.keyboard.type('ABC');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    expect(await activeCellNum(tool, page)).toBe(first + 1);
+    await expect(page.locator(`#letter-${first + 1}`)).toHaveText('B');
+
+    // Backspace on a filled cell clears it; the cursor stays put.
+    await page.keyboard.press('Backspace');
+    await expect(page.locator(`#letter-${first + 1}`)).toHaveText('');
+    expect(await activeCellNum(tool, page)).toBe(first + 1);
+
+    // Backspace again on the now-empty cell retreats to the previous cell and clears it.
+    await page.keyboard.press('Backspace');
+    expect(await activeCellNum(tool, page)).toBe(first);
+    await expect(page.locator(`#letter-${first}`)).toHaveText('');
+  });
+
+  test(`[${tool.name}] hashed mode advances the cursor on every keystroke, independent of the board-complete check`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.hashed);
+    await ready(tool, page);
+
+    expect(await activeCellNum(tool, page)).toBe(tool.firstCellNum);
+
+    // A single, non-final keystroke moves the cursor immediately: the engine advances
+    // before, and regardless of, the hash check. No correctness is revealed until the
+    // whole board is filled, and hashed mode never shows the Check Cell button.
+    await page.keyboard.type('Z');
+    expect(await activeCellNum(tool, page)).toBe(tool.firstCellNum + 1);
+    await expect(page.locator(`${tool.readySelector}.correct`)).toHaveCount(0);
+    await expect(page.locator('#congrats')).toBeHidden();
+    await expect(page.locator('#done-wrong')).toBeHidden();
+    await expect(page.locator('#check-btn')).toBeHidden();
+  });
+
+  test(`[${tool.name}] .correct cells render with white fill under print media`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    for (const ch of await filledLetters(page)) await page.keyboard.type(ch);
+    await expect(page.locator('#congrats')).toBeVisible();
+    await expect(page.locator('#' + tool.markCellId)).toHaveClass(/correct/);
+
+    // On screen a correct cell carries the highlight fill (not white).
+    const fillOf = () => page.evaluate(
+      id => getComputedStyle(document.getElementById(id)).fill, tool.markCellId);
+    expect(await fillOf()).not.toBe('rgb(255, 255, 255)');
+
+    // Under print the correct-state fill must reset to white
+    // (shared/themes/print-base.css).
+    await page.emulateMedia({ media: 'print' });
+    expect(await fillOf()).toBe('rgb(255, 255, 255)');
+    // Correct letters print blank too, not just their cells.
+    expect(await page.locator('.cell-letter.correct').count()).toBeGreaterThan(0);
+    await expect(page.locator('.cell-letter.correct:visible')).toHaveCount(0);
+  });
+
+  test(`[${tool.name}] board is locked after solve — input and Backspace are ignored`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    for (const ch of await filledLetters(page)) await page.keyboard.type(ch);
+    await expect(page.locator('#congrats-dialog')).toBeVisible();
+
+    // Close dialog without play-again so the board stays locked.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#congrats-dialog')).toBeHidden();
+
+    // Two separate guards: typing is refused by the input handler's latch.solved check,
+    // Backspace by the keydown handler's. Removing either one turns this red on its own.
+    const before = await page.locator('.cell-letter').allTextContents();
+    await page.keyboard.type('ZZZZZ');
+    await page.keyboard.press('Backspace');
+    expect(await page.locator('.cell-letter').allTextContents()).toEqual(before);
+  });
+
+  test(`[${tool.name}] Enter opens a multi-letter cell; a second Enter commits without advancing`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebus);
+    await ready(tool, page);
+    const { cellNum, arrowsRight } = tool.rebusTwo;
+
+    for (let i = 0; i < arrowsRight; i++) await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Enter');
+    await expect(page.locator(`#cell-${cellNum}`)).toHaveClass(/composing/);
+
+    for (const ch of ['B', 'B']) await page.locator('#hidden-input').fill(ch);
+    await expect(page.locator(`#letter-${cellNum}`)).toHaveText('BB');
+    await expect(page.locator(`#letter-${cellNum}`)).toHaveClass(/len-2/);
+    // Capacity must never auto-advance.
+    await expect(page.locator(`#cell-${cellNum}`)).toHaveClass(/active-cell/);
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator(`#cell-${cellNum}`)).not.toHaveClass(/composing/);
+    // Committing doesn't advance either: the cursor stays on the cell.
+    await expect(page.locator(`#cell-${cellNum}`)).toHaveClass(/active-cell/);
+  });
+
+  test(`[${tool.name}] a composing prefix that would complete the board does not fire completion`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebusHashed);
+    await ready(tool, page);
+
+    const events = [];
+    await page.exposeFunction('__vpComplete', d => events.push(d));
+    await page.evaluate(() => {
+      document.querySelector('.puzzle-main')
+        .addEventListener('varietypack:complete', e => window.__vpComplete(e.detail));
+    });
+
+    for (let i = 0; i < tool.REBUS_CELLS.length - 1; i++) await typeCell(page, tool.REBUS_CELLS[i]);
+
+    // The final (single-letter) cell entered as a rebus and left uncommitted: every cell
+    // now holds correct content, but the board must not read as solved.
+    await page.keyboard.press('Enter');
+    await page.locator('#hidden-input').fill(tool.REBUS_CELLS.at(-1));
+
+    // The dialog assertions are what actually catch the regression. `events` is fed by an
+    // async exposeFunction bridge, so a bare length check here races it — and because the
+    // latch is one-way, a premature fire still leaves events.length at 1 for the final
+    // poll, making that assertion unable to tell premature from correct. The
+    // auto-retrying DOM assertions below have neither problem: the dialog opens
+    // synchronously inside the completion handler, so it is already open by the time
+    // fill() resolves.
+    await expect(page.locator('#congrats-dialog')).toHaveCount(1);
+    await expect(page.locator('#congrats-dialog')).not.toHaveJSProperty('open', true);
+    expect(events).toHaveLength(0);
+
+    // Committing the same content completes the board — proving the suppression was the
+    // composing state, not wrong content.
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#congrats-dialog')).toHaveJSProperty('open', true);
+    await expect.poll(() => events.length).toBe(1);
+  });
+
+  // Per-engine wiring for the shared composing-restore contract: getState/applyState
+  // carry `composing`, and the Restore & focus epilogue resumes the cursor on that cell.
+  // Without the resume, focusCell's commitIfMoved would commit it on the way to the
+  // default cell and re-save with composing:null, silently undoing the restore.
+  test(`[${tool.name}] a half-composed cell restores from autosave still composing`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebus);
+    await ready(tool, page);
+
+    const cell = await activeCellNum(tool, page);
+    await page.keyboard.press('Enter');
+    for (const ch of ['B', 'B']) await page.locator('#hidden-input').fill(ch);
+    await expect(page.locator(`#cell-${cell}`)).toHaveClass(/composing/);
+
+    await page.reload();
+    await ready(tool, page);
+
+    await expect(page.locator(`#letter-${cell}`)).toHaveText('BB');
+    await expect(page.locator(`#letter-${cell}`)).toHaveClass(/len-2/);
+    await expect(page.locator(`#cell-${cell}`)).toHaveClass(/composing/);
+    await expect(page.locator(`#cell-${cell}`)).toHaveClass(/active-cell/);
+    await expect(page.locator('#rebus-btn')).toHaveText('Done');
+
+    // Still composing means still not filled: typing appends rather than replacing.
+    await page.locator('#hidden-input').fill('C');
+    await expect(page.locator(`#letter-${cell}`)).toHaveText('BBC');
+  });
+
+  test(`[${tool.name}] the rebus button opens and commits composition without a keydown`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebus);
+    await ready(tool, page);
+    const { cellNum, arrowsRight } = tool.rebusTwo;
+
+    for (let i = 0; i < arrowsRight; i++) await page.keyboard.press('ArrowRight');
+    await expect(page.locator('#rebus-btn')).toHaveText('Rebus');
+    await page.locator('#rebus-btn').click();
+    await expect(page.locator('.cell.composing')).toHaveCount(1);
+    await expect(page.locator(`#cell-${cellNum}`)).toHaveClass(/composing/);
+    await expect(page.locator('#rebus-btn')).toHaveText('Done');
+
+    // Letters must still reach the composing cell: the click preserves hidden-input
+    // focus.
+    for (const ch of 'HAR') await page.locator('#hidden-input').fill(ch);
+    await expect(page.locator(`#letter-${cellNum}`)).toHaveText('HAR');
+
+    await page.locator('#rebus-btn').click();
+    await expect(page.locator('.cell.composing')).toHaveCount(0);
+    await expect(page.locator('#rebus-btn')).toHaveText('Rebus');
+    await expect(page.locator(`#cell-${cellNum}`)).toHaveClass(/active-cell/);   // commit doesn't advance
+  });
+}
+
+// Marching Bands never marks clue items correct (its clue groups hide entry boundaries;
+// marking them would spoil the puzzle), so its own copy stays in
+// e2e/marching-bands.spec.js.
+for (const tool of RING_TOOLS.filter(t => t.rebusCorrectClueItems !== undefined)) {
+  test(`[${tool.name}] a non-hashed rebus puzzle marks every cell and clue item correct on solve`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebus);
+    await ready(tool, page);
+
+    for (const cell of tool.REBUS_CELLS) await typeCell(page, cell);
+
+    await expect(page.locator('#congrats')).toBeVisible();
+    await expect(page.locator('.cell.correct')).toHaveCount(tool.rebusCorrectCells);
+    await expect(page.locator('.clue-item.correct')).toHaveCount(tool.rebusCorrectClueItems);
+  });
+}
+
+// ---- W: filled clues — all four tools (Marching Bands never marks one) ----------------
+// `.filled` marks a clue whose cells all hold content, right or wrong; it is derived in
+// syncUI() and distinct from `.correct`. docs/CROSS_TOOL_SPEC.md → "Filled clues".
+
+const FILLED_TOOLS = TOOLS.filter(t => t.name !== 'marching-bands');
+const mbTool = TOOLS.find(t => t.name === 'marching-bands');
+
+// Fills every cell with the same wrong letter, so the board is complete but not solved.
+async function fillBoardWrong(tool, page) {
+  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
+  if (tool.ring) {
+    for (const _l of letters.filter(l => l !== null)) await page.keyboard.press('KeyZ');
+    return;
+  }
+  for (let i = 0; i < letters.length; i++) {
+    if (letters[i] === null) continue;
+    await page.locator(`#cell-${i + 1}`).click();
+    await page.locator('#hidden-input').fill('Z');
+    await page.keyboard.press('Enter');
+  }
+}
+
+for (const tool of FILLED_TOOLS) {
+  test(`[${tool.name}] a clue is .filled once its cells hold content — wrong or right — and loses it on delete`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    const total = await page.locator('.clue-item').count();
+    await expect(page.locator('.clue-item.filled')).toHaveCount(0);
+
+    await fillBoardWrong(tool, page);
+    await expect(page.locator('.clue-item.filled')).toHaveCount(total);
+    await expect(page.locator('.clue-item.correct')).toHaveCount(0);
+
+    await page.locator('#' + tool.markCellId).click();
+    await page.keyboard.press('Backspace');
+    const after = await page.locator('.clue-item.filled').count();
+    expect(after).toBeLessThan(total);
+    expect(after).toBeGreaterThan(0);
+  });
+
+  test(`[${tool.name}] a solved board keeps its strikethrough on every clue (.correct outranks .filled)`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    await tool.solveBoard(page);
+    const total = await page.locator('.clue-item').count();
+    await expect(page.locator('.clue-item.correct')).toHaveCount(total);
+    await expect(page.locator('.clue-item.filled')).toHaveCount(total);
+    for (const text of await page.locator('.clue-item .clue-text').all()) {
+      await expect(text).toHaveCSS('text-decoration-line', 'line-through');
+    }
+  });
+
+  test(`[${tool.name}] broadsheet dims a filled clue on screen but prints it undimmed`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    await fillBoardWrong(tool, page);
+    const text = page.locator('.clue-item.filled .clue-text').first();
+    await expect(text).toHaveCSS('opacity', '0.5');
+    await expect(text).toHaveCSS('text-decoration-line', 'none');
+
+    await page.emulateMedia({ media: 'print' });
+    await expect(text).toHaveCSS('opacity', '1');
+    await expect(text).toHaveCSS('text-decoration-line', 'none');
+  });
+
+  test(`[${tool.name}] a theme that does not opt in leaves a filled clue undimmed`, async ({ page }) => {
+    const out = path.join(tool.tmpDir, 'skeleton.html');
+    tool.buildPuzzle(path.join(tool.fixDir, tool.plainFixture), out, { theme: 'skeleton', font: 'embed' });
+    await page.goto('file://' + out);
+    await ready(tool, page);
+
+    await fillBoardWrong(tool, page);
+    await expect(page.locator('.clue-item.filled').first()).toBeVisible();
+    await expect(page.locator('.clue-item.filled .clue-text').first()).toHaveCSS('opacity', '1');
+  });
+}
+
+// Marching Bands' clues own no known cells (docs/CROSS_TOOL_SPEC.md → "Active-clue
+// banner" scope rule), so its clue items are never marked.
+test('[marching-bands] a completely filled board marks no clue item .filled', async ({ page }) => {
+  await page.goto('file://' + mbTool.paths.plain);
+  await ready(mbTool, page);
+
+  await fillBoardWrong(mbTool, page);
+  await expect(page.locator('.clue-item.filled')).toHaveCount(0);
+});
+
+// ---- X: clue rows print tighter than on screen — all four tools -----------------------
+
+for (const tool of ALL_TOOLS) {
+  // Each tool's print.css tightens its clue rows to fit the page. A screen rule that
+  // outranks it on specificity silently undoes that, so print must actually differ.
+  test(`[${tool.name}] clue rows print with tighter padding than on screen`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    const paddingTop = () => page.locator('.clue-item').first()
+      .evaluate(el => parseFloat(getComputedStyle(el).paddingTop));
+    const screen = await paddingTop();
+    await page.emulateMedia({ media: 'print' });
+    expect(await paddingTop()).toBeLessThan(screen);
+  });
+}
+
+// ---- Y: a doubled circle draws once — all four tools ----------------------------------
+// docs/CROSS_TOOL_SPEC.md → "Cell styles".
+// The circle rule has every entry covering a circled cell list it, so two entries mark
+// the same cell; the engines must still draw one circle per cell. The fixtures complete
+// under that rule already, except Crushword's, which is rewritten in memory so both
+// entries covering cell (0,0) carry the circle.
+
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] no cell carries two circles (doubled styles draw once)`, async ({ page }) => {
+    let src = path.join(tool.fixDir, tool.rebusFixture);
+    if (tool.name === 'crushword') {
+      const puzzle = yaml.load(fs.readFileSync(src, 'utf8'));
+      puzzle.across[1].styles = { circle: [0] };
+      puzzle.down[1].styles = { circle: [0] };
+      src = path.join(tool.tmpDir, 'doubled-circle.yaml');
+      fs.writeFileSync(src, yaml.dump(puzzle), 'utf8');
+    }
+    const out = path.join(tool.tmpDir, 'doubled-circle.html');
+    tool.buildPuzzle(src, out);
+    await page.goto('file://' + out);
+    await ready(tool, page);
+
+    const centers = await page.$$eval('.style-circle', els => els.map(e => `${e.getAttribute('cx')},${e.getAttribute('cy')}`));
+    // The fixture must really double a circle, or the dedupe path never runs and
+    // this test passes without it: more positions are listed than circles drawn.
+    const listed = await page.evaluate(() => {
+      let n = 0;
+      (function walk(v) {
+        if (Array.isArray(v)) v.forEach(walk);
+        else if (v && typeof v === 'object') {
+          if (v.styles && Array.isArray(v.styles.circle)) n += v.styles.circle.length;
+          Object.values(v).forEach(walk);
+        }
+      })(window.PUZZLE_DATA);
+      return n;
+    });
+    expect(centers.length).toBeGreaterThan(0);
+    expect(listed).toBeGreaterThan(centers.length);
+    expect(new Set(centers).size).toBe(centers.length);
+  });
+}
+
+// ---- Z: typed accents fold to their base letter — all four tools ----------------------
+// Each engine runs what the solver types through the shared normalize(), which folds
+// é to e, so an accented guess fills the plain letter. On a hashed page the hash then
+// matches; Crushword has no hashed rebus cell list, so its plain board is solved instead.
+
+const ACCENTED = { A: 'Á', C: 'Ç', E: 'É', I: 'Í', N: 'Ñ', O: 'Ö', U: 'Ü' };
+const accent = s => [...s.toUpperCase()].map(ch => ACCENTED[ch] ?? ch).join('');
+
+for (const tool of RING_TOOLS) {
+  test(`[${tool.name}] a hashed puzzle solves when the solver types accented letters`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebusHashed);
+    await ready(tool, page);
+
+    const events = [];
+    await page.exposeFunction('__vpComplete', d => events.push(d));
+    await page.evaluate(() => {
+      document.querySelector('.puzzle-main')
+        .addEventListener('varietypack:complete', e => window.__vpComplete(e.detail));
+    });
+
+    const typed = tool.REBUS_CELLS.map(accent);
+    expect(typed.join('')).not.toBe(tool.REBUS_CELLS.join(''));   // some letters really are accented
+    for (const cell of typed) await typeCell(page, cell);
+
+    await expect.poll(() => events.length).toBe(1);
+    expect(events[0].solution).toBe(tool.REBUS_CELLS.map(c => c.toLowerCase()).join('.'));
+  });
+}
+
+test('[crushword] a puzzle solves when the solver types accented letters', async ({ page }) => {
+  const tool = TOOLS.find(t => t.name === 'crushword');
+  await page.goto('file://' + tool.paths.plain);
+  await ready(tool, page);
+  await page.evaluate(() => {
+    window.__vpEvents = [];
+    document.querySelector('.puzzle-main').addEventListener('varietypack:complete', () => window.__vpEvents.push(1));
+  });
+  await solveCrushwordBoard(page, accent);
+  await page.waitForFunction(() => window.__vpEvents.length === 1);
+});
