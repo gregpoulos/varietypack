@@ -121,6 +121,7 @@ test('embedSnippet: an iframe the resize script can find, with the title and URL
   assert.match(s, /<iframe src="my &quot;puzzle&quot;\.html" title="A &lt;b&gt; &amp; &quot;C&quot;" data-varietypack /);
   assert.ok(s.includes("e.data.type !== 'varietypack:resize'"));
   assert.ok(s.includes('f.contentWindow === e.source'));
+  assert.ok(s.includes("e.data.fill ? '100svh'"));
   assert.ok(!s.includes('<b>'));
 });
 

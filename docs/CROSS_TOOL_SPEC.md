@@ -38,7 +38,7 @@ Eight sections in fixed order, each introduced with a `// ── <name> ──` 
 | 4 | `Logic functions` | In this order: cell storage (`CELL_IDS`, then `makeCellStore` and the functions taken from it), the composer and board checker, navigation helpers, `focusCell` and the cursor actions built on it (`toggleRebus`, any key-handler helpers), `syncUI` with any helper only it uses, `checkCell`, then `saveState`/`restoreState`/`clearState` (via `setupStorage`), the congrats dialog (via `setupCongratsDialog`, which builds its own DOM and wires its own listeners — which is why *Event wiring* has nothing to say about it) and `setupSolveTracking` |
 | 5 | `Build SVG` | SVG element query, `viewBox`, layer groups (`cells < circles < flash < letters [< labels]`), cell elements, circle decorations, labels, any tool-specific SVG chrome (chevron, curl). Builds only: no listeners are attached here |
 | 6 | `Header & clues` | `renderByline`, `renderInstructions`, then clue list DOM construction (the builder functions and their calls) |
-| 7 | `Event wiring` | In this order: lookups of the page's static elements (`hiddenInput` and `refocus`, the clue bar, `checkBtn`, `doneWrong`, toggle buttons), `#rebus-btn` (`setupRebusButton`), `setupEmbedResize`, toggle clicks, `setupKeysOverlay`, `setupKeydown`, the hidden input's `input` listener, cell clicks (`setupCellClicks`, one delegated listener on the `<svg>`; a second click on the active cell switches direction, mode or loop), any other listeners, then `resetBoard` and `setupControls` |
+| 7 | `Event wiring` | In this order: lookups of the page's static elements (`hiddenInput` and `refocus`, the clue bar, `checkBtn`, `doneWrong`, toggle buttons), `#rebus-btn` (`setupRebusButton`), `setupEmbedResize`, toggle clicks, `setupKeysOverlay`, `setupKeydown`, the hidden input's `input` listener, cell clicks (`setupCellClicks`, one delegated listener on the `<svg>`; a second click on the active cell switches direction, mode or loop), any other listeners, then `resetBoard`, `setupControls` and `setupPhoneLayout` (`shared/engine-phone.mjs`, which moves the menu `setupControls` built) |
 | 8 | `Restore & focus` | `restoreAndSeal({ restoreState, checker, latch, composer })` (`shared/engine-state.mjs` — runs `restoreState(); latch.sealIfSolved(checker.isSolved()); checker.repaintIfSolved();` in that exact order and returns the composing cell), then `focusCell(<initial>)` where `<initial>` is that returned cell or the tool's default |
 
 **Invariant:** `init()` declares, builds, wires, then starts — it invokes no logic function until *Restore & focus*. Function declarations in *Logic functions* may safely reference `const`s from *Build SVG* (`flashLayer`, `cellPaths`, etc.) because those functions are only *called* from *Event wiring* and *Restore & focus*, after the SVG build has run.
@@ -161,21 +161,23 @@ Both run at **prepare time**, inside each tool's prepare step (`src/prepare.js`)
 
 **Creation:** `setupOptionsMenu` appends two elements to `<body>`:
 1. `#menu-btn` — a fixed top-right corner button labeled `☰`.
-2. `#menu-panel` — a plain non-modal `<div role="menu">`, hidden by default, holding `#check-btn-toggle-label` (wrapping `#check-btn-toggle`) above `#clear-btn` (built here rather than templated in `index.html`, matching `#keys-btn`/`#keys-overlay`'s fully-JS-created pattern).
+2. `#menu-panel` — a plain non-modal `<div role="menu">`, hidden by default, holding `#check-btn-toggle-label` (wrapping `#check-btn-toggle`) above `#clear-btn` (built here rather than templated in `index.html`, matching `#keys-btn`/`#keys-overlay`'s fully-JS-created pattern). Each checkbox row is a `.menu-toggle` label (`menuToggle`); in the phone layout `setupListWrapPref` adds `#list-wrap-toggle-label` above `#clear-btn` (see "Phone layout and drawn keyboard").
 
 Every engine wires the menu, `#check-btn`, and the toggle below through one call, `setupControls({ checkBtn, checker, hashed, onCheck, onClear, refocus, key })` (`shared/engine-chrome.mjs`), which returns the `syncCheckBtn(n)` that `syncUI()` calls.
 
 **Why non-modal, unlike the keys overlay:** it houses low-friction toggles a solver may flip while still looking at the board, so it never makes the page inert.
 
-**Opening and closing:** `#menu-btn` toggles the panel; a click outside it, or Escape, closes it and calls `refocus()` (see "Focus management"). Clicks *inside* never close it — see the comment on `setupOptionsMenu` (`shared/engine-chrome.mjs`) for how that carries `#clear-btn`'s two-click confirm.
+**Opening and closing:** `#menu-btn` toggles the panel, and opening it calls `refocus()` too: the menu isn't modal, so keys keep reaching the puzzle. A click outside it, Escape, or any other key the puzzle takes (not a bare modifier or a ⌘/Ctrl shortcut) closes it and calls `refocus()` (see "Focus management"), so a key pressed with the menu open reaches the puzzle and closes the menu, whatever was clicked in it first. Clicks *inside* never close it — see the comment on `setupOptionsMenu` (`shared/engine-chrome.mjs`) for how that carries `#clear-btn`'s two-click confirm.
 
-**No keystroke guard needed:** unlike the keys overlay, `setupKeydown` needs no `{ menu }`-style option. Clicking `#menu-btn` or `#clear-btn` focuses a `BUTTON`, which `setupKeydown`'s existing focus guard (`document.activeElement.tagName === 'BUTTON'`) already skips — the same mechanism that already protects `#keys-btn`/`#rebus-btn` outside their own modal-specific cases.
+**No keystroke guard needed:** unlike the keys overlay, which blocks keys while it's open, `setupKeydown` needs no `{ menu }`-style option, because no control in the menu keeps focus: opening it, each checkbox toggle and Clear's arming click all call `refocus()`, and Clear's confirming click resets the board, which refocuses too. So `setupKeydown`'s focus guard (`document.activeElement.tagName === 'BUTTON'`) never meets a menu control, and keys reach the puzzle while the menu closes itself. In the phone layout no tap inside `#solve-view` moves focus at all (the `mousedown` cancel).
 
 **CSS:** structural rules live in `shared/base.css`, color and font styling in `shared/themes/theme-components.css`. The three `has-clue-bar` tools position the button and panel against `#active-clue-bar` (see "Active-clue banner"); Marching Bands, with no bar, keeps the plain defaults.
 
+**Phone layout:** `setupPhoneLayout` moves both into the solving view's top bar, where `#menu-btn` is in flow and `#menu-panel` opens absolutely below the bar (see "Phone layout and drawn keyboard").
+
 **Print:** `#menu-btn` and `#menu-panel` are both hidden in `@media print` (see `shared/themes/print-base.css`).
 
-**Check Cell button visibility toggle:** `#check-btn-toggle` (a checkbox inside `#check-btn-toggle-label`, reading "Show Check Cell button") lets a solver hide `#check-btn` if they know they won't use it. Hiding keeps the button's place in `#controls` (the `.check-btn-off` class, `visibility: hidden`; why in `shared/base.css`), so nothing moves. Absent entirely — not just disabled — in hashed builds, where `#check-btn` itself is hidden outright: the plain-text answer never ships there, so there is nothing to check against. The preference is display state, not board state, so it deliberately does **not** go through `setupStorage`/`resetBoard` — see "localStorage key format" below.
+**Check Cell button visibility toggle:** `#check-btn-toggle` (a checkbox inside `#check-btn-toggle-label`, reading "Show Check Cell button") lets a solver hide `#check-btn` if they know they won't use it (desktop only: on a phone `#check-btn` is in the help menu, and the row hides). Hiding keeps the button's place in `#controls` (the `.check-btn-off` class, `visibility: hidden`; why in `shared/base.css`), so nothing moves. Absent entirely — not just disabled — in hashed builds, where `#check-btn` itself is hidden outright: the plain-text answer never ships there, so there is nothing to check against. The preference is display state, not board state, so it deliberately does **not** go through `setupStorage`/`resetBoard` — see "localStorage key format" below.
 
 **Applies to:** `shared/engine-chrome.mjs` (`setupOptionsMenu`, `setupCheckBtnPref`, `setupControls`), `shared/base.css`, `shared/themes/theme-components.css`, `shared/themes/print-base.css`, all four `src/template/index.html` and `src/template/engine.js` files.
 
@@ -205,9 +207,11 @@ All tools use these element names for equivalent concepts — use them exactly a
 | Keyboard-shortcuts modal header | `#keys-modal-header` |
 | Keyboard-shortcuts close button | `#keys-close` |
 | Options menu trigger button | `#menu-btn` |
+| Help menu trigger button and dropdown (phone layout only; absent in hashed builds) | `#help-btn`, `#help-panel` |
 | Options menu dropdown (plain, non-modal) | `#menu-panel` |
 | Clear progress button (lives inside `#menu-panel`, not `#controls`) | `#clear-btn` |
 | Check Cell visibility toggle (absent, not disabled, in hashed builds) | `#check-btn-toggle` (checkbox inside label `#check-btn-toggle-label`) |
+| Wrap-cells toggle (phone layout's fill-in list only; shown only on the Clues screen) | `#list-wrap-toggle` (checkbox inside label `#list-wrap-toggle-label`) |
 | Toggle buttons | `.toggle-opt` (`.active` on the selected one) *(absent in Crushword — see "Crushword — explicit-commit typing")* |
 | Clue list wrapper | `#clue-list` *(Snake Charmer)* |
 | Clue list items | `.clue-item` |
@@ -230,9 +234,8 @@ All tools use these element names for equivalent concepts — use them exactly a
 | Clue number/range in bar | `.active-clue-num` |
 | Clue text in bar | `.active-clue-text` |
 | Direction label in bar | `.active-clue-dir` *(Spiral, Crushword — Snake Charmer's single loop needs no disambiguation)* |
-| Row number labels container | `#row-labels` *(Marching Bands)* |
 | Individual row number label | `.row-label` *(Marching Bands)* |
-| Grid + row-labels wrapper | `#grid-wrap` *(Marching Bands)* |
+| Grid wrapper | `#grid-wrap` *(Marching Bands)* |
 | Row clues list | `#rows-clues` *(Marching Bands)* |
 | Band clues list | `#bands-clues` *(Marching Bands)* |
 | Mode toggle (row/band) | `#mode-toggle` *(Marching Bands)* |
@@ -247,7 +250,7 @@ All tools use these element names for equivalent concepts — use them exactly a
 | Four-or-more-letter cell content | `.cell-letter.len-long` |
 | Input caret (next-keystroke marker) | `.cell-caret` *(Crushword only — see "Crushword — explicit-commit typing")* |
 
-**Structural note on `.clue-text`:** Each clue `<li class="clue-item">` must contain a `<span class="clue-text">` holding the clue string. This is required for the theme rules `.clue-item.correct .clue-text` (color + strikethrough on the text only) and `.clue-item.filled .clue-text` (see "Filled clues"). Tools whose clue items have additional spans (e.g. a `.clue-range` label) place `.clue-text` after them; tools with text-only items still wrap the text in the span.
+**Structural note on `.clue-text`:** Each clue `<li class="clue-item">` must contain a `<span class="clue-text">` holding the clue string. This is required for the theme rule `.clue-item.filled .clue-text` (see "Filled clues"). Tools whose clue items have additional spans (e.g. a `.clue-range` label) place `.clue-text` after them; tools with text-only items still wrap the text in the span.
 
 **Multi-letter sizing is `transform`, never `font-size`** — a CSS `font-size` rule would outrank Spiral's per-puzzle letter size, which is an SVG presentation attribute. The `.cell-letter.len-*` classes are computed from the **typed** content's length, never the answer's capacity; why they scale with `transform` is beside the rules in `shared/themes/theme-components.css`. Crushword overrides that scale with a measured per-cell inline `transform` (still never `font-size`) — see `crushword/CLAUDE.md` → "Dynamic per-cell letter sizing" and `fitLetterToCell` in its `engine.js`.
 
@@ -269,7 +272,7 @@ All tools use these element names for equivalent concepts — use them exactly a
 
 **Minimum responsibilities:** active-entry, active-cell and composing cell classes (`.composing` from `composer.isComposing`; the composer holds only the state), the active cell moved last in its cells layer (why: the comment above that line in each engine), active-clue highlight, the Check Cell button's disabled state (`syncCheckBtn`, from `setupControls`), and the solve state (`syncSolveState` in `shared/engine-state.mjs`: done-wrong banner visibility, and solved-ness reported to `latch.check()`). The active-entry highlight covers every cell of the entry regardless of correctness — it shows where the cursor is, not what is left to solve — and `.correct` is a separate, independently-set class on the same element. The solve celebration is *not* among them — `syncUI()` passes solved-ness to `latch.check()`, and the latch decides whether to open the dialog. Tool-specific additions (e.g. direction chevron, secondary-entry highlight) are allowed but must follow the same pattern.
 
-**Clue-list scrolling:** Marching Bands and Crushword scroll the active clue (Marching Bands: its row or band group) into view, but only when it changes — not on every `syncUI()` — so typing and moving within the active clue never move the page. Both scroll it clear of their sticky grid where the grid sits over the clues (`scrollIntoViewBelow` in `shared/engine-chrome.mjs`). On a phone, every jump costs the solver their place. Spiral and Snake Charmer don't scroll their clue lists. Covered by "the clue list scrolls only when the active clue changes" in `e2e/shared.spec.js`.
+**Clue-list scrolling:** Marching Bands and Crushword scroll the active clue (Marching Bands: its row or band group) into view, but only when it changes — not on every `syncUI()` — so typing and moving within the active clue never move the page. Both scroll it clear of their sticky grid where the grid sits over the clues (`scrollIntoViewBelow` in `shared/engine-chrome.mjs`). Spiral and Snake Charmer don't scroll their clue lists on the desktop. In the phone layout the page never scrolls itself: `scrollIntoViewBelow` returns at once, and the list view scrolls only inside its own pane (`scrollWithin`) — on opening, to the active clue, and in the fill-in list (Crushword, Spiral, Snake Charmer) again whenever the active clue changes, by the same only-when-it-changes rule (see "Phone layout and drawn keyboard"). Covered by "the clue list scrolls only when the active clue changes" in `e2e/shared.spec.js`.
 
 **Applies to:** each tool's `src/template/engine.js`.
 
@@ -284,6 +287,10 @@ The listener must guard against two cases:
 - `document.activeElement.tagName === 'BUTTON'` — a button has focus; skip so toggle-click events don't double-fire navigation.
 
 Letter input still routes through `<input id="hidden-input">`. `focusCell()` restores hidden-input focus after every navigation action, so letter input continues to work after any keypress.
+
+The options menu's checkbox toggles ("Show Check Cell button", "Wrap long rows of cells") call `refocus()` on each change, since a click on a toggle's label focuses its checkbox.
+
+**Phone-layout exception:** in the phone layout `#hidden-input` carries `inputmode="none"`, so holding focus never opens the phone's own keyboard while a hardware keyboard still types; and no tap inside `#solve-view` moves focus at all (see "Phone layout and drawn keyboard").
 
 **CSS requirement:** `#hidden-input` must use `position: fixed; left: -9999px` (not `position: absolute`). `position: fixed` keeps the element permanently within the viewport, so browser focus-scroll is never triggered. `position: absolute` will cause the page to jump when the input is focused.
 
@@ -323,10 +330,66 @@ Crushword's Across/Down). Every engine fills the bar through `setupClueBar`
 to show — Crushword on a cell with no crossing entry, Snake Charmer where both loops are the
 same entry; Spiral always has one.
 
+**Marching Bands on a phone:** it gets a clue navigator (`#clue-navigator`) in the bar row,
+built only on a touch-first device. It shows `Row 3` or `Band C`, `clue 2 of 3`, and one
+clue of that row or band, with ‹ › that cycle through them. It reveals nothing because it
+never moves on its own: it shows the first clue (index 0) whenever the active row or band
+changes, and moves only on ‹ › or on a tap on a clue in the list. Where one clue ends and
+the next begins stays the solver's to find. A tap on its text shows a cut-off clue in full
+(`#clue-full`, see "Phone layout and drawn keyboard") and otherwise does nothing; the
+bottom row's switch key or a tap on the active cell changes the mode. Desktop is unchanged.
+
+**Phone layout:** the bar sits in the solving view's bar row and shows one clue in every tool — `#active-clue-secondary` is hidden, and the primary clue is clamped to two lines in a fixed-height row (see "Phone layout and drawn keyboard").
+
 **Layout:** the three tools carry `has-clue-bar` on `<body>`. `shared/base.css` reserves the bar's height as `body` padding and exposes it as `--active-clue-bar-space`; `#menu-btn` sits *within* the bar's band and `#menu-panel` opens directly below it (`theme-components.css`, pure `calc()` against that variable — the reasoning is beside those rules). Crushword's sticky grid reads the variable directly (`crushword/CLAUDE.md` → Page layout). `print-base.css` hides the bar and drops the padding.
 
 **Applies to:** `index.html`/`engine.js` for Snake Charmer, Spiral, and Crushword;
 `shared/base.css`, `shared/themes/theme-components.css`, `shared/engine-chrome.mjs`.
+
+---
+
+## Phone layout and drawn keyboard
+
+**Rule:** on a touch-first device — `matchMedia('(hover: none) and (pointer: coarse)')`, tablets included — every tool gets the phone solving view; anywhere else the page is unchanged. `setupPhoneLayout` (`shared/engine-phone.mjs`) builds it from each engine's Event wiring, after `setupControls`, and returns `null` on any other device.
+
+**Structure:** `<html>` gets `phone`, and `#solve-view` is appended as the last child of `.puzzle-main`, below the header (title, byline, then `#instructions`, moved there in every tool). On screen the header and instructions are hidden, so the view is the whole page; they still print. The top bar shows the title and byline, and the Clues screen the instructions, as copies. On a first visit (`firstVisit`: no save `restoreState` would apply, `setupStorage`'s `hasSave()`), a puzzle with instructions opens with them in `#intro`, a card over the whole view that a tap anywhere on it closes. It is one `100svh` high (in a frame, the frame's height: see "Embedding — auto-sizing"), in normal page flow, with nothing sticky or fixed in it. Top to bottom:
+- `.solve-top`: the title (up to two lines) over the byline, `#clues-btn` (Clues / Grid) the help menu's `#help-btn` (below) and the options menu moved in. It takes its height from them once, at load, and its bottom border is the header's rule. `#done-wrong` lies over the title and byline while it shows, so it covers no cell and no clue, in the grid view and the list view alike, and the bar keeps its height.
+- `#solve-stage`: `#grid-pane` holding the tool's grid element, or `#list-pane` holding its clue lists in its place, headed by `.list-instructions` when the puzzle has instructions.
+- `#solve-bar`: `#active-clue-bar` between `#clue-prev` / `#clue-next` (Shift+Tab / Tab), where a tap on the clue switches as `.` does — unless the clue is cut off at its two lines: then the tap shows it in full in `#clue-full`, over the bar row and the foot of the grid so nothing moves, until the next tap anywhere or a change of clue (`setupClueExpand`, given the `text` of each tool's `clueBar`: `setupClueBar`'s, or Marching Bands' navigator; wherever an engine writes the bar it reports the entry shown through `showingClue`, so a move to another clue with the same text closes it too); a tool whose bar brings its own steps (`ownSteps`: Marching Bands' navigator) gets the bar alone. Without a fill-in list (below), the drawn keyboard is hidden while the list is open.
+- `#drawn-kb`: letter and digit layers above the tool's bottom row.
+
+The grid and the lists are moved as they are, never wrapped, so the desktop and print layouts keep their template structure; `.puzzle-body`, emptied of what the view shows, is not displayed.
+
+**The page never scrolls itself** — no scroll-snap, no scrolling the page into place. The solver scrolls past the header once. The list view scrolls only inside `#list-pane`, through `scrollWithin`, which shows an item's top when the item is taller than the pane.
+
+**Fill-in list view** (Crushword, Spiral, Snake Charmer; `setupPhoneLayout`'s `fillList`, built by `setupFillList`): each clue item gets a `.list-cells` row of `.list-cell`s, one per cell of its entry, below the clue (whose text wraps beside its number), showing what the solver has typed (a board cell sits in two rows — two directions or two loops — and shows in both, as does its `.correct` mark once Check Cell has confirmed it, and a wrong check's flash (`flash` on `setupFillList`'s return, since the grid's own flash is hidden while the list shows); a Snake Charmer entry longer than the ring holds some ring positions twice in its own row, once per loop). The drawn keyboard stays, the bar row hides. While a rebus composes (Snake Charmer, Spiral), the cursor's cell also carries `.composing`, which dashes its outline as the grid's does; Crushword's grid doesn't, so its list doesn't either. Crushword also draws its caret (`.list-caret`) in that cell, between the letters the cursor sits among, as its grid does. The cursor's cell carries `.list-cursor`, only within the active item (and, in a Snake Charmer row that holds a ring position twice, only on the copy in the active loop); the active row is styled through its item's `.active-clue`, and neither reuses `.active-cell`/`.active-entry`. Tapping a cell makes its item's direction (Snake Charmer: the loop that cell of the entry lies in, since an entry can straddle the loop boundary or run longer than the ring) active and puts the cursor there; tapping anywhere else on the item, including its row past a short entry's last cell, keeps the "Clue click navigation" behavior, and the list stays open. The list scrolls the active clue into view when it changes, and the cursor's cell when the cursor moves or the clue's letters change, so typing after scrolling away brings it back; anything else leaves the list where the solver scrolled it. Rows wrap a long entry onto more lines; the options menu's "Wrap long rows of cells" (`setupListWrapPref`, on by default; off sets `html.list-nowrap`) shrinks the cells to one line instead, stored for all puzzles under `vp:pref:listWrap`, and its row shows only while the Clues screen is open (see "localStorage key format"). Marching Bands' list is plain: cell rows would reveal its entry boundaries.
+
+**Keyboard rows:** `Q W E R T Y U I O P`; `A S D F G H J K L`; `123 Z X C V B N M ⌫`; the tool's bottom row. `123` swaps in the digit layer — `1 2 3 4 5 6 7 8 9 0`, an empty row, `ABC ⌫` — and every row keeps its height, so switching layers never resizes the grid. Bottom rows, with the switch key widest:
+
+| Tool | Bottom row |
+|---|---|
+| Snake Charmer | ◂ · Rebus · Loop ⇄ · ▸ |
+| Spiral | ◂ · Rebus · In ⇄ Out · ▸ |
+| Marching Bands | ◂ · Rebus · Row ⇄ Band · ▸ |
+| Crushword | ◂ · Prev cell · Next cell · Across ⇄ Down · ▸ |
+
+"Rebus" is `#rebus-btn`, moved in with its wiring intact. The switch key is `.`, Next cell is Enter, and Prev cell (Crushword only) is Shift+Enter, a bottom-row item with `shift: true`; both commit the cell and move one cell on. Their labels break over two lines.
+
+**Help menu** (`setupHelpMenu`): `#help-btn`, a life ring in the top bar beside `#menu-btn`, opens `#help-panel`, a dropdown like the options menu (the two share `setupPopupMenu`, so each closes the other). It holds `#check-btn`, moved in with its wiring intact and relabeled "Check cell". Checking is help, not typing, so it is kept off the keyboard, where a stray tap beside ▸ could hit it. A tap on it closes the panel. In a hashed build there is no Check, so no help menu. The "Show Check Cell button" setting means nothing here: its row hides and a stored "off" is ignored. Check and reveal actions to come belong in this panel.
+
+**◂ ▸** step one cell back or forward along the active entry, row or band, in every tool. In Snake Charmer and Spiral they are ArrowLeft / ArrowRight, which already do that. Marching Bands' arrows are spatial, so its ◂ ▸ call the engine's `prevCell` / `nextCell` directly (a bottom-row `onTap` item). Crushword's are ArrowLeft / ArrowRight too, which also step through a cell's letters and cross a cell's edge exactly as the hardware arrows do.
+
+**One input path:** a drawn letter enters as the hidden input's `input` event and every other key a hardware keyboard also has as a synthetic `keydown` on `document`, so no tool's typing rules have a second copy; an `onTap` key exists only for an action no real key has. Why: the comment above `typeChar` in `shared/engine-phone.mjs`.
+
+**Focus:** one `mousedown` listener on `#solve-view` cancels every tap's focus change (why beside it), never `pointerdown` (see "Enter / Rebus button — rebus entry"). See "Focus management" for `inputmode="none"`.
+
+**Tap targets:** keys are at least 44px tall, their width exempt; `#menu-btn`, `#help-btn`, `#clues-btn`, the bar's steps and the menus' rows are at least 44px square (`e2e/mobile.spec.js`).
+
+**CSS:** structure under `html.phone` in `shared/base.css`, colors in `shared/themes/theme-components.css`.
+
+**Print:** `print-base.css` hides the top bar, bar row, keyboard and `.list-cells` (which repeat the entered letters).
+
+**Applies to:** `shared/engine-phone.mjs`, `shared/base.css`, `shared/themes/theme-components.css`, `shared/themes/print-base.css`, all four `src/template/engine.js`. Covered by `e2e/phone.spec.js` and `e2e/mobile.spec.js` under the mobile projects.
 
 ---
 
@@ -352,9 +415,8 @@ class lives on clue-list items only; `#active-clue-bar` does not reflect it.
 **Theme hook:** `--theme-clue-filled-decoration` (default `none`) and
 `--theme-clue-filled-opacity` (default `1`), consumed by `.clue-item.filled .clue-text` in
 `theme-components.css`. Defaults are no-ops; a theme opts in from its tokens file
-(`broadsheet` sets opacity `0.5`). That rule must stay **before** `.clue-item.correct
-.clue-text`: the two have equal specificity, so source order is what keeps a solved board's
-strikethrough from being replaced by the filled rule's `none`. `print-base.css` resets
+(`broadsheet` sets opacity `0.5`). A solved board's clues are `.filled` too and carry `.correct`,
+which no rule styles: nothing strikes a clue through or colors it. `print-base.css` resets
 `.filled` — a printout is the blank puzzle (see "Print-mode state erasure").
 
 **Applies to:** `engine.js` for Snake Charmer, Spiral, and Crushword; `shared/engine-state.mjs`,
@@ -500,7 +562,9 @@ first keystroke, and a letter keystroke never advances the cursor, except when i
 the cursor to `maxCellLetters`. That bound is puzzle-wide, so reaching it reveals nothing
 about any one cell. Everything else that leaves a cell — Tab, Space, Enter, a click, an
 arrow crossing a cell edge — commits it through `focusCell`'s `commitIfMoved`, as in the
-other tools.
+other tools. So does Check Cell, which is enabled on a composing cell (`setupControls`'
+`canCheck`, which in the other tools refuses one) and commits it before checking, so a
+just-typed letter can be checked without moving off it.
 
 Within the active cell, a cursor position decides where edits land: typing inserts there
 (overwriting once the cell is full), Backspace deletes before it, and ←/→ step through a
@@ -543,9 +607,13 @@ holds. Press ← and type — the letter is inserted between them. Keep typing t
 
 **Snake Charmer / Spiral / Crushword:** Each `<li class="clue-item">` is individually clickable. Clicking it sets the active entry direction (inward/outward for Spiral, across/down for Crushword; no direction change needed for Snake Charmer) and calls `focusCell(firstCellOfEntry)`.
 
-**Marching Bands:** Because entry boundaries are hidden from the solver, individual entries are not independently clickable. Instead, all entries for a single row or band are grouped under a `<li class="clue-group">` wrapper. Clicking anywhere in the group switches to the appropriate mode (`row` or `band`) and calls `focusCell(firstCellOfRow/Band)`. Individual `.clue-item` elements inside the group are non-interactive.
+**Marching Bands:** Because entry boundaries are hidden from the solver, individual entries are not independently clickable. Instead, all entries for a single row or band are grouped under a `<li class="clue-group">` wrapper. Clicking anywhere in the group switches to the appropriate mode (`row` or `band`) and calls `focusCell(firstCellOfRow/Band)`. Individual `.clue-item` elements inside the group are non-interactive on desktop.
 
-**Links inside a clue:** a click whose target is inside an `<a>` (see "Markdown formatting in clue and instructions text") is ignored by every engine's clue/group click handler (`onClueClick` in `shared/engine-chrome.mjs`), so following the link never also moves the cursor.
+**Fill-in list on a phone** (Snake Charmer, Spiral, Crushword): a tap on a cell in a clue's `.list-cells` row puts the cursor on that cell instead (`onClueClick` ignores it), in that clue's direction or loop; see "Phone layout and drawn keyboard".
+
+**Marching Bands on a phone:** the list is plain (no drawn keyboard while it is open), and a tap on an individual `.clue-item` does what a tap on its group does, then closes the list and opens the navigator on the tapped clue (see "Active-clue banner").
+
+**Links inside a clue:** a click whose target is inside an `<a>` (see "Markdown formatting in clue and instructions text") is ignored by every engine's clue/group click handler and by the phone layout's bar, full-clue and Marching Bands list handlers, all through `onClueClick` in `shared/engine-chrome.mjs`, so following the link never also moves the cursor.
 
 **How to verify:** Click any clue — the active cell should jump to the start of that entry (or row/band). For Spiral/Snake Charmer, direction should also update.
 
@@ -679,6 +747,8 @@ clue groups deliberately hide entry boundaries).
 
 The solve celebration is **not** a banner and is not `syncUI()`-driven. `syncUI()` reports solved-ness to `latch.check()`; the latch fires `onComplete` on a false→true transition only, which opens the `#congrats-dialog` modal. The difference is observable: the done-wrong banner is re-derived on every `syncUI()` and so reappears whenever the board is in that state, while the celebration fires once per solve and does not reopen on a reload of a solved board (see "Emission guarantee").
 
+The dialog offers Copy result (the title, date and time, to the clipboard, which a browser grants only a secure page: https, `localhost` or a file), View puzzle (closes it on the solved board, as a backdrop click does) and Play again (`resetBoard()`).
+
 ---
 
 ## localStorage key format
@@ -701,6 +771,8 @@ The solve celebration is **not** a banner and is not `syncUI()`-driven. `syncUI(
 **Applies to:** each tool's `src/template/engine.js`.
 
 **Clear button (`#clear-btn`):** Lives inside the options menu (`#menu-panel`, see "Options menu" above), not `#controls` — moving the board-reset action out of the always-visible controls row and behind a deliberate open-the-menu step is what keeps a stray click from resetting real solving progress. Labeled "Clear Puzzle". Uses a two-click arm pattern: first click changes the label to "Are you sure?" and adds class `.armed` for 3 seconds; second click runs the engine's `resetBoard` (see the contract below) and closes the menu. The button carries `type="button"` to avoid accidental form submission. The panel doesn't narrow while armed because `base.css` reserves the wider label's width (rationale beside that rule).
+
+**List-wrap preference — `vp:pref:listWrap`, one key for every puzzle.** The phone list view's "Wrap long rows of cells" is a solver's preference, not a puzzle's, so its key names no tool or puzzle and Clear Puzzle leaves it alone. Both it and the Check Cell preference below load and save through `boolPref` (`shared/engine-chrome.mjs`).
 
 **Check Cell button visibility preference — its own key, deliberately outside the board save.** `setupCheckBtnPref(key)` persists under `<the puzzle's own key>:showCheckBtn` so Clear Puzzle leaves it alone (rationale on `setupCheckBtnPref` in `shared/engine-chrome.mjs`) — pinned by an e2e test asserting the toggle and `#check-btn`'s hidden state both survive a full Clear cycle.
 
@@ -788,5 +860,5 @@ Fires once per solve: on the false→true solved transition, after which the lat
 
 ## Embedding — auto-sizing
 
-Every engine calls `setupEmbedResize()` (`shared/engine-chrome.mjs`) once, at the start of its *Event wiring*. When the page is framed (`window.parent !== window`) and `ResizeObserver` exists, it posts `{ type: 'varietypack:resize', height }` to the parent with targetOrigin `'*'` (a page height isn't sensitive), where `height` is `ceil(document.documentElement.getBoundingClientRect().height)`: the page's own box, not `scrollHeight`, which is never below the iframe's viewport and so could not shrink. It posts when the height first becomes known and again only when it changes, so a host can set its iframe's height directly. An unframed page posts nothing.
+Every engine calls `setupEmbedResize()` (`shared/engine-chrome.mjs`) once, at the start of its *Event wiring*. When the page is framed (`window.parent !== window`) and `ResizeObserver` exists, it posts `{ type: 'varietypack:resize', height }` to the parent with targetOrigin `'*'` (a page height isn't sensitive), where `height` is `ceil(document.documentElement.getBoundingClientRect().height)`: the page's own box, not `scrollHeight`, which is never below the iframe's viewport and so could not shrink. It posts when the height first becomes known and again only when it changes, so a host can set its iframe's height directly. An unframed page posts nothing. A page in the phone layout adds `fill: true` (`setupEmbedResize` says why), and the host makes the frame `100svh` high instead of `height` px; the solving view's own `100svh` is then the frame's height, so it fits the visible screen exactly.
 

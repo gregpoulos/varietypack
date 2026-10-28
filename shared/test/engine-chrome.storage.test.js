@@ -2,7 +2,7 @@
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { storageKey, setupStorage } = require('../engine-chrome.mjs');
+const { boolPref, storageKey, setupStorage } = require('../engine-chrome.mjs');
 
 // A Map-backed stand-in for the browser's localStorage.
 beforeEach(() => {
@@ -47,4 +47,51 @@ test('clearState removes the save', () => {
   storage.saveState();
   storage.clearState();
   assert.equal(localStorage.getItem(key), null);
+});
+
+// The phone's first-visit instructions show when there is nothing to restore, so hasSave
+// must agree with restoreState about what counts as a save.
+test('hasSave is true only for a save restoreState would apply', () => {
+  const key = storageKey('cw', PUZZLE);
+  const make = fits => setupStorage(key, { getState: () => ({ letters: {} }), applyState: () => {}, fits });
+  assert.equal(make(() => true).hasSave(), false);
+  make(() => true).saveState();
+  assert.equal(make(() => true).hasSave(), true);
+  assert.equal(make(() => false).hasSave(), false);
+});
+
+// ── boolPref ─────────────────────────────────────────────────────────────────────────
+
+test('boolPref: absent loads the fallback; a saved value loads back', () => {
+  const pref = boolPref('vp:test:pref', true);
+  assert.equal(pref.load(), true);
+  pref.save(false);
+  assert.equal(pref.load(), false);
+  assert.equal(boolPref('vp:test:pref', true).load(), false);
+});
+
+test('boolPref: a throwing storage loads the fallback and saves nothing, silently', () => {
+  const throwing = {
+    getItem() { throw new Error('storage unavailable'); },
+    setItem() { throw new Error('storage unavailable'); },
+  };
+  const pref = boolPref('vp:test:pref', false, throwing);
+  assert.equal(pref.load(), false);
+  assert.doesNotThrow(() => pref.save(true));
+});
+
+// A sandboxed iframe throws on merely reading window.localStorage, so the default
+// storage must be looked up inside the guard, not as a parameter default.
+test('boolPref: an unreadable localStorage global loads the fallback', () => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true, get() { throw new Error('SecurityError'); },
+  });
+  try {
+    const pref = boolPref('vp:test:pref', true);
+    assert.equal(pref.load(), true);
+    assert.doesNotThrow(() => pref.save(false));
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', saved);
+  }
 });

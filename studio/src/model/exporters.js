@@ -86,15 +86,15 @@ function buildEmbed(doc, { font, embedOrigin }) {
 }
 
 // The markup an author pastes on the host page: the iframe, and the listener that sizes
-// it to the height the puzzle posts. Title and URL are escaped for the attribute they go
-// in.
+// it to the height the puzzle posts, or to one screen when a phone layout asks to fill
+// it. Title and URL are escaped for the attribute they go in.
 function embedSnippet({ url, title }) {
   return `<iframe src="${escHtml(url)}" title="${escHtml(title)}" data-varietypack style="width:100%;border:0;min-height:480px"></iframe>
 <script>
 addEventListener('message', function (e) {
   if (!e.data || e.data.type !== 'varietypack:resize') return;
   document.querySelectorAll('iframe[data-varietypack]').forEach(function (f) {
-    if (f.contentWindow === e.source) f.style.height = e.data.height + 'px';
+    if (f.contentWindow === e.source) f.style.height = e.data.fill ? '100svh' : e.data.height + 'px';
   });
 });
 </script>`;

@@ -81,7 +81,7 @@ test('a clue with markdown formatting renders as HTML, not literal syntax', asyn
 
 // Wide, the grid stands beside the clue columns rather than over them, so the scroll
 // padding that keeps a clue clear of a pinned grid (scrollIntoViewBelow in
-// shared/engine-chrome.mjs) must not apply; e2e/mobile.spec.js covers the narrow side.
+// shared/engine-chrome.mjs) must not apply; the next test covers the narrow side.
 test('in the wide layout, a clue scrolled into view is not pushed below the grid beside it', async ({ page }) => {
   await page.setViewportSize({ width: 1000, height: 300 });
   await page.goto('file://' + htmlPath);
@@ -96,6 +96,34 @@ test('in the wide layout, a clue scrolled into view is not pushed below the grid
   const clue = await rect('.clue-group.active-clue');
   expect(clue.top).toBeGreaterThanOrEqual(-1); // sub-pixel rounding
   expect(clue.top).toBeLessThan((await rect('.puzzle-center')).bottom);
+});
+
+// Narrow (a half-screen window, or an embed in a narrow column), the grid stacks over the
+// clues and stays pinned as they scroll beneath it: it must hide them, and a clue
+// scrolled into view must land below it, not behind it. A desktop browser, so not the
+// phone layout, which a touch-first device gets instead.
+test('in the stacked layout, the pinned grid hides the clues under it and a clue scrolls clear of it', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 400 });
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  const rect = sel => page.evaluate(s => document.querySelector(s).getBoundingClientRect().toJSON(), sel);
+
+  const style = await page.locator('.puzzle-center').evaluate(el => {
+    const s = getComputedStyle(el);
+    return { position: s.position, backgroundColor: s.backgroundColor };
+  });
+  expect(style.position).toBe('sticky');
+  expect(style.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.keyboard.press('Tab'); // row 2
+  const center = await rect('.puzzle-center');
+  // Row 1's group has scrolled up behind the pinned grid.
+  expect((await rect('.clue-section-rows .clue-group')).top).toBeLessThan(center.bottom);
+  await page.keyboard.press('Shift+Tab'); // back to row 1, scrolled into view
+
+  const clue = await rect('.clue-group.active-clue');
+  expect(clue.top).toBeGreaterThanOrEqual((await rect('.puzzle-center')).bottom - 1);
 });
 
 test('Tab in row mode advances to the first cell of the next row, wrapping; Shift+Tab reverses', async ({ page }) => {

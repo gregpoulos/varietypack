@@ -37,10 +37,13 @@ function clueTextEl(clue) {
   return el;
 }
 
-// Browser-only: calls handler on a click in a clue list's item or group, except on a link
-// inside the clue, which opens on its own without also moving the cursor.
-function onClueClick(el, handler) {
-  el.addEventListener('click', e => { if (!e.target.closest('a')) handler(); });
+// Browser-only: calls handler(e) on a click in a clue — a clue list's item or group, the
+// phone's clue lists or its bar — except on a link inside the clue, which opens on its
+// own without also moving the cursor, and on the phone list view's cells (setupFillList),
+// which place the cursor themselves. The rest of their row, which runs on past a short
+// entry's last cell, is the clue's. `capture` listens in the capture phase.
+function onClueClick(el, handler, { capture = false } = {}) {
+  el.addEventListener('click', e => { if (!e.target.closest('a, .list-cell')) handler(e); }, capture);
 }
 
 // author + date → `.byline`. Missing pieces are simply omitted; with neither, the byline
@@ -119,8 +122,9 @@ function setupRebusButton(btn, { onToggle, isComposing, refocus }) {
   }
 
   // Focus-on-click is a `mousedown` default action, so canceling mousedown keeps focus
-  // on the hidden input and a phone's soft keyboard open, while `click` still fires and
-  // keeps the button reachable by keyboard.
+  // on the hidden input, where setupKeydown's BUTTON guard won't drop the next key, while
+  // `click` still fires and keeps the button reachable by keyboard. (In the phone layout
+  // #solve-view's own mousedown cancel covers this button as well.)
   //
   // It must be mousedown and not pointerdown. On a WebKit (iOS) touch tap, canceling
   // pointerdown suppresses the click entirely and the button never fires at all;
@@ -170,7 +174,8 @@ function scrollByKey(key) {
 // or hides that row when `crossing` is null. Each is { dir, num, clue }: `dir` is the
 // direction label, for a tool whose rows carry one; `clue` is pre-rendered markdown HTML,
 // set with innerHTML as in clueTextEl. The bar's height is fixed (shared/base.css), so
-// hiding the row moves nothing.
+// hiding the row moves nothing. `el` is the bar and `text` the first row's clue text,
+// which the phone layout takes (setupPhoneLayout's `clueBar`).
 function setupClueBar() {
   const row = id => {
     const el = document.getElementById(id);
@@ -184,6 +189,8 @@ function setupClueBar() {
     r.text.innerHTML = clue;
   }
   return {
+    el: document.getElementById('active-clue-bar'),
+    text: primary.text,
     show(main, crossing) {
       fill(primary, main);
       if (crossing) fill(secondary, crossing);
@@ -191,6 +198,10 @@ function setupClueBar() {
     },
   };
 }
+
+// The class on <html> that marks the phone solving view (setupPhoneLayout in
+// shared/engine-phone.mjs, which adds it).
+const PHONE_CLASS = 'phone';
 
 // Scrolls a clue into view clear of `pinned`, the sticky grid box. scrollIntoView judges
 // visibility against the bare viewport, so a clue scrolled up behind a pinned box counts
@@ -201,6 +212,9 @@ function setupClueBar() {
 // (#done-wrong), and whether the box is over the clues varies by layout (Marching Bands'
 // grid stands beside them when wide).
 function scrollIntoViewBelow(clue, pinned) {
+  // The phone layout's page never scrolls itself, and nothing in it is pinned. Its list
+  // view scrolls only inside its own pane (scrollWithin in shared/engine-phone.mjs).
+  if (document.documentElement.classList.contains(PHONE_CLASS)) return;
   const box = pinned.getBoundingClientRect(), r = clue.getBoundingClientRect();
   const over = box.left < r.right && r.left < box.right;
   document.documentElement.style.scrollPaddingTop =
@@ -246,6 +260,7 @@ const SAVE_VERSION = 1;
 //   fits(saved)       → whether a saved payload is for this board (makeCellStore's
 //                       fitsSave)
 //   applyState(saved) → applies a saved payload whose version matches and that fits
+// hasSave() says whether there is such a payload to apply.
 // Storage errors (a private window, a full quota) are swallowed: the puzzle still works,
 // it just doesn't save.
 function setupStorage(key, { getState, fits, applyState }) {
@@ -254,16 +269,19 @@ function setupStorage(key, { getState, fits, applyState }) {
       localStorage.setItem(key, JSON.stringify({ v: SAVE_VERSION, ...getState() }));
     } catch (_) {}
   }
-  function restoreState() {
+  function readSave() {
     let saved;
     try { saved = JSON.parse(localStorage.getItem(key)); } catch (_) {}
-    if (!saved || saved.v !== SAVE_VERSION || !fits(saved)) return;
-    applyState(saved);
+    return saved && saved.v === SAVE_VERSION && fits(saved) ? saved : null;
+  }
+  function restoreState() {
+    const saved = readSave();
+    if (saved) applyState(saved);
   }
   function clearState() {
     try { localStorage.removeItem(key); } catch (_) {}
   }
-  return { saveState, restoreState, clearState };
+  return { saveState, restoreState, clearState, hasSave: () => readSave() !== null };
 }
 
 // Wraps a tool's keydown handler with the guards shared by every engine: hasFocus,
@@ -315,6 +333,8 @@ function setupCongratsDialog({ title, date, onPlayAgain }) {
   const timeEl  = htmlEl('p', { id: 'congrats-time' });
   const copyBtn = htmlEl('button',
     { id: 'congrats-copy-btn', type: 'button' }, 'Copy result');
+  const viewBtn = htmlEl('button',
+    { id: 'congrats-view-btn', type: 'button' }, 'View puzzle');
   const playBtn = htmlEl('button',
     { id: 'congrats-play-btn', type: 'button', autofocus: '' }, 'Play again');
   const dialog  = htmlEl('dialog',
@@ -322,11 +342,13 @@ function setupCongratsDialog({ title, date, onPlayAgain }) {
     htmlEl('div', { id: 'congrats' },
       htmlEl('p', { id: 'congrats-msg' }, 'Puzzle solved!'),
       timeEl,
-      htmlEl('div', { id: 'congrats-actions' }, copyBtn, playBtn)));
+      htmlEl('div', { id: 'congrats-actions' }, copyBtn, viewBtn, playBtn)));
   document.body.appendChild(dialog);
 
-  // Backdrop click (target is the transparent dialog frame, not the card) closes.
+  // View puzzle, and a backdrop click (target is the transparent dialog frame, not the
+  // card), close it on the solved board.
   dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
+  viewBtn.addEventListener('click', () => dialog.close());
 
   let copyText = '';
   // navigator.clipboard exists only in secure contexts (not on plain http://), and
@@ -440,14 +462,21 @@ function setupOptionsMenu(refocus) {
   // checkBtnToggleLabel entirely (not just the checkbox) when hashed, since there's no
   // Check Cell button there to control. It sits above Clear Puzzle: a plain display
   // setting before the destructive action.
-  const checkBtnToggle = htmlEl('input', { type: 'checkbox', id: 'check-btn-toggle' });
-  const checkBtnToggleLabel = htmlEl('label', { id: 'check-btn-toggle-label' },
-    checkBtnToggle, ' Show Check Cell button');
+  const { label: checkBtnToggleLabel, input: checkBtnToggle } =
+    menuToggle('check-btn-toggle', 'Show Check Cell button');
   const clearBtn = htmlEl('button', { id: 'clear-btn', type: 'button' }, 'Clear Puzzle');
   const panel = htmlEl('div', { id: 'menu-panel', role: 'menu', hidden: '' },
     checkBtnToggleLabel, clearBtn);
   document.body.appendChild(panel);
 
+  const { close } = setupPopupMenu(btn, panel, refocus);
+  return { clearBtn, close, checkBtnToggle, checkBtnToggleLabel };
+}
+
+// A non-modal dropdown: `btn` opens and closes `panel`, and a click outside both, Escape
+// or any key the puzzle takes closes it. Two such menus close each other, since a click
+// on one's trigger is outside the other. Returns { close }.
+function setupPopupMenu(btn, panel, refocus) {
   function isOpen() { return !panel.hidden; }
 
   function close() {
@@ -457,9 +486,12 @@ function setupOptionsMenu(refocus) {
     refocus();
   }
 
+  // Focus goes back to the puzzle on opening too: the menu isn't modal, and the button
+  // keeping focus would make setupKeydown drop every key while it's open.
   function open() {
     panel.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
+    refocus();
   }
 
   btn.addEventListener('click', () => (isOpen() ? close() : open()));
@@ -473,30 +505,51 @@ function setupOptionsMenu(refocus) {
     close();
   });
 
+  // Escape closes it, and so does any key the puzzle takes: typing means the solver is
+  // done with the menu, as a click outside it does. A bare modifier or a ⌘/Ctrl shortcut
+  // isn't typing.
+  const MODIFIERS = ['Shift', 'Alt', 'Meta', 'Control', 'CapsLock'];
   document.addEventListener('keydown', e => {
-    if (isOpen() && e.key === 'Escape') close();
+    if (!isOpen() || MODIFIERS.includes(e.key) || e.metaKey || e.ctrlKey) return;
+    close();
   });
 
-  return { clearBtn, close, checkBtnToggle, checkBtnToggleLabel };
+  return { close };
 }
 
-// A tiny, board-independent localStorage boolean for the Check Cell button's visibility —
-// namespaced under the puzzle's own key (see storageKey) but never touched by
-// clearState()/resetBoard(): it's a display preference, not board state, so Clear Puzzle
-// must not reset it. Not built on setupStorage(), whose board payload is meaningless for
-// a single boolean. Absent (first load) defaults to visible.
-function setupCheckBtnPref(key) {
-  const prefKey = key + ':showCheckBtn';
+// An options-menu row: a checkbox `id` inside a `.menu-toggle` label `id`-label. Returns
+// { label, input } for the caller to place and wire.
+function menuToggle(id, text) {
+  const input = htmlEl('input', { type: 'checkbox', id });
+  const label = htmlEl('label', { id: id + '-label', class: 'menu-toggle' }, input, ' ' + text);
+  return { label, input };
+}
+
+// A solver's display preference: one boolean in localStorage under `prefKey`, `fallback`
+// when absent or unreadable. Not built on setupStorage(), whose board payload is
+// meaningless for a single boolean. Storage errors are swallowed as setupStorage's are.
+// `storage` defaults to localStorage, looked up inside the guard: a sandboxed frame
+// throws on merely reading it.
+function boolPref(prefKey, fallback, storage) {
+  const store = () => storage || localStorage;
   function load() {
     try {
-      const v = JSON.parse(localStorage.getItem(prefKey));
-      return typeof v === 'boolean' ? v : true;
-    } catch (_) { return true; }
+      const v = JSON.parse(store().getItem(prefKey));
+      return typeof v === 'boolean' ? v : fallback;
+    } catch (_) { return fallback; }
   }
-  function save(visible) {
-    try { localStorage.setItem(prefKey, JSON.stringify(visible)); } catch (_) {}
+  function save(b) {
+    try { store().setItem(prefKey, JSON.stringify(b)); } catch (_) {}
   }
   return { load, save };
+}
+
+// The Check Cell button's visibility (boolPref) — namespaced under the puzzle's own key
+// (see storageKey) but never touched by clearState()/resetBoard(): it's a display
+// preference, not board state, so Clear Puzzle must not reset it. Absent (first load)
+// defaults to visible.
+function setupCheckBtnPref(key) {
+  return boolPref(key + ':showCheckBtn', true);
 }
 
 // Wires #check-btn and the options menu around it, identically in every engine:
@@ -509,10 +562,13 @@ function setupCheckBtnPref(key) {
 //     with the .check-btn-off class, not `hidden`, so the button keeps its place in the
 //     row (why in base.css).
 // `key` is the same storageKey(...) result the engine passes to setupStorage.
-// Returns { syncCheckBtn(n) } for syncUI: it enables #check-btn only while cell n is one
-// checker.canCheck accepts (and does nothing in a hashed build, where the button is
-// hidden).
-function setupControls({ checkBtn, checker, hashed, onCheck, onClear, refocus, key }) {
+// `canCheck(n)` says whether cell n may be checked; it defaults to checker.canCheck, and
+// only Crushword, whose every typed cell is composing until committed, passes its own.
+// Returns { syncCheckBtn(n) } for syncUI: it enables #check-btn only while canCheck
+// accepts cell n (and does nothing in a hashed build, where the button is hidden).
+function setupControls({
+  checkBtn, checker, hashed, onCheck, onClear, refocus, key, canCheck = n => checker.canCheck(n),
+}) {
   const { clearBtn, close, checkBtnToggle, checkBtnToggleLabel } = setupOptionsMenu(refocus);
   setupClearButton(clearBtn, () => { onClear(); close(); }, refocus);
 
@@ -529,13 +585,16 @@ function setupControls({ checkBtn, checker, hashed, onCheck, onClear, refocus, k
   checkBtnToggle.addEventListener('change', () => {
     show(checkBtnToggle.checked);
     checkBtnPref.save(checkBtnToggle.checked);
+    refocus(); // a click on the label focuses the checkbox (CROSS_TOOL_SPEC → Focus management)
   });
-  return { syncCheckBtn(n) { checkBtn.disabled = !checker.canCheck(n); } };
+  return { syncCheckBtn(n) { checkBtn.disabled = !canCheck(n); } };
 }
 
 // Posts the page height to an embedding parent whenever it changes
 // (docs/CROSS_TOOL_SPEC.md -> "Embedding — auto-sizing"); does nothing when the page
 // isn't framed or ResizeObserver is missing. Height isn't sensitive, so '*' is fine.
+// The phone layout adds `fill: true`: its view is one screen of the frame high, so the
+// frame can't take its height from the page and must be one screen of the host high.
 // DOM-coupled, tested via mocks.
 function setupEmbedResize({ win = window, root = document.documentElement, RO = win.ResizeObserver } = {}) {
   if (!win.parent || win.parent === win || !RO) return null;
@@ -547,7 +606,9 @@ function setupEmbedResize({ win = window, root = document.documentElement, RO = 
     const height = Math.ceil(root.getBoundingClientRect().height);
     if (height === last) return;
     last = height;
-    win.parent.postMessage({ type: 'varietypack:resize', height }, '*');
+    const msg = { type: 'varietypack:resize', height };
+    if (root.classList.contains(PHONE_CLASS)) msg.fill = true;
+    win.parent.postMessage(msg, '*');
   });
   ro.observe(root);
   return ro;
@@ -555,7 +616,8 @@ function setupEmbedResize({ win = window, root = document.documentElement, RO = 
 
 export {
   svgEl, htmlEl, clueTextEl, onClueClick, renderByline, renderInstructions, setupClearButton, setupRebusButton,
-  scrollByKey, setupClueBar, scrollIntoViewBelow, storageKey, setupStorage, flashWrong,
+  setupPopupMenu,
+  scrollByKey, setupClueBar, scrollIntoViewBelow, storageKey, setupStorage, flashWrong, FLASH_WRONG_MS,
   setupKeydown, setupCellClicks, setupCongratsDialog, setupKeysOverlay, setupOptionsMenu,
-  setupCheckBtnPref, setupControls, setupEmbedResize,
+  menuToggle, boolPref, setupControls, setupEmbedResize, PHONE_CLASS,
 };

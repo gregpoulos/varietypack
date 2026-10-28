@@ -1,8 +1,9 @@
 'use strict';
 
-// Phone profiles and fixtures shared by playwright.config.js (one project per phone),
-// e2e/mobile.spec.js (the property tests) and e2e/capture-mobile.js (on-demand
-// screenshots for review). Device names are Playwright `devices` descriptors.
+// Phone profiles, fixtures and helpers shared by playwright.config.js (one project per
+// phone), e2e/mobile.spec.js (the property tests), e2e/phone.spec.js (the phone solving
+// view's behavior) and e2e/capture-mobile.js (on-demand screenshots for review). Device
+// names are Playwright `devices` descriptors.
 
 const path = require('path');
 
@@ -14,12 +15,14 @@ const PHONES = [
 ];
 
 // The largest existing fixture per tool — the hardest to fit on a phone — and one per
-// Snake Charmer shape, since each shape has its own geometry.
+// Snake Charmer shape, since each shape has its own geometry. Spiral's 78 is here too,
+// as the one e2e/phone.spec.js solves on (it says why).
 const FIXTURES = [
   { tool: 'snake-charmer',  file: 'circle-84.yaml' },
   { tool: 'snake-charmer',  file: 'stadium-88.yaml' },
   { tool: 'snake-charmer',  file: 'turn-76.yaml' },
   { tool: 'snake-charmer',  file: 'double-turn-96.yaml' },
+  { tool: 'spiral',         file: 'test-78.yaml' },
   { tool: 'spiral',         file: 'test-122.yaml' },
   { tool: 'marching-bands', file: 'mb-17.yaml' },
   { tool: 'crushword',      file: 'cw-9.yaml' },
@@ -38,4 +41,19 @@ function buildFixtures(tmpDir) {
   });
 }
 
-module.exports = { PHONES, FIXTURES, buildFixtures };
+// Closes the first-visit instructions card (setupPhoneLayout) a fresh page of a puzzle
+// with instructions opens under, if it is showing.
+async function dismissIntro(page) {
+  const intro = page.locator('#intro');
+  if (await intro.isVisible()) await intro.tap();
+}
+
+// Scrolls the page so the solving view's top meets the screen's.
+function scrollFlush(page) {
+  return page.evaluate(() => window.scrollTo({
+    top: window.scrollY + document.getElementById('solve-view').getBoundingClientRect().top,
+    behavior: 'instant',
+  }));
+}
+
+module.exports = { PHONES, FIXTURES, buildFixtures, dismissIntro, scrollFlush };

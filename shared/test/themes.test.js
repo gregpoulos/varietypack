@@ -12,7 +12,7 @@ const COMPOSE_FIXTURE = path.join(__dirname, 'fixtures', 'compose');
 
 // `color: inherit` is unique to print-base.css across the whole bundle, so it
 // is a reliable position marker for the shared print layer.
-const PRINT_BASE_MARKER = 'color: inherit';
+const PRINT_BASE_MARKER = 'opacity: 1 !important';
 
 // theme-base.css carries this sentinel comment so we can assert it loaded and
 // ordered correctly without depending on a specific neutral value (tokens

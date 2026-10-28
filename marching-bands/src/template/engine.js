@@ -9,6 +9,7 @@ import {
   setupControls, setupEmbedResize, setupKeydown, setupKeysOverlay, setupRebusButton,
   setupStorage, storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
+import { setupPhoneLayout, stepIndex } from '../../../shared/engine-phone.mjs';
 import { arrowTarget, bandCells, bandIndexOf, centerN, rowCells } from '../layout.mjs';
 
 function init() {
@@ -41,6 +42,12 @@ function init() {
   const FIRST_CELL = rowCellsMap[0][0];   // the top-left cell, where row 1 starts
   let activeCell = FIRST_CELL;
   let mode = 'row';    // 'row' | 'band'
+  // The phone's clue navigator (Header & clues): which row or band it is on, as mode and
+  // index, and which of that group's clues it shows. syncUI resets navIdx to 0 only when
+  // the group changes; a tap on a list clue or ‹ › is the only thing that sets another.
+  // Why it never moves on its own: docs/CROSS_TOOL_SPEC.md → "Marching Bands on a phone".
+  let navGroup = null;   // `${mode}:${index}`
+  let navIdx = 0;
 
   // ── Logic functions ───────────────────────────────────────────────────────
   // Row-major order skipping the black center — the canonical board string order.
@@ -89,8 +96,10 @@ function init() {
   // the other mode's name. Every `mode === 'row' ? … : …` in this engine reads from
   // here instead. activeRowIndex/activeBandIndex are hoisted function declarations.
   const MODES = {
-    row:  { cells: rowCellsMap,  index: activeRowIndex,  count: N,        groups: rowClueGroups,  other: 'band' },
-    band: { cells: bandCellsMap, index: activeBandIndex, count: numBands, groups: bandClueGroups, other: 'row'  },
+    row:  { cells: rowCellsMap,  index: activeRowIndex,  count: N,        groups: rowClueGroups,  other: 'band',
+            data: data.rows,  name: i => `Row ${i + 1}` },
+    band: { cells: bandCellsMap, index: activeBandIndex, count: numBands, groups: bandClueGroups, other: 'row',
+            data: data.bands, name: i => `Band ${BAND_LETTERS[i]}` },
   };
 
   function activeContextCells() {
@@ -173,6 +182,11 @@ function init() {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
 
+    // Phone clue navigator: back to the first clue whenever the row or band changes.
+    const group = `${mode}:${activeMode.index()}`;
+    if (group !== navGroup) { navGroup = group; navIdx = 0; }
+    if (phone) navigator.render();
+
     // Check Cell button: enabled only while the active cell can be checked.
     controls.syncCheckBtn(activeCell);
 
@@ -204,7 +218,7 @@ function init() {
   }
 
   const saveKey = storageKey('mb', data);
-  const { saveState, restoreState, clearState } = setupStorage(saveKey, {
+  const { saveState, restoreState, clearState, hasSave } = setupStorage(saveKey, {
     getState() {
       return { ...cells.saveFields(), activeMs: timer.getElapsedMs(), composing: composer.getComposing() };
     },
@@ -237,9 +251,11 @@ function init() {
 
   const svg = document.getElementById('puzzle-svg');
   const svgSize = N * CELL_SIZE;
-  svg.setAttribute('width',   svgSize);
+  // Row numbers sit in a column left of the grid, in the SVG so both scale together.
+  const LABEL_W = 24;
+  svg.setAttribute('width',   LABEL_W + svgSize);
   svg.setAttribute('height',  svgSize);
-  svg.setAttribute('viewBox', `0 0 ${svgSize} ${svgSize}`);
+  svg.setAttribute('viewBox', `${-LABEL_W} 0 ${LABEL_W + svgSize} ${svgSize}`);
 
   const cellsLayer   = svgEl('g', { id: 'cells-layer' });
   const circlesLayer = svgEl('g', { id: 'circles-layer' });
@@ -316,8 +332,14 @@ function init() {
   renderCircles(data.rows,  r => rowCellsMap[r]);
   renderCircles(data.bands, k => bandCellsMap[k]);
 
-  const rowLabelsDiv = document.getElementById('row-labels');
-  for (let r = 1; r <= N; r++) rowLabelsDiv.appendChild(htmlEl('div', { class: 'row-label' }, String(r)));
+  // Row number labels, right-aligned against the grid's left edge
+  for (let r = 1; r <= N; r++) {
+    const label = svgEl('text', {
+      x: -8, y: (r - 1) * CELL_SIZE + CELL_SIZE / 2, class: 'row-label', 'aria-hidden': 'true',
+    });
+    label.textContent = String(r);
+    labelsLayer.appendChild(label);
+  }
 
   // ── Header & clues ────────────────────────────────────────────────────────
   renderByline(data);
@@ -348,6 +370,39 @@ function init() {
     gi => { mode = 'row';  focusCell(rowCellsMap[gi][0]); });
   buildClues(data.bands, bandsCluesList, bandClueGroups, k => BAND_LETTERS[k],
     gi => { mode = 'band'; focusCell(bandCellsMap[gi][0]); });
+
+  // The phone's clue navigator, for the bar row (Event wiring): `Row 1` / `clue 2 of 3`,
+  // that clue, and ‹ › through the active row's or band's clues. A tap on its text shows
+  // a cut-off clue in full (setupClueExpand); the bottom row's switch key and a tap on
+  // the active cell change the mode. Built everywhere, shown and rendered only in the
+  // phone layout.
+  function buildNavigator() {
+    const label = htmlEl('span', { class: 'nav-label' });
+    const count = htmlEl('span', { class: 'nav-count' });
+    const text  = htmlEl('span', { class: 'nav-text' });
+    const step = (id, glyph, ariaLabel, d) => {
+      const btn = htmlEl('button', { id, type: 'button', class: 'bar-step', 'aria-label': ariaLabel }, glyph);
+      btn.addEventListener('click', () => {
+        navIdx = stepIndex(navIdx, MODES[mode].data[MODES[mode].index()].entries.length, d);
+        render();
+      });
+      return btn;
+    };
+    const el = htmlEl('div', { id: 'clue-navigator' },
+      step('clue-prev', '‹', 'Previous clue', -1),
+      htmlEl('span', { class: 'nav-meta' }, label, count), text,
+      step('clue-next', '›', 'Next clue', 1));
+    function render() {
+      const m = MODES[mode], i = m.index();
+      const entries = m.data[i].entries;
+      label.textContent = m.name(i);
+      count.textContent = `clue ${navIdx + 1} of ${entries.length}`;
+      text.innerHTML = entries[navIdx].clue;   // pre-rendered markdown, as clueTextEl
+      phone.showingClue(entries[navIdx]);
+    }
+    return { el, text, render };
+  }
+  const navigator = buildNavigator();
 
   // ── Event wiring ──────────────────────────────────────────────────────────
   // The page's static elements. Logic functions above use them (focusCell calls
@@ -493,6 +548,45 @@ function init() {
     checkBtn, checker, hashed: data.hashed, onCheck: checkCell,
     onClear: resetBoard, refocus, key: saveKey,
   });
+
+  // On a touch-first device only: the phone solving view and its drawn keyboard. ◂ ▸
+  // step along the active row or band, which no key does here (the arrows are spatial),
+  // so they call the engine directly; on a solved board, like every key, they do nothing.
+  const stepTo = target => () => { if (!latch.solved) focusCell(target(activeCell)); };
+  const phone = setupPhoneLayout({
+    hiddenInput,
+    refocus,
+    checkBtn,
+    firstVisit: !hasSave(),
+    grid: document.getElementById('grid-wrap'),
+    lists: [document.querySelector('.clue-section-rows'), document.querySelector('.clue-section-bands')],
+    clueBar: navigator,
+    ownSteps: true,
+    bottomRow: [
+      { label: '◂', onTap: stepTo(prevCell), glyph: true },
+      { el: document.getElementById('rebus-btn') },
+      { label: 'Row ⇄ Band', key: '.', wide: true },
+      { label: '▸', onTap: stepTo(nextCell), glyph: true },
+    ],
+  });
+
+  // A tap on a group in the list shows the grid again, and a tap on one of its clues
+  // opens the navigator on that clue. Capture phase, so this runs before the group's own
+  // click handler, whose focusCell then lets syncUI see no change of group and keep the
+  // index.
+  if (phone) {
+    onClueClick(phone.listPane, e => {
+      const group = e.target.closest('.clue-group');
+      if (!group) return;
+      const item = e.target.closest('.clue-item');
+      if (item) {
+        const m = Object.keys(MODES).find(k => MODES[k].groups.includes(group));
+        navGroup = `${m}:${MODES[m].groups.indexOf(group)}`;
+        navIdx = Array.from(group.querySelectorAll('.clue-item')).indexOf(item);
+      }
+      phone.hideList();
+    }, { capture: true });
+  }
 
   // ── Restore & focus ───────────────────────────────────────────────────────
   // Structurally a no-op here — markSolved paints exactly what applyState

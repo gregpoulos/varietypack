@@ -9,6 +9,7 @@ import {
   setupEmbedResize, setupKeydown, setupKeysOverlay, setupRebusButton, setupStorage,
   storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
+import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
 import {
   cellPath, cellsOfEntries, circleCenter, curlPath, letterCenter, numberPosition,
   polar, sizesFor
@@ -179,22 +180,27 @@ function init() {
     const oppEntryIdx = opp.map[activeCell].entryIndex;
 
     // Clue list: highlight the active and crossing clues, and mark filled ones.
+    let activeItem = null;
     clueItems.forEach(item => {
       const itemDir = item.dataset.direction;
       const itemIdx = Number(item.dataset.entryIndex);
-      item.classList.toggle('active-clue',
-        itemDir === direction && itemIdx === curEntryIdx);
+      const isActive = itemDir === direction && itemIdx === curEntryIdx;
+      if (isActive) activeItem = item;
+      item.classList.toggle('active-clue', isActive);
       item.classList.toggle('secondary-entry',
         itemDir === oppDir && itemIdx === oppEntryIdx);
       item.classList.toggle('filled',
         checker.isEntryFilled(DIRS[itemDir].entryCells[itemIdx]));
     });
+    // Phone list view: every row's letters, the cursor, and the active clue in view.
+    if (phone) phone.fillList.sync(activeCell, activeItem);
 
     // Clue bar: show the active clue and its crossing entry.
     clueBar.show(
       { dir: cur.label, num: cellRangeLabel(cur.entryCells[curEntryIdx]), clue: cur.entries[curEntryIdx].clue },
       { dir: opp.label, num: cellRangeLabel(opp.entryCells[oppEntryIdx]), clue: opp.entries[oppEntryIdx].clue },
     );
+    if (phone) phone.showingClue(cur.entries[curEntryIdx]);
 
     // Check Cell button: enabled only while the active cell can be checked.
     controls.syncCheckBtn(activeCell);
@@ -217,13 +223,14 @@ function init() {
       saveState();          // only this branch mutates persisted state
     } else if (ok === false) {
       flashWrong(cellPaths[n], flashLayer);
+      if (phone) phone.fillList.flash(m => m === n);
     }
     syncUI();
     refocus();
   }
 
   const saveKey = storageKey('sp', data);
-  const { saveState, restoreState, clearState } = setupStorage(saveKey, {
+  const { saveState, restoreState, clearState, hasSave } = setupStorage(saveKey, {
     getState() {
       return { ...cells.saveFields(), activeMs: timer.getElapsedMs(), composing: composer.getComposing() };
     },
@@ -340,6 +347,9 @@ function init() {
   renderInstructions(data);
 
   const clueItems = [];   // every rendered <li.clue-item>, both directions
+  // The same items with their direction and cells, in list order, for the phone's
+  // fill-in list (setupFillList).
+  const fillItems = [];
 
   // Builds one direction's <li class="clue-item"> list. Inward and outward differ only
   // in which list/entries/cell-array they read and which direction they set on click —
@@ -355,6 +365,7 @@ function init() {
       onClueClick(li, () => { direction = dir; focusCell(entryCellsFor[i][0]); });
       list.appendChild(li);
       clueItems.push(li);
+      fillItems.push({ li, dir, cells: entryCellsFor[i] });
     });
   }
 
@@ -510,6 +521,31 @@ function init() {
   const controls = setupControls({
     checkBtn, checker, hashed: data.hashed, onCheck: checkCell,
     onClear: resetBoard, refocus, key: saveKey,
+  });
+
+  // On a touch-first device only: the phone solving view and its drawn keyboard.
+  // Its fill-in list view puts the cursor on a tapped cell in its clue's direction.
+  const phone = setupPhoneLayout({
+    hiddenInput,
+    checkBtn,
+    refocus,
+    firstVisit: !hasSave(),
+    grid: document.getElementById('grid-wrap'),
+    lists: [document.querySelector('.clue-section-inward'), document.querySelector('.clue-section-outward')],
+    clueBar,
+    fillList: {
+      items: fillItems,
+      getLetter: getCellLetter,
+      isCorrect,
+      isComposing: composer.isComposing,
+      onCellTap: (i, j) => { direction = fillItems[i].dir; focusCell(fillItems[i].cells[j]); },
+    },
+    bottomRow: [
+      { label: '◂', key: 'ArrowLeft', glyph: true },
+      { el: document.getElementById('rebus-btn') },
+      { label: 'In ⇄ Out', key: '.', wide: true },
+      { label: '▸', key: 'ArrowRight', glyph: true },
+    ],
   });
 
   // ── Restore & focus ──────────────────────────────────────────────────────

@@ -98,7 +98,7 @@ test('the menu button sits within the active-clue bar, vertically centered again
     page.locator('#active-clue-bar').boundingBox(),
   ]);
   // The button used to float below the bar as a separate row, costing an
-  // entire extra row of vertical space on mobile; it now sits within the
+  // entire extra row of vertical space in a narrow window; it now sits within the
   // bar's own band instead, costing nothing extra.
   expect(btn.y).toBeGreaterThanOrEqual(bar.y);
   expect(btn.y + btn.height).toBeLessThanOrEqual(bar.y + bar.height);

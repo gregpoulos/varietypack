@@ -176,9 +176,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 
 /* Matches #clear-btn's padding/font-size/border-radius (theme-components.css)
-   so both menu-panel rows read as plain, equally-weighted menu items — a flat
+   so the menu-panel rows all read as plain, equally-weighted menu items — a flat
    hoverable strip, not a bordered "submit button" next to a bare checkbox. */
-#check-btn-toggle-label {
+.menu-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -188,7 +188,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   padding: 6px 8px;
   border-radius: 4px;
 }
-#check-btn-toggle { cursor: pointer; }
+.menu-toggle input { cursor: pointer; }
 
 /* Native <dialog>: raised to the top layer by showModal() and dimmed via
    ::backdrop — no positioning or z-index needed. The dialog is a transparent
@@ -216,3 +216,330 @@ button:disabled { opacity: 0.4; cursor: default; }
   pointer-events: none;
   animation: flash-wrong 600ms ease-out forwards;
 }
+/* The same flash on a Clues-screen cell (FLASH_WRONG_MS in engine-chrome.mjs is its
+   length). No end keyframe: it fades to the cell's own background. */
+@keyframes flash-wrong-cell {
+  0%, 20% { background: #ef9a9a; }
+}
+html.phone .list-cell.flash-wrong { animation: flash-wrong-cell 600ms ease-out; }
+
+/* ── Phone solving view (html.phone; shared/engine-phone.mjs) ─────────────────────────
+   Every rule is prefixed with html.phone, and with #solve-stage where it resizes a
+   tool's grid, so it outranks the tool's desktop rules: the tool's base.css comes later
+   in the cascade. */
+
+/* Everything the phone layout shows has moved out of .puzzle-body. What's left includes
+   Crushword's sticky, opaque .puzzle-center, which would otherwise float empty over the
+   page. #controls goes with it, holding only the desktop toggle by now. */
+html.phone .puzzle-body,
+html.phone #keys-btn { display: none; }
+
+html.phone body.has-clue-bar { padding-top: 0; }
+
+/* The view and its keyboard run edge to edge, with nothing above them on screen: the
+   top bar and the Clues screen show the header and instructions (setupPhoneLayout).
+   They still print, with a gutter. */
+html.phone .puzzle-main { max-width: none; padding: 0; }
+html.phone .puzzle-header,
+html.phone #instructions { padding-left: 16px; padding-right: 16px; }
+@media screen {
+  html.phone .puzzle-header,
+  html.phone #instructions { display: none; }
+}
+html.phone .list-instructions { margin: 0 0 16px; }
+
+/* One screen high, in normal page flow (below the header, which only prints), and
+   nothing in it is sticky or fixed. In a frame, 100svh is the frame's height, which the
+   host makes one screen high (setupEmbedResize's `fill`). */
+html.phone #solve-view {
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+/* The congrats card's buttons, at the 44px tap minimum. */
+html.phone #congrats-actions button { min-height: 44px; padding: 0 16px; }
+/* First-visit instructions (setupPhoneLayout): a card over the whole view. */
+html.phone #intro {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+html.phone .intro-card {
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+html.phone .intro-card > button { align-self: center; min-width: 120px; min-height: 44px; }
+
+/* Top bar: title, Clues/Grid, menu, 52px high to leave the 44px buttons clear of the
+   divider below. The menu panel opens below it, absolutely, since a fixed panel would
+   stay put while the bar scrolls with the page. */
+html.phone .solve-top {
+  flex: none;
+  min-height: 52px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 0 12px;
+}
+/* The title's slot, which the done-wrong banner covers while it shows (setupPhoneLayout).
+   Its text is clipped to the slot, so the bar keeps its height. */
+html.phone .solve-head-slot {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  position: relative;
+}
+html.phone .solve-head-slot #done-wrong {
+  position: absolute;
+  inset: 4px 0;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+/* The title, up to two lines, over the byline: the bar takes its height from them once,
+   at load, so a long title costs the grid a line instead of being cut off. */
+html.phone .solve-head {
+  flex: 1;
+  align-self: center;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+html.phone .solve-title {
+  font-weight: bold;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+html.phone .solve-byline {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html.phone #clues-btn { flex: none; height: 44px; min-width: 64px; }
+html.phone #menu-btn { position: static; flex: none; width: 44px; height: 44px; }
+html.phone #help-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+html.phone #menu-panel { position: absolute; top: 100%; right: 8px; z-index: 10; }
+/* The help panel opens under its own button, right of ☰'s: the bar's 4px padding, ☰'s
+   44px and a gap. */
+html.phone #help-panel {
+  position: absolute;
+  top: 100%;
+  right: 56px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: 10px;
+}
+/* The menus' rows at the 44px tap minimum. */
+html.phone #menu-panel .menu-toggle,
+html.phone #menu-panel #clear-btn,
+html.phone #help-panel #check-btn { min-height: 44px; }
+
+/* The stage takes what the bars leave. The grid fills it, and the SVG's viewBox scales
+   it to fit; the ID rules below undo each tool's desktop sizing. */
+html.phone #solve-stage { flex: 1; min-height: 0; }
+html.phone #grid-pane { height: 100%; padding: 6px 8px; }
+html.phone #grid-pane > *,
+html.phone #solve-stage #ring-svg,
+html.phone #solve-stage #spiral-svg,
+html.phone #solve-stage #puzzle-svg { width: 100%; height: 100%; max-width: none; }
+html.phone #solve-stage #ring-container { margin-top: 0; min-width: 0; }
+html.phone #solve-stage #grid-wrap { display: block; }
+
+/* Not overscroll-behavior: contain. Until the solver scrolls the view flush, the pane
+   fills most of the screen, and a swipe that couldn't pass to the page at the list's
+   end would leave the keyboard reachable only by its sliver on screen. */
+html.phone #list-pane {
+  height: 100%;
+  overflow-y: auto;
+  padding: 8px 16px;
+}
+
+/* The fill-in list (setupFillList): each clue's cell row on a line of its own below the
+   clue. Cells are 36px squares, a long entry wrapping onto more lines; under
+   html.list-nowrap (the options menu) they shrink instead, to keep it on one line. 36px,
+   not MIN_TAP's 44: near a grid cell's feel, and a ten-cell entry still fits a small
+   phone in two lines. A letter scales with its cell (cqw) and, in a rebus cell, with
+   its length (--len). The clue text takes the rest of the first line, so a long clue
+   wraps beside its number instead of dropping below it as an item of its own. */
+html.phone .clue-item { flex-wrap: wrap; }
+html.phone .clue-item > .clue-text { flex: 1 1 0; min-width: 0; }
+html.phone .list-cells {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 3px;
+  margin: 4px 0 2px;
+}
+html.phone .list-cell {
+  flex: none;
+  width: 36px;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  container-type: inline-size;
+  cursor: pointer;
+}
+html.phone .list-letter {
+  font-size: min(55cqw, calc(100cqw / (var(--len, 1) + 0.2)));
+  font-weight: bold;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* Crushword's caret, a bar between two letters of the cursor's cell as in the grid. Its
+   margins give it a gap of its own, which the letter size reserves (the 0.2 above), so it
+   shows even at the edge of a full cell. */
+html.phone .list-caret {
+  display: inline-block;
+  width: 0.07em;
+  height: 0.9em;
+  margin: 0 0.05em;
+  vertical-align: -0.1em;
+  background: currentColor;
+}
+html.phone.list-nowrap .list-cells { flex-wrap: nowrap; }
+html.phone.list-nowrap .list-cell { flex: 1 1 0; width: auto; min-width: 0; max-width: 36px; }
+
+/* Bar row: one clue, at most two lines, between the ‹ › steps. Its height is fixed, so
+   a clue of any length leaves the grid where it is. The desktop bar's gutter for
+   #menu-btn goes, since the button is in the top bar now. */
+html.phone #solve-bar { flex: none; height: 48px; display: flex; position: relative; }
+html.phone .bar-step {
+  flex: none;
+  width: 44px;
+  padding: 0;
+  border: none;
+  font-size: 1.5rem;
+}
+/* The desktop bar's position and z-index don't belong in the bar row. */
+html.phone #active-clue-bar {
+  position: static;
+  z-index: auto;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  border-bottom: none;
+}
+/* Marching Bands' navigator takes the same bar row, so the same fixed height and
+   two-line clamp. Its row or band and clue count stack in a column at the left. */
+html.phone #clue-navigator {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+}
+/* Clear of the clue, so the label reads as a label. */
+html.phone .nav-meta + .nav-text { margin-left: 8px; }
+html.phone .nav-meta {
+  flex: none;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+html.phone .nav-label { font-weight: bold; font-size: 0.8rem; }
+html.phone .nav-text {
+  flex: 1;
+  align-self: center;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+html.phone #active-clue-secondary { display: none; }
+/* A cut-off clue in full (setupClueExpand): over the bar row, growing up over the foot
+   of the grid as far as the clue needs, so nothing else moves. */
+html.phone #clue-full {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  box-sizing: border-box;
+  min-height: 100%;
+  max-height: 50svh;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+html.phone #active-clue-primary .active-clue-text {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* Drawn keyboard. Every row has a fixed height, an empty one too, so both layers are
+   the same height. Keys shrink to fit the row (min-width: 0, no padding): only their
+   height has to meet the 44px tap minimum. */
+html.phone #drawn-kb {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 3px calc(6px + env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html.phone .kb-layer { display: flex; flex-direction: column; gap: 6px; }
+html.phone .kb-row { display: flex; gap: 4px; height: 44px; }
+html.phone .kb-layer > .kb-row:nth-child(2) { padding: 0 5%; }
+html.phone #drawn-kb button {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border-radius: 5px;
+  font-size: 1.1rem;
+  /* No double-tap zoom when typing fast. #rebus-btn needs it here too, having left
+     #controls and its own rule. */
+  touch-action: manipulation;
+}
+html.phone #drawn-kb .kb-mod { flex-grow: 1.5; font-size: 0.85rem; }
+/* pre-line: a label may break itself over two lines (Crushword's Prev/Next cell). */
+html.phone #drawn-kb .kb-bottom button { font-size: 0.8rem; line-height: 1.15; white-space: pre-line; }
+html.phone #drawn-kb .kb-wide { flex-grow: 2; font-weight: bold; }
+html.phone #drawn-kb .kb-bottom .kb-glyph { font-size: 1.6rem; line-height: 1; }
+/* Holds ABC and ⌫ at the digit layer's edges, where the letter layer has them. */
+html.phone .kb-spacer { flex: 7 1 0; }

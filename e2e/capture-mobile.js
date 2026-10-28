@@ -16,7 +16,7 @@ const os   = require('os');
 const fs   = require('fs');
 const { spawnSync } = require('child_process');
 const playwright = require('@playwright/test');
-const { PHONES, buildFixtures } = require('./mobile');
+const { PHONES, buildFixtures, dismissIntro } = require('./mobile');
 const parseCliArgs = require('../shared/cli/parseCliArgs');
 
 // Builds each path (a .yaml or a directory of them) through the dispatcher, so the
@@ -53,6 +53,7 @@ async function capture(puzzles, outDir) {
         console.log(file);
       };
       await shot('load');
+      await dismissIntro(page);
       await shot('full', { fullPage: true });
       const cells = page.locator('.cell');
       await cells.nth(Math.floor((await cells.count()) / 2)).tap();

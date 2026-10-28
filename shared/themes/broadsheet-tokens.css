@@ -28,6 +28,6 @@
 
   --theme-color-circle: #bbbbbb;
 
-  /* Filled clue: dim only; the strikethrough stays reserved for a solved board */
+  /* Filled clue: dim only */
   --theme-clue-filled-opacity: 0.5;
 }

@@ -9,6 +9,7 @@ import {
   setupEmbedResize, setupKeydown, setupKeysOverlay, setupRebusButton, setupStorage,
   storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
+import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
 import { buildEntryMaps, nextRingPos, prevRingPos } from '../entryMaps.mjs';
 import { getStadiumRenderer } from './shapes/stadium.mjs';
 import { getTurnRenderer } from './shapes/turn.mjs';
@@ -33,6 +34,11 @@ function init() {
   // Entry indices that start (posInEntry 0) at each ring position, for number labels
   const entriesStartingAt = Array.from({ length: ringSize }, () => []);
   canonicalStart.forEach((start, ei) => entriesStartingAt[start.ringPos].push(ei));
+
+  // A cell's position along the whole snake, loop × ring + ring position: what tells
+  // apart the two copies of a ring position an entry longer than the ring holds, as the
+  // phone's fill-in list (Header & clues) must.
+  const snakePos = (ringPos, loop) => loop * ringSize + ringPos;
 
   // ── State ─────────────────────────────────────────────────────────────────
   const FIRST_RING_POS = 0;   // where entry 1 starts, on the first loop
@@ -139,6 +145,8 @@ function init() {
       li.classList.toggle('secondary-entry', i === secondaryEntryIdx && i !== activeEntryIdx);
       li.classList.toggle('filled', checker.isEntryFilled(ringPosByEntry[i]));
     });
+    // Phone list view: every row's letters, the cursor, and the active clue in view.
+    if (phone) phone.fillList.sync(snakePos(activeRingPos, activeLoop), cluesList.children[activeEntryIdx]);
 
     // Clue bar: show the active clue and its crossing entry. An entry longer than the
     // ring is both loops' entry at its first cells, so there the second row would only
@@ -148,6 +156,7 @@ function init() {
       secondaryEntryIdx === activeEntryIdx ? null
         : { num: secondaryEntryIdx + 1, clue: data.entries[secondaryEntryIdx].clue },
     );
+    if (phone) phone.showingClue(data.entries[activeEntryIdx]);
 
     // Check Cell button: enabled only while the active cell can be checked.
     controls.syncCheckBtn(activeRingPos);
@@ -167,13 +176,14 @@ function init() {
       saveState();          // only this branch mutates persisted state
     } else if (ok === false) {
       flashWrong(cellPaths[rp], flashLayer);
+      if (phone) phone.fillList.flash(p => p % ringSize === rp);
     }
     syncUI();
     refocus();
   }
 
   const saveKey = storageKey('sc', data);
-  const { saveState, restoreState, clearState } = setupStorage(saveKey, {
+  const { saveState, restoreState, clearState, hasSave } = setupStorage(saveKey, {
     getState() {
       return { ...cells.saveFields(), activeMs: timer.getElapsedMs(), composing: composer.getComposing() };
     },
@@ -259,8 +269,10 @@ function init() {
   renderByline(data);
   renderInstructions(data);
 
-  // Render clue list
+  // Render clue list, keeping each item with its cells, in list order, for the phone's
+  // fill-in list (setupFillList), as snake positions (snakePos).
   const cluesList = document.getElementById('clues');
+  const fillItems = [];
   data.entries.forEach((entry, i) => {
     const li = htmlEl('li', { class: 'clue-item', 'data-entry': i }, clueTextEl(entry.clue));
     // Clue click → jump to the entry's first cell, in its own loop.
@@ -269,6 +281,8 @@ function init() {
       focusCell(ringPos, loop);
     });
     cluesList.appendChild(li);
+    const start = snakePos(canonicalStart[i].ringPos, canonicalStart[i].loop);
+    fillItems.push({ li, cells: Array.from({ length: ringPosByEntry[i].length }, (_, j) => start + j) });
   });
 
   // ── Event wiring ──────────────────────────────────────────────────────────
@@ -424,6 +438,35 @@ function init() {
   const controls = setupControls({
     checkBtn, checker, hashed: data.hashed, onCheck: checkCell,
     onClear: resetBoard, refocus, key: saveKey,
+  });
+
+  // On a touch-first device only: the phone solving view and its drawn keyboard.
+  // Its fill-in list view puts the cursor on a tapped cell in the loop that cell of the
+  // entry lies in: an entry can straddle the loop boundary, or run past the ring.
+  const phone = setupPhoneLayout({
+    hiddenInput,
+    checkBtn,
+    refocus,
+    firstVisit: !hasSave(),
+    grid: document.getElementById('ring-container'),
+    lists: [document.getElementById('clue-list')],
+    clueBar,
+    fillList: {
+      items: fillItems,
+      getLetter: p => getCellLetter(p % ringSize),
+      isCorrect: p => isCorrect(p % ringSize),
+      isComposing: p => composer.isComposing(p % ringSize),
+      onCellTap: (i, j) => {
+        const p = fillItems[i].cells[j];
+        focusCell(p % ringSize, Math.floor(p / ringSize));
+      },
+    },
+    bottomRow: [
+      { label: '◂', key: 'ArrowLeft', glyph: true },
+      { el: document.getElementById('rebus-btn') },
+      { label: 'Loop ⇄', key: '.', wide: true },
+      { label: '▸', key: 'ArrowRight', glyph: true },
+    ],
   });
 
   // ── Restore & focus ─────────────────────────────────────────────────────────

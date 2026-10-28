@@ -10,6 +10,7 @@ import {
   setupControls, setupEmbedResize, setupKeydown, setupKeysOverlay, setupStorage,
   storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
+import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
 import {
   cellCoords, cellDimensions, deriveNumbering, gridDimensions, svgSize
 } from '../layout.mjs';
@@ -256,11 +257,14 @@ function init() {
     const otherDir = DIRS[direction].opposite;
     const crossing = crossingInfo(activeCell);
     if (crossing) DIRS[otherDir].clueItems[crossing.num].classList.add('secondary-entry');
+    // Phone list view: every row's letters, the cursor, and the active clue in view.
+    if (phone) phone.fillList.sync(activeCell, activeItem, cursorPos);
     // Clue bar: show the active clue and its crossing entry.
     clueBar.show(
       { dir: DIRS[direction].label, num: activeInfo.num, clue: data[direction][activeInfo.num].clue },
       crossing && { dir: DIRS[otherDir].label, num: crossing.num, clue: data[otherDir][crossing.num].clue },
     );
+    if (phone) phone.showingClue(data[direction][activeInfo.num]);
 
     // Check Cell button: enabled only while the active cell can be checked.
     controls.syncCheckBtn(activeCell);
@@ -271,6 +275,9 @@ function init() {
 
   function checkCell() {
     const n = activeCell;
+    // Checking a typed cell commits it first, as moving off it would, so the solver
+    // needn't (canCheck below lets the button through while it composes).
+    if (composer.isComposing(n)) composer.toggle(n);
     // The focus call is required on every path out (docs/CROSS_TOOL_SPEC.md → Focus
     // management).
     const ok = checker.checkCell(n);
@@ -279,13 +286,14 @@ function init() {
       saveState();          // only this branch mutates persisted state
     } else if (ok === false) {
       flashWrong(cellRects[n], flashLayer);
+      if (phone) phone.fillList.flash(m => m === n);
     }
     syncUI();
     refocus();
   }
 
   const saveKey = storageKey('cw', data);
-  const { saveState, restoreState, clearState } = setupStorage(saveKey, {
+  const { saveState, restoreState, clearState, hasSave } = setupStorage(saveKey, {
     getState() {
       return { ...cells.saveFields(), activeMs: timer.getElapsedMs(), composing: composer.getComposing() };
     },
@@ -366,9 +374,12 @@ function init() {
   caretLayer.appendChild(caret);
 
   // Letters are centered in the cell under one scale transform; both lengths
-  // below are in the text's own pre-transform units.
+  // below are in the text's own pre-transform units. A grid that isn't rendered (the
+  // phone's list view hides it) has no glyphs to measure, and getSubStringLength would
+  // throw, so the caret waits until the grid shows again.
   function updateCaret() {
     const el = letterTexts[activeCell];
+    if (el.getNumberOfChars() < cursorPos) return;
     const { x, y } = cellCoords(rowOf(activeCell), colOf(activeCell), CELL_WIDTH, CELL_HEIGHT);
     const natural = el.getComputedTextLength();
     const left = cursorPos > 0 ? el.getSubStringLength(0, cursorPos) : 0;
@@ -405,6 +416,10 @@ function init() {
   const acrossCluesList = document.getElementById('across-clues');
   const downCluesList   = document.getElementById('down-clues');
 
+  // Every clue item with its direction and cells, in list order, for the phone's fill-in
+  // list (setupFillList).
+  const fillItems = [];
+
   function buildClueList(entriesObj, order, listEl, itemStore, dir) {
     for (const num of order) {
       const li = htmlEl('li', { class: 'clue-item' },
@@ -413,6 +428,7 @@ function init() {
       onClueClick(li, () => { direction = dir; focusCell(DIRS[dir].cellsOf[num][0]); });
       listEl.appendChild(li);
       itemStore[num] = li;
+      fillItems.push({ li, dir, cells: entryCellsOf(num, dir) });
     }
   }
   buildClueList(data.across, maps.across.order, acrossCluesList, acrossClueItems, 'across');
@@ -560,6 +576,39 @@ function init() {
   const controls = setupControls({
     checkBtn, checker, hashed: data.hashed, onCheck: checkCell,
     onClear: resetBoard, refocus, key: saveKey,
+    canCheck: n => checker.canCheck(n) || (composer.isComposing(n) && !isCorrect(n)),
+  });
+
+  // On a touch-first device only: the phone solving view and its drawn keyboard.
+  // Its fill-in list view puts the cursor on a tapped cell in its clue's direction.
+  // Nothing in the grid can be measured while the list hides it, so letters typed there
+  // are fit to their cells (fitLetterToCell) and the caret placed (updateCaret) again
+  // when the grid shows.
+  const phone = setupPhoneLayout({
+    hiddenInput,
+    checkBtn,
+    refocus,
+    firstVisit: !hasSave(),
+    grid: svg,
+    lists: [document.querySelector('.clue-columns')],
+    clueBar,
+    fillList: {
+      items: fillItems,
+      getLetter: getCellLetter,
+      isCorrect,
+      onCellTap: (i, j) => { direction = fillItems[i].dir; focusCell(fillItems[i].cells[j]); },
+    },
+    onGridShown: () => {
+      for (const n of CELL_IDS) fitLetterToCell(letterTexts[n]);
+      updateCaret();
+    },
+    bottomRow: [
+      { label: '◂', key: 'ArrowLeft', glyph: true },
+      { label: 'Prev\ncell', key: 'Enter', shift: true, ariaLabel: 'Previous cell' },
+      { label: 'Next\ncell', key: 'Enter', ariaLabel: 'Next cell' },
+      { label: 'Across ⇄ Down', key: '.', wide: true },
+      { label: '▸', key: 'ArrowRight', glyph: true },
+    ],
   });
 
   // ── Restore & focus ───────────────────────────────────────────────────────

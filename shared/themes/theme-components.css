@@ -37,13 +37,19 @@ h1.title {
   background:    var(--theme-color-bg);
   border-bottom: 1px solid var(--theme-color-bar-border);
 }
+html.phone #clue-full {
+  background: var(--theme-color-bg);
+  color:      var(--theme-color-text);
+  border-top: 1px solid var(--theme-color-bar-border);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+}
 
 /* #menu-btn sits *within* #active-clue-bar's own band instead of floating below it
-   as a separate row — no extra vertical space, which matters most on mobile where the
-   on-screen keyboard already eats much of it. Pure CSS calc() against the bar's
-   min-height (base.css), not JS-measured: a measured value could go stale mid mobile
-   keyboard viewport animation and leave the button off-screen. 32px is the button's own
-   height (base.css); Marching Bands, with no bar, keeps the plain `top: 20px` default. */
+   as a separate row — no extra vertical space. Pure CSS calc() against the bar's
+   min-height (base.css), not JS-measured: nothing has to re-measure it when the bar or
+   the viewport resizes. 32px is the button's own height (base.css); Marching Bands, with
+   no bar, keeps the plain `top: 20px` default. The phone layout moves the button into
+   its top bar instead (base.css, html.phone). */
 .has-clue-bar #menu-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
 
 /* #menu-panel opens directly below the bar's bottom edge (8px gap, matching
@@ -81,10 +87,7 @@ h1.title {
 :where(.tool-snake-charmer, .tool-spiral, .tool-crushword) .clue-item:hover { background: var(--theme-color-clue-hover); }
 .clue-item.active-clue     { background: var(--theme-color-active); }
 .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
-/* Must precede the .correct rule: equal specificity, so the later rule wins and a solved
-   board keeps its strikethrough instead of inheriting this rule's default `none`. */
 .clue-item.filled .clue-text { text-decoration: var(--theme-clue-filled-decoration); opacity: var(--theme-clue-filled-opacity); }
-.clue-item.correct .clue-text { color: var(--theme-color-correct-text); text-decoration: line-through; }
 
 .clue-section h2 {
   color:          var(--theme-color-text);
@@ -92,8 +95,9 @@ h1.title {
   padding-bottom: 4px;
 }
 
-/* Primary button */
-#check-btn {
+/* Primary button: Check on desktop, and the phone's first-visit Start */
+#check-btn,
+html.phone .intro-card > button {
   font-family:    var(--theme-font-button);
   font-size:      0.95rem;
   padding:        8px 22px;
@@ -105,8 +109,8 @@ h1.title {
 #check-btn:hover:not(:disabled) { background: var(--theme-color-btn-hover); }
 #check-btn:disabled { background: var(--theme-color-btn-disabled); cursor: default; }
 
-/* Clear button — flat, borderless, left-aligned, matching #check-btn-toggle-label
-   (base.css): both are plain menu-panel rows now, not a bordered pill next to a
+/* Clear button — flat, borderless, left-aligned, matching .menu-toggle
+   (base.css): all are plain menu-panel rows now, not a bordered pill next to a
    bare checkbox. Color cues (armed, hover) carry entirely through text color
    and the shared row-hover background instead of a border. */
 #clear-btn {
@@ -121,8 +125,12 @@ h1.title {
 }
 #clear-btn:hover              { color: var(--theme-color-clear-hover-fg); }
 #clear-btn.armed              { color: var(--theme-color-danger); }
+/* With no hover on a phone, the pale resting color reads as disabled next to the menu's
+   other rows, so it takes the text color there; the armed state stays danger. */
+html.phone #clear-btn         { color: var(--theme-color-text); }
+html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 #clear-btn:hover,
-#check-btn-toggle-label:hover { background: var(--theme-color-clue-hover); }
+.menu-toggle:hover { background: var(--theme-color-clue-hover); }
 
 /* Rebus button — the pointer route into multi-letter entry, mirroring the Enter key.
    Deliberately has no disabled or per-cell state: it looks identical on every square,
@@ -176,10 +184,12 @@ h1.title {
    its per-puzzle letter size as an SVG presentation attribute, which any CSS font-size
    rule would outrank (e2e/spiral.spec.js asserts exactly that). transform composes with
    whatever base size each tool established, so one shared block covers all three tools
-   with no per-tool font math. transform-box: fill-box is required — SVG's default
-   view-box origin would drag the text toward the viewport origin instead of scaling it
-   in place. */
-.cell-letter          { transform-box: fill-box; transform-origin: center; }
+   with no per-tool font math. The scale pivots on the letter's own x,y, which every
+   tool centers its text on (text-anchor middle): setLetterText sets transform-origin
+   from those attributes, in the view-box coordinates that transform-box: view-box
+   resolves them in. fill-box (the origin as "center") would be simpler, but WebKit
+   mis-resolves it for SVG <text>, so the letter slid toward the drawing's top-left. */
+.cell-letter          { transform-box: view-box; }
 .cell-letter.len-2    { transform: scale(0.62); }
 .cell-letter.len-3    { transform: scale(0.45); }
 .cell-letter.len-long { transform: scale(0.34); }
@@ -204,15 +214,18 @@ h1.title {
 
 /* Menu button (fixed top-right corner, created by setupOptionsMenu) — same
    var usage as #keys-btn. */
-#menu-btn {
+#menu-btn,
+html.phone #help-btn {
   background: var(--theme-color-btn2-bg);
   border:     1px solid var(--theme-color-btn2-border);
   color:      var(--theme-color-muted);
 }
-#menu-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+#menu-btn:hover,
+html.phone #help-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
 /* Menu dropdown card — same var usage as #keys-modal. */
-#menu-panel {
+#menu-panel,
+html.phone #help-panel {
   background:    var(--theme-color-bg);
   color:         var(--theme-color-text);
   border:        2px solid var(--theme-color-soft-border);
@@ -220,6 +233,16 @@ h1.title {
 }
 /* #clear-btn is full width inside the dropdown. */
 #menu-panel #clear-btn { width: 100%; }
+/* On a phone #check-btn is a plain row of the help panel, as #clear-btn is of ☰'s. */
+html.phone #help-panel #check-btn {
+  width:          100%;
+  font-size:      0.8rem;
+  padding:        6px 8px;
+  background:     transparent;
+  color:          var(--theme-color-text);
+  text-align:     left;
+}
+html.phone #help-panel #check-btn:hover:not(:disabled) { background: var(--theme-color-clue-hover); }
 
 /* Keys modal — the <dialog> dim is its ::backdrop (skeleton sets this transparent) */
 #keys-overlay::backdrop { background: var(--theme-color-overlay); }
@@ -294,11 +317,13 @@ kbd {
 }
 #congrats-actions {
   display:         flex;
+  flex-wrap:       wrap;
   gap:             12px;
   justify-content: center;
   margin-top:      20px;
 }
 #congrats-copy-btn,
+#congrats-view-btn,
 #congrats-play-btn {
   background:   var(--theme-color-btn2-bg);
   border-color: var(--theme-color-btn2-border);
@@ -319,6 +344,77 @@ kbd {
   letter-spacing: 0.04em;
 }
 
+/* Phone solving view (shared/engine-phone.mjs; structure in base.css). The keys take
+   the secondary-button tokens and sit in a tray of the hover shade. */
+html.phone #solve-view { background: var(--theme-color-bg); }
+html.phone .solve-top  { border-bottom: 2px solid var(--theme-color-header-rule); }
+html.phone .solve-title {
+  font-family: var(--theme-font-display);
+  color:       var(--theme-color-title);
+}
+html.phone .solve-byline {
+  font-style: var(--theme-byline-style);
+  color:      var(--theme-color-muted);
+}
+html.phone #intro { background: var(--theme-color-overlay); }
+html.phone .intro-card {
+  background:    var(--theme-color-bg);
+  color:         var(--theme-color-text);
+  border-radius: var(--theme-card-radius);
+}
+html.phone #clues-btn {
+  font-family:    var(--theme-font-button);
+  background:     var(--theme-color-btn2-bg);
+  border-color:   var(--theme-color-btn2-border);
+  color:          var(--theme-color-text);
+  letter-spacing: var(--theme-button-tracking);
+}
+html.phone #solve-bar  { border-top: 1px solid var(--theme-color-bar-border); }
+html.phone .bar-step   { background: transparent; color: var(--theme-color-muted); }
+html.phone .nav-label  { color: var(--theme-color-title); }
+html.phone .nav-count  { color: var(--theme-color-muted); }
+html.phone #drawn-kb {
+  background: var(--theme-color-btn2-hover);
+  border-top: 1px solid var(--theme-color-bar-border);
+}
+html.phone #drawn-kb button {
+  font-family:  var(--theme-font-button);
+  background:   var(--theme-color-btn2-bg);
+  border:       1px solid var(--theme-color-btn2-border);
+  color:        var(--theme-color-text);
+}
+html.phone #drawn-kb button:active { background: var(--theme-color-clue-hover); }
+/* The fill-in list's cells, as the grid colors its own: the active clue's row as its
+   active entry, the cursor as its active cell. */
+html.phone .list-cell {
+  font-family: var(--theme-font-cell);
+  background:  var(--theme-color-cell-bg);
+  border:      1px solid var(--theme-color-cell-stroke);
+  color:       var(--theme-color-cell-text);
+}
+html.phone .clue-item.active-clue .list-cell { background: var(--theme-color-highlight); }
+html.phone .clue-item .list-cell.list-cursor {
+  background:   var(--theme-color-active);
+  border-color: var(--theme-color-active-stroke);
+  box-shadow:   inset 0 0 0 1px var(--theme-color-active-stroke);
+}
+/* A checked cell keeps its correct fill under the active clue's row, as in the grid; the
+   cursor changes only its outline. This follows the cursor rule above, which it ties
+   with on specificity. */
+html.phone .clue-item .list-cell.correct {
+  background:   var(--theme-color-correct-bg);
+  border-color: var(--theme-color-correct-stroke);
+  color:        var(--theme-color-correct-text);
+}
+html.phone .clue-item .list-cell.correct.list-cursor { border-color: var(--theme-color-active-stroke); }
+/* A cell composing a rebus dashes its outline, as in the grid (the inset shadow would
+   fill the dashes in, so it goes). */
+html.phone .clue-item .list-cell.list-cursor.composing {
+  border-width: 2px;
+  border-style: dashed;
+  box-shadow:   none;
+}
+
 /* ── Per-tool selectors (body class hook: .tool-<name>) ─────────────────────
    Each tool's <body> carries a class like .tool-snake-charmer so these rules
    scope to the right tool without a separate per-tool CSS file. Plain sizing and
@@ -333,6 +429,13 @@ kbd {
   stroke:       var(--theme-color-secondary-active-stroke);
   stroke-width: 1.5;
 }
+/* A checked cell stays green under the secondary highlight. The two rules above beat the
+   unnamespaced .cell.correct on specificity; these tie with them and follow. */
+.tool-snake-charmer .cell.correct.secondary-entry {
+  fill:   var(--theme-color-correct-bg);
+  stroke: var(--theme-color-correct-stroke);
+}
+.tool-snake-charmer .cell.correct.active-cell.secondary-entry { stroke: var(--theme-color-active-stroke); }
 
 /* Marching Bands — band fills are unnamespaced to keep :where() specificity
    below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive.
@@ -343,7 +446,7 @@ kbd {
 .cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
 .cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
 .tool-marching-bands .band-label  { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
-.tool-marching-bands .row-label   { font-family: var(--theme-font-cell); color: var(--theme-color-text); }
+.tool-marching-bands .row-label   { font-family: var(--theme-font-cell); fill: var(--theme-color-text); }
 .tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
 .tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
 .tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }

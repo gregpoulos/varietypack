@@ -13,6 +13,7 @@ const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
 const { buildPuzzle } = require('../crushword/cli');
+const { cellLetterPairs, fillCrushwordCell, solveCrushwordBoard } = require('./helpers');
 const { sha256hex } = require('../shared/sha256hex.mjs');
 
 const FIX = path.join(__dirname, '..', 'crushword', 'test', 'fixtures');
@@ -39,31 +40,6 @@ async function ready(page) {
   await page.evaluate(() => document.getElementById('hidden-input').focus());
 }
 
-// { id, letter } pairs for every open cell, id matching the engine's 1-indexed
-// row-major SVG cell id (idOf(r,c) = r*cols+c+1 = flat letters[] index + 1).
-// Filling cell-by-cell via direct click (rather than relying on auto-advance
-// through one direction's entries) is required: Crushword's grid can — and
-// cw-9.yaml does — contain cells with an entry in only one direction, which
-// pure across-order or down-order typing would never visit, leaving the board
-// permanently unfilled.
-function cellLetterPairs(letters) {
-  const pairs = [];
-  letters.forEach((letter, i) => { if (letter !== null) pairs.push({ id: i + 1, letter }); });
-  return pairs;
-}
-
-// Enter commits the cell, which the last cell of a solveBoard() loop needs:
-// a cell short of maxCellLetters stays composing until something commits it.
-async function fillCell(page, id, letter) {
-  await page.locator(`#cell-${id}`).click();
-  for (const ch of letter) await page.locator('#hidden-input').fill(ch.toUpperCase());
-  await page.keyboard.press('Enter');
-}
-
-async function solveBoard(page, letters) {
-  for (const { id, letter } of cellLetterPairs(letters)) await fillCell(page, id, letter);
-}
-
 async function boardLetters(page) {
   return page.evaluate(() => window.PUZZLE_DATA.letters);
 }
@@ -77,8 +53,8 @@ test('banners are state-derived and partial correctness stays hidden', async ({ 
   const letters = await boardLetters(page);
   const pairs = cellLetterPairs(letters);
   const wrongFirst = pairs[0].letter.toLowerCase() === 'z' ? 'y' : 'z';
-  await fillCell(page, pairs[0].id, wrongFirst);
-  for (const { id, letter } of pairs.slice(1)) await fillCell(page, id, letter);
+  await fillCrushwordCell(page, pairs[0].id, wrongFirst);
+  for (const { id, letter } of pairs.slice(1)) await fillCrushwordCell(page, id, letter);
 
   await expect(page.locator('#done-wrong')).toBeVisible();
   await expect(page.locator('#congrats')).toBeHidden();
@@ -250,7 +226,7 @@ test('clicking a clue scrolled off the top of the view lands it below the sticky
 test('a fully correct board opens the congrats dialog', async ({ page }) => {
   await page.goto('file://' + htmlPath);
   await ready(page);
-  await solveBoard(page, await boardLetters(page));
+  await solveCrushwordBoard(page);
   await expect(page.locator('#congrats')).toBeVisible();
   await expect(page.locator('#done-wrong')).toBeHidden();
 });
@@ -892,7 +868,8 @@ test('Enter commits the cell and advances to the next one, keeping all typed con
   await page.locator('#hidden-input').fill('H'); // "TH", cursor after the H
   await page.keyboard.press('ArrowLeft'); // cursor between "T" and "H" — mid-cell
   await expect(page.locator('#cell-2')).toHaveClass(/composing/);
-  await expect(page.locator('#check-btn')).toBeDisabled();
+  // Check commits a composing cell itself, so it is available mid-composition.
+  await expect(page.locator('#check-btn')).toBeEnabled();
 
   await page.keyboard.press('Enter');
   await expect(page.locator('#cell-2')).not.toHaveClass(/composing/);
@@ -901,9 +878,6 @@ test('Enter commits the cell and advances to the next one, keeping all typed con
   // Nothing past the cursor was trimmed — unlike Space (see its own test).
   await expect(page.locator('#letter-2')).toHaveText('TH');
 
-  // Revisiting the now-committed cell confirms Check Cell is enabled there.
-  await page.locator('#cell-2').click();
-  await expect(page.locator('#check-btn')).toBeEnabled();
 });
 
 test('Shift+Enter commits the cell and moves to the end of the previous one, keeping all typed content', async ({ page }) => {
@@ -959,7 +933,7 @@ test('a hashed puzzle solves end to end and its preimage matches boardHash', asy
   const plainMatch = plainHtml.match(/window\.PUZZLE_DATA = ([\s\S]*?);\s*<\/script>/);
   const plainData = JSON.parse(plainMatch[1]);
 
-  await solveBoard(page, plainData.letters);
+  await solveCrushwordBoard(page, { letters: plainData.letters });
 
   await expect.poll(() => events.length).toBe(1);
   const detail = events[0];
@@ -973,7 +947,7 @@ test('a solved board restores sealed — no input path can open composition', as
 
   const letters = await boardLetters(page);
   const pairs = cellLetterPairs(letters);
-  await solveBoard(page, letters);
+  await solveCrushwordBoard(page, { letters });
   await expect(page.locator('#congrats-dialog')).toBeVisible();
 
   await page.reload();
@@ -994,7 +968,7 @@ test('.correct cells and .cell-block render correctly under print media', async 
   await page.goto('file://' + htmlPath);
   await ready(page);
 
-  await solveBoard(page, await boardLetters(page));
+  await solveCrushwordBoard(page);
   await expect(page.locator('#congrats')).toBeVisible();
 
   await page.emulateMedia({ media: 'print' });
@@ -1006,8 +980,8 @@ test('.correct cells and .cell-block render correctly under print media', async 
   await expect(page.locator('.cell-letter.correct:visible')).toHaveCount(0);
 });
 
-test('the menu button does not overlap the grid on a narrow (mobile-width) viewport', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 667 }); // iPhone SE-ish width
+test('the menu button does not overlap the grid on a narrow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 }); // a narrow window or embed
   await page.goto('file://' + htmlPath); // cw-9.yaml: a 9-column grid, wide enough to reach the viewport edge here
   await ready(page);
 
@@ -1073,6 +1047,28 @@ test('menu button opens the options menu holding Clear; outside click and Escape
   await expect(panel).toBeHidden();
 });
 
+// The menu is no modal: typing while it's open types into the puzzle and closes it, the
+// same whether or not a click in the menu came first. A bare modifier is not typing.
+test('typing with the options menu open types into the puzzle and closes the menu', async ({ page }) => {
+  await page.goto(`file://${rebusPath}`);
+  await ready(page);
+  const panel = page.locator('#menu-panel');
+  const firstCell = page.locator('#letter-1');
+
+  await page.click('#menu-btn');
+  await page.keyboard.press('Shift');
+  await expect(panel).toBeVisible();
+  await page.keyboard.type('A');
+  await expect(firstCell).toHaveText('A');
+  await expect(panel).toBeHidden();
+
+  await page.click('#menu-btn');
+  await page.click('#check-btn-toggle-label');
+  await page.keyboard.type('B');
+  await expect(firstCell).toHaveText('AB');
+  await expect(panel).toBeHidden();
+});
+
 // Every Crushword cell composes on its own keystrokes, and a composing cell is not
 // filled (composer.isCellFilled), so a clue gains .filled only when its last cell commits
 // — not as the letter is typed. A decision, not an accident: docs/CROSS_TOOL_SPEC.md →
@@ -1084,7 +1080,7 @@ test('a clue gains .filled when its last cell commits, not while that cell is st
   const letters = await boardLetters(page);
   const pairs = cellLetterPairs(letters);
   const last = pairs.pop();
-  for (const { id, letter } of pairs) await fillCell(page, id, letter);
+  for (const { id, letter } of pairs) await fillCrushwordCell(page, id, letter);
 
   const total = await page.locator('.clue-item').count();
   const before = await page.locator('.clue-item.filled').count();

@@ -6,9 +6,13 @@ const { setupEmbedResize } = require('../engine-chrome.mjs');
 
 // root.height is the box height (getBoundingClientRect), which can shrink; scrollHeight
 // can't. A fake ResizeObserver that records its callback so a test can fire it.
-function fakeEnv({ framed = true } = {}) {
+function fakeEnv({ framed = true, phone = false } = {}) {
   const posted = [];
-  const root = { height: 480.2, getBoundingClientRect() { return { height: this.height }; } };
+  const root = {
+    height: 480.2,
+    getBoundingClientRect() { return { height: this.height }; },
+    classList: { contains: c => phone && c === 'phone' },
+  };
   const win = {};
   win.parent = framed ? { postMessage: (msg, origin) => posted.push({ msg, origin }) } : win;
   let fire;
@@ -47,4 +51,15 @@ test('embed resize: without ResizeObserver does nothing', () => {
   const env = fakeEnv();
   assert.equal(setupEmbedResize({ win: env.win, root: env.root, RO: undefined }), null);
   assert.deepEqual(env.posted, []);
+});
+
+// The phone layout is one screen high however tall its frame is, so it asks the host
+// for a screen-high frame rather than reporting a height to copy; a desktop page doesn't.
+test('embed resize: a phone layout asks to fill the screen, a desktop page does not', () => {
+  for (const phone of [true, false]) {
+    const env = fakeEnv({ phone });
+    setupEmbedResize({ win: env.win, root: env.root, RO: env.RO });
+    env.fire();
+    assert.equal(env.posted[0].msg.fill, phone || undefined);
+  }
 });

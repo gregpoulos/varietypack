@@ -15,7 +15,7 @@ const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
 const yaml = require('js-yaml');
-const { typeCell } = require('./helpers');
+const { typeCell, solveCrushwordBoard, solveRingBoard } = require('./helpers');
 const { sha256hex } = require('../shared/sha256hex.mjs');
 
 // ---- Per-tool adapters -----------------------------------------------------
@@ -34,31 +34,6 @@ const MARCHING_BANDS_REBUS_CELLS = [
   'O', 'PPPP', 'Q', 'R', 'S',
   'T', 'U', 'V', 'W', 'X',
 ];
-
-// A single-letter, keyboard-driven board solve: reads PUZZLE_DATA.letters (nulls
-// filtered out, for Marching Bands' center cell), presses each as a named key.
-// Shared by the ring tools' congrats/Play-again/completion-event tests — they
-// don't need typeCell()'s rebus-composing machinery since their plain fixtures
-// carry no multi-letter cells.
-async function solveRingBoard(page) {
-  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters.filter(l => l !== null));
-  for (const l of letters) await page.keyboard.press(`Key${l.toUpperCase()}`);
-}
-
-// Crushword's board has no uniform typing order (some cells belong to only one
-// direction), so it must be solved cell-by-cell by id, same as e2e/crushword.spec.js's
-// own solveBoard()/fillCell(). Enter commits each cell explicitly — required for the
-// last cell of the loop, which would otherwise stay composing.
-async function solveCrushwordBoard(page, toTyped = ch => ch.toUpperCase()) {
-  const letters = await page.evaluate(() => window.PUZZLE_DATA.letters);
-  const pairs = [];
-  letters.forEach((letter, i) => { if (letter !== null) pairs.push({ id: i + 1, letter }); });
-  for (const { id, letter } of pairs) {
-    await page.locator(`#cell-${id}`).click();
-    for (const ch of letter) await page.locator('#hidden-input').fill(toTyped(ch));
-    await page.keyboard.press('Enter');
-  }
-}
 
 const TOOLS = [
   {
@@ -327,7 +302,7 @@ for (const tool of RING_TOOLS) {
 // ---- G: the controls row keeps its size — all four tools ------------------------------
 // The controls row must keep its natural size: hiding Check Cell may not move anything,
 // and nothing measured at load may pin a width the window can later shrink below (a
-// phone rotated from landscape to portrait).
+// window narrowed after load).
 for (const tool of ALL_TOOLS) {
   test(`[${tool.name}] narrowing the window never makes the page scroll sideways`, async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 400 });
@@ -339,7 +314,8 @@ for (const tool of ALL_TOOLS) {
     expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
   });
 
-  test(`[${tool.name}] hiding Check Cell leaves the controls row the same size`, async ({ page }) => {
+  // The click focuses the checkbox; the toggle hands focus back, so typing goes on.
+  test(`[${tool.name}] hiding Check Cell leaves the controls row the same size and focus on the puzzle`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     const before = await page.locator('#controls').boundingBox();
@@ -347,6 +323,7 @@ for (const tool of ALL_TOOLS) {
     await page.click('#check-btn-toggle');
     await expect(page.locator('#check-btn')).toBeHidden();
     expect(await page.locator('#controls').boundingBox()).toEqual(before);
+    await expect(page.locator('#hidden-input')).toBeFocused();
   });
 }
 
@@ -1042,16 +1019,19 @@ for (const tool of FILLED_TOOLS) {
     expect(after).toBeGreaterThan(0);
   });
 
-  test(`[${tool.name}] a solved board keeps its strikethrough on every clue (.correct outranks .filled)`, async ({ page }) => {
+  test(`[${tool.name}] a solved board marks every clue .correct without restyling its text`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
 
+    const color = () => page.locator('.clue-item .clue-text').first().evaluate(el => getComputedStyle(el).color);
+    const before = await color();
     await tool.solveBoard(page);
     const total = await page.locator('.clue-item').count();
     await expect(page.locator('.clue-item.correct')).toHaveCount(total);
     await expect(page.locator('.clue-item.filled')).toHaveCount(total);
+    expect(await color()).toBe(before);
     for (const text of await page.locator('.clue-item .clue-text').all()) {
-      await expect(text).toHaveCSS('text-decoration-line', 'line-through');
+      await expect(text).toHaveCSS('text-decoration-line', 'none');
     }
   });
 
@@ -1187,6 +1167,55 @@ test('[crushword] a puzzle solves when the solver types accented letters', async
     window.__vpEvents = [];
     document.querySelector('.puzzle-main').addEventListener('varietypack:complete', () => window.__vpEvents.push(1));
   });
-  await solveCrushwordBoard(page, accent);
+  await solveCrushwordBoard(page, { toTyped: accent });
   await page.waitForFunction(() => window.__vpEvents.length === 1);
 });
+
+// The other side of e2e/phone.spec.js: a desktop browser (not touch-first) gets no phone
+// layout. Detection is shared code, so one tool covers it.
+test('[crushword] a desktop browser gets no drawn keyboard, and the native one is left alone', async ({ page }) => {
+  const tool = TOOLS.find(t => t.name === 'crushword');
+  await page.goto('file://' + tool.paths.plain);
+  await ready(tool, page);
+  await expect(page.locator('#drawn-kb')).toHaveCount(0);
+  await expect(page.locator('#hidden-input')).not.toHaveAttribute('inputmode', /.*/);
+});
+
+// A multi-letter cell's letter is scaled down in place. WebKit (Safari, every iOS
+// browser) mis-resolves transform-box: fill-box for SVG <text>, which slid the letter
+// toward the drawing's top-left — so WebKit is the project that catches a regression.
+// The scaling is one rule over every tool's own letter elements (see the comment on
+// .cell-letter in theme-components.css), so each tool is looped. Measured by property —
+// the letter's center inside its cell — not by recomputing the scale.
+for (const tool of TOOLS) {
+  test(`[${tool.name}] a multi-letter cell's text stays centered in its cell while typing`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.rebus);
+    await ready(tool, page);
+
+    // A cell away from the drawing's origin, where a mis-pivoted scale shows most.
+    const cellId = await page.evaluate(() => {
+      const letters = [...document.querySelectorAll('[id^="letter-"]')];
+      return letters[Math.floor(letters.length / 2)].id.replace('letter-', 'cell-');
+    });
+    const letterId = cellId.replace('cell-', 'letter-');
+    await page.locator('#' + cellId).click();
+    const cap = tool.ring ? 3 : Math.min(3, await page.evaluate(() => window.PUZZLE_DATA.maxCellLetters));
+    if (tool.ring) await page.keyboard.press('Enter');
+
+    // Cells are tens of pixels wide; the fixed-origin bug misplaced the letter by ~100px.
+    const TOLERANCE = 2;
+    for (let n = 1; n <= cap; n++) {
+      await page.locator('#hidden-input').fill('ABC'[n - 1]);
+      const { cell, letter } = await page.evaluate(([c, l]) => {
+        const box = id => document.getElementById(id).getBoundingClientRect();
+        return { cell: box(c), letter: box(l) };
+      }, [cellId, letterId]);
+      const cx = letter.x + letter.width / 2, cy = letter.y + letter.height / 2;
+      const where = `after ${n} letters`;
+      expect(cx, `letter center x ${where}`).toBeGreaterThan(cell.x - TOLERANCE);
+      expect(cx, `letter center x ${where}`).toBeLessThan(cell.x + cell.width + TOLERANCE);
+      expect(cy, `letter center y ${where}`).toBeGreaterThan(cell.y - TOLERANCE);
+      expect(cy, `letter center y ${where}`).toBeLessThan(cell.y + cell.height + TOLERANCE);
+    }
+  });
+}

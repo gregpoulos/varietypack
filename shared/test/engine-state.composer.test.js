@@ -4,12 +4,14 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { makeComposer, setLetterText, letterLenClass } = require('../engine-state.mjs');
 
-// Mock letter element: only textContent and classList are touched. Mirrors the
-// mock-object pattern in engine-chrome.clear-button.test.js — no DOM, no jsdom.
+// Mock letter element: only textContent, classList, style and x/y are touched. Mirrors
+// the mock-object pattern in engine-chrome.clear-button.test.js — no DOM, no jsdom.
 function makeEl() {
   const classes = new Set();
   return {
     textContent: '',
+    style: {},
+    getAttribute(name) { return { x: '10', y: '20' }[name]; },
     classList: {
       add(c)      { classes.add(c); },
       remove(c)   { classes.delete(c); },
@@ -204,6 +206,12 @@ test('setLetterText sets text and the matching length class', () => {
   setLetterText(el, 'HAR');
   assert.equal(el.textContent, 'HAR');
   assert.ok(el.classList.contains('len-3'));
+});
+
+test('setLetterText pins the scale origin to the letter\'s own x,y', () => {
+  const el = makeEl();
+  setLetterText(el, 'HA');
+  assert.equal(el.style.transformOrigin, '10px 20px');
 });
 
 test('setLetterText shows the stored lowercase form uppercased', () => {

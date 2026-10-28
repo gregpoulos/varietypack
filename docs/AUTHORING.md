@@ -196,6 +196,14 @@ every puzzle, so it never hints at which squares hold a rebus. Crushword
 has no separate rebus mode — see its own `docs/SPEC.md` for how it handles
 multi-letter cells instead.
 
+**On a phone or tablet,** the page fits one screen: the title, the grid, the active clue
+with ‹ › to step through the clues, and a built-in keyboard (the device's own keyboard
+stays closed). **Clues** swaps the grid for the clue list; tapping a clue there jumps to
+it. The keyboard's bottom row holds the Rebus key (Crushword: Prev and Next cell) and a key to switch
+direction. Check cell is in the life-ring help menu beside the options menu (absent in a
+muddled puzzle), and the options menu has a "Wrap long rows of cells" setting on the Clues
+screen (except in Marching Bands, whose clue list has no cell rows).
+
 **Each tool adds its own rule for how a rebus cell's *cells* (not letters)
 must agree across the two entries that share it** — see that tool's own
 `docs/SPEC.md` → "Rebus cells" for the specific rule (Snake Charmer's loop

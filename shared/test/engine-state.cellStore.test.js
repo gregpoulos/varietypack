@@ -4,12 +4,14 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { makeCellStore } = require('../engine-state.mjs');
 
-// Mock cell or letter element: only textContent and classList are touched, as in
-// engine-state.composer.test.js.
+// Mock cell or letter element: only textContent, classList, style and x/y are touched,
+// as in engine-state.composer.test.js.
 function makeEl() {
   const classes = new Set();
   return {
     textContent: '',
+    style: {},
+    getAttribute(name) { return { x: '10', y: '20' }[name]; },
     classList: {
       contains(c) { return classes.has(c); },
       toggle(c, force = !classes.has(c)) { force ? classes.add(c) : classes.delete(c); return force; },

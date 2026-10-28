@@ -159,10 +159,12 @@ function letterLenClass(text) {
 // their normalized lowercase form, so this is where they become capitals: uppercasing
 // first would turn ß into SS, but a normalized cell has no such letter. makeCellStore's
 // setCellLetter, the only writer of a cell's letter, goes through this (Crushword's
-// `show` calls it too), so a cell can never keep a stale size class.
+// `show` calls it too), so a cell can never keep a stale size class. It also pins the
+// scale's origin to the letter's own x,y (see .cell-letter in theme-components.css).
 function setLetterText(el, text) {
   if (!el) return;
   el.textContent = text.toUpperCase();
+  el.style.transformOrigin = `${el.getAttribute('x')}px ${el.getAttribute('y')}px`;
   const want = letterLenClass(text);
   for (const c of LEN_CLASSES) el.classList.toggle(c, c === want);
 }

@@ -14,7 +14,10 @@
   #keys-btn,
   #menu-btn,
   #menu-panel,
-  #done-wrong { display: none !important; }
+  #done-wrong,
+  .solve-top,
+  #solve-bar,
+  #drawn-kb { display: none !important; }
 
   body { padding-top: 0 !important; }
   h1.title { font-size: 1.4rem !important; }
@@ -28,10 +31,11 @@
 
   /* Entered letters → blank: a printout is always the unsolved puzzle */
   .cell-letter { display: none !important; }
+  /* ...and the phone list view's cell rows (setupFillList), which repeat them */
+  .list-cells { display: none !important; }
 
-  /* Clue highlight / strike-through reset */
+  /* Clue highlight / filled-dimming reset */
   .clue-item.active-clue,
   .clue-item.secondary-entry { background: transparent !important; }
-  .clue-item.correct .clue-text { color: inherit !important; text-decoration: none !important; }
   .clue-item.filled .clue-text { opacity: 1 !important; text-decoration: none !important; }
 }
