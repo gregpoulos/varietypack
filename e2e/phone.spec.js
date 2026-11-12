@@ -11,6 +11,7 @@
 // its effect needs a real device.
 
 const { test, expect } = require('@playwright/test');
+const { buildPuzzleFile } = require('../test/helpers');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
@@ -48,7 +49,7 @@ test.beforeAll(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'phone-'));
   for (const f of TOOL_FIXTURES) {
     htmlPaths[f.tool] = path.join(tmpDir, f.tool + '.html');
-    require(`../${f.tool}/cli`).buildPuzzle(f.yamlPath, htmlPaths[f.tool]);
+    buildPuzzleFile(f.yamlPath, htmlPaths[f.tool]);
   }
   // Each tool again with every clue replaced: far too long for the bar's two lines, or
   // short enough for one. Numbered, so moving to another clue changes the text.
@@ -65,7 +66,7 @@ test.beforeAll(() => {
       const yamlPath = path.join(tmpDir, name + '.yaml');
       fs.writeFileSync(yamlPath, yaml.dump(withClues(yaml.load(fs.readFileSync(f.yamlPath, 'utf8')))));
       htmlPaths[name] = path.join(tmpDir, name + '.html');
-      require(`../${f.tool}/cli`).buildPuzzle(yamlPath, htmlPaths[name]);
+      buildPuzzleFile(yamlPath, htmlPaths[name]);
     }
   }
   // Crushword with every clue the same long text, so only the entry tells two apart.
@@ -78,7 +79,7 @@ test.beforeAll(() => {
   fs.writeFileSync(path.join(tmpDir, 'crushword-same.yaml'),
     yaml.dump(sameClues(yaml.load(fs.readFileSync(cw.yamlPath, 'utf8')))));
   htmlPaths['crushword-same'] = path.join(tmpDir, 'crushword-same.html');
-  require('../crushword/cli').buildPuzzle(path.join(tmpDir, 'crushword-same.yaml'), htmlPaths['crushword-same']);
+  buildPuzzleFile(path.join(tmpDir, 'crushword-same.yaml'), htmlPaths['crushword-same']);
   // Snake Charmer with an entry longer than the ring (8 cells): its last two cells are
   // its first two ring positions again, in the second loop.
   fs.writeFileSync(path.join(tmpDir, 'snake-charmer-long-entry.yaml'), [
@@ -90,25 +91,32 @@ test.beforeAll(() => {
     '  - { clue: "Three more", answer: FGH }',
   ].join('\n'));
   htmlPaths['snake-charmer-long-entry'] = path.join(tmpDir, 'snake-charmer-long-entry.html');
-  require('../snake-charmer/cli').buildPuzzle(path.join(tmpDir, 'snake-charmer-long-entry.yaml'),
+  buildPuzzleFile(path.join(tmpDir, 'snake-charmer-long-entry.yaml'),
     htmlPaths['snake-charmer-long-entry']);
   // Marching Bands with a link in row 1's first clue.
   const mb = yaml.load(fs.readFileSync(TOOL_FIXTURES.find(f => f.tool === 'marching-bands').yamlPath, 'utf8'));
   mb.rows[0].entries[0].clue = 'See [this page](https://example.com/) first';
   fs.writeFileSync(path.join(tmpDir, 'marching-bands-link.yaml'), yaml.dump(mb));
   htmlPaths['marching-bands-link'] = path.join(tmpDir, 'marching-bands-link.html');
-  require('../marching-bands/cli').buildPuzzle(path.join(tmpDir, 'marching-bands-link.yaml'), htmlPaths['marching-bands-link']);
+  buildPuzzleFile(path.join(tmpDir, 'marching-bands-link.yaml'), htmlPaths['marching-bands-link']);
   // Crushword with instructions; its fixture has none.
   const instructed = yaml.load(fs.readFileSync(TOOL_FIXTURES.find(f => f.tool === 'crushword').yamlPath, 'utf8'));
   fs.writeFileSync(path.join(tmpDir, 'crushword-instructions.yaml'), yaml.dump({ ...instructed, instructions: INSTRUCTIONS }));
   htmlPaths['crushword-instructions'] = path.join(tmpDir, 'crushword-instructions.html');
-  require('../crushword/cli').buildPuzzle(path.join(tmpDir, 'crushword-instructions.yaml'), htmlPaths['crushword-instructions']);
+  buildPuzzleFile(path.join(tmpDir, 'crushword-instructions.yaml'), htmlPaths['crushword-instructions']);
   htmlPaths.muddled = path.join(tmpDir, 'crushword-muddled.html');
-  require('../crushword/cli').buildPuzzle(MUDDLED_CW, htmlPaths.muddled);
+  buildPuzzleFile(MUDDLED_CW, htmlPaths.muddled);
 });
 test.afterAll(() => {
   if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
 });
+
+// The key that steps one cell on or back along the entry: Crushword's ◂ ▸ arrows, and
+// in the other tools the "Prev cell" / "Next cell" keys. (Crushword's own "Next cell" key
+// is the Enter that commits the cell, a different action.)
+const stepKey = (page, tool, dir) => tool === 'crushword'
+  ? page.locator(`#drawn-kb [data-key="Arrow${dir === 'next' ? 'Right' : 'Left'}"]`)
+  : page.locator(`#drawn-kb button[aria-label="${dir === 'next' ? 'Next' : 'Previous'} cell"]`);
 
 async function load(page, key, { keepIntro = false } = {}) {
   await page.goto('file://' + htmlPaths[key]);
@@ -224,34 +232,33 @@ for (const fx of TOOL_FIXTURES) {
 
     // From an entry's (row's, band's) first cell, which Tab reaches, ▸ is a step within
     // it. Crushword's ◂ ▸ are its arrows, which cross into the neighbor cell as Across.
-    test('◂ ▸ step the active cell one cell along its entry and back', async ({ page }) => {
+    test('the step keys move the active cell one cell along its entry and back', async ({ page }) => {
       await load(page, fx.tool);
       await tapMiddleCell(page);
       await page.keyboard.press('Tab');
       const start = await activeCellId(page);
       const entry = await page.locator('.active-entry, .active-cell').evaluateAll(els => els.map(el => el.id));
-      await page.locator('#drawn-kb button', { hasText: '▸' }).tap();
+      await stepKey(page, fx.tool, 'next').tap();
       const stepped = await activeCellId(page);
       expect(stepped).not.toBe(start);
       if (fx.tool !== 'crushword') expect(entry).toContain(stepped);
-      await page.locator('#drawn-kb button', { hasText: '◂' }).tap();
+      await stepKey(page, fx.tool, 'prev').tap();
       expect(await activeCellId(page)).toBe(start);
       expect(await focusedId(page)).toBe('hidden-input');
     });
 
-    test('the switch key changes the active direction, mode or loop', async ({ page }) => {
-      await load(page, fx.tool);
-      if (fx.tool === 'crushword') await page.locator('#' + await crossedCrushwordCell(page)).tap();
-      else await tapMiddleCell(page);
-      const state = page.locator(SWITCH_STATE[fx.tool]);
-      const before = await state.textContent();
-      await page.locator('#drawn-kb [data-key="."]').tap();
-      await expect(state).not.toHaveText(before);
-      if (fx.tool === 'crushword') {
-        expect(new Set([before, await state.textContent()])).toEqual(new Set(['Across', 'Down']));
-      }
-      expect(await focusedId(page)).toBe('hidden-input');
-    });
+    // Crushword's arrows switch the direction instead of a key (see below).
+    if (fx.tool !== 'crushword') {
+      test('the switch key changes the active direction, mode or loop', async ({ page }) => {
+        await load(page, fx.tool);
+        await tapMiddleCell(page);
+        const state = page.locator(SWITCH_STATE[fx.tool]);
+        const before = await state.textContent();
+        await page.locator('#drawn-kb [data-key="."]').tap();
+        await expect(state).not.toHaveText(before);
+        expect(await focusedId(page)).toBe('hidden-input');
+      });
+    }
 
     test('a cut-off clue in the bar shows in full on a tap, over the grid, until the next tap', async ({ page }) => {
       await load(page, fx.tool + '-long');
@@ -590,9 +597,9 @@ test('[marching-bands] in band mode, ▸ steps along the band, not spatially', a
   await page.locator('#cell-' + start).tap();
   await page.locator('#drawn-kb [data-key="."]').tap();
   await expect(page.locator('#mode-toggle .toggle-opt.active')).toHaveText('Band');
-  await page.locator('#drawn-kb button', { hasText: '▸' }).tap();
+  await stepKey(page, 'marching-bands', 'next').tap();
   expect(['cell-' + (start - n), 'cell-' + (start + n)]).toContain(await activeCellId(page));
-  await page.locator('#drawn-kb button', { hasText: '◂' }).tap();
+  await stepKey(page, 'marching-bands', 'prev').tap();
   expect(await activeCellId(page)).toBe('cell-' + start);
 });
 
@@ -604,7 +611,7 @@ test('[marching-bands] ▸ leaves the active cell where it is once the board is 
   const n = await page.evaluate(() => window.PUZZLE_DATA.size);
   await page.locator('#cell-' + (n + 2)).tap();
   await expect(page.locator('#cell-' + (n + 2))).toHaveClass(/\bactive-cell\b/);
-  await page.locator('#drawn-kb button', { hasText: '▸' }).tap();
+  await stepKey(page, 'marching-bands', 'next').tap();
   expect(await activeCellId(page)).toBe('cell-' + (n + 2));
 });
 
@@ -696,7 +703,7 @@ test.describe('marching-bands clue navigator', () => {
     const { label, count } = nav(page);
     await page.locator('#clue-next').tap();
     await expect(count).toHaveText(/^clue 2 of /);
-    await page.locator('#drawn-kb button', { hasText: '▸' }).tap();
+    await stepKey(page, 'marching-bands', 'next').tap();
     await page.locator('#cell-3').tap();
     await expect(count).toHaveText(/^clue 2 of /);
     // Row 2 (a different row), then back to clue 1 there.
@@ -802,7 +809,61 @@ test.describe('crushword', () => {
     await expect(letterOf(page, tapped)).toHaveText('Q');
   });
 
-  test('a drawn letter, ⌫ or the switch key changes nothing once the board is solved', async ({ page }) => {
+  // The arrows set the direction, so there is no Across ⇄ Down key: ▴ ▾ read Down, ◂ ▸
+  // Across, each moving one cell. A cell whose four neighbors all have both entries keeps
+  // the grid's auto-flip out of it.
+  test('the arrows move one cell and switch the direction to their own axis', async ({ page }) => {
+    await load(page, 'crushword');
+    const { cols, cell } = await page.evaluate(() => {
+      const { grid } = window.PUZZLE_DATA;
+      const open = (r, c) => grid[r] !== undefined && grid[r][c] === '.';
+      const both = (r, c) => open(r, c) && (open(r, c - 1) || open(r, c + 1)) && (open(r - 1, c) || open(r + 1, c));
+      for (let r = 1; r < grid.length - 1; r++) {
+        for (let c = 1; c < grid[r].length - 1; c++) {
+          if (both(r, c) && both(r + 1, c) && both(r, c - 1) && both(r + 1, c - 1) && both(r - 1, c - 1)) {
+            return { cols: grid[r].length, cell: r * grid[r].length + c + 1 };
+          }
+        }
+      }
+      return {};
+    });
+    expect(cell, 'fixture has a cell with crossed neighbors').toBeDefined();
+    const dir = page.locator(SWITCH_STATE.crushword);
+    const arrow = name => page.locator(`#drawn-kb [data-key="${name}"]`);
+    await page.locator('#cell-' + cell).tap();
+
+    await arrow('ArrowDown').tap();
+    expect(await activeCellId(page)).toBe('cell-' + (cell + cols));
+    await expect(dir).toHaveText('Down');
+    await arrow('ArrowLeft').tap();
+    expect(await activeCellId(page)).toBe('cell-' + (cell + cols - 1));
+    await expect(dir).toHaveText('Across');
+    await arrow('ArrowUp').tap();
+    expect(await activeCellId(page)).toBe('cell-' + (cell - 1));
+    await expect(dir).toHaveText('Down');
+    await arrow('ArrowRight').tap();
+    expect(await activeCellId(page)).toBe('cell-' + cell);
+    await expect(dir).toHaveText('Across');
+    expect(await focusedId(page)).toBe('hidden-input');
+  });
+
+  // Drawn, not typed: the triangle characters come in different sizes from font to font.
+  test('the four arrows are triangles of the same size', async ({ page }) => {
+    await load(page, 'crushword');
+    const sizes = await page.evaluate(() => ['Left', 'Up', 'Down', 'Right'].map(name => {
+      const tri = document.querySelector(`#drawn-kb [data-key="Arrow${name}"] svg path`);
+      if (!tri) return null;
+      const { width, height } = tri.getBoundingClientRect();
+      return [width, height].sort((a, b) => a - b);
+    }));
+    expect(sizes.every(Boolean), 'each arrow key holds an svg triangle').toBe(true);
+    for (const [short, long] of sizes) {
+      expect(short).toBeCloseTo(sizes[0][0], 0);
+      expect(long).toBeCloseTo(sizes[0][1], 0);
+    }
+  });
+
+  test('a drawn letter, ⌫ or an arrow changes nothing once the board is solved', async ({ page }) => {
     await load(page, 'crushword');
     await solveAndClose(page, 'crushword');
     const before = await allLetters(page);
@@ -810,9 +871,11 @@ test.describe('crushword', () => {
     const dirBefore = await dir.textContent();
     await key(page, 'Q').tap();
     await page.locator('#drawn-kb [data-key="Backspace"]').first().tap();
-    await page.locator('#drawn-kb [data-key="."]').tap();
+    const cellBefore = await activeCellId(page);
+    await page.locator('#drawn-kb [data-key="ArrowDown"]').tap();
     expect(await allLetters(page)).toEqual(before);
     await expect(dir).toHaveText(dirBefore);
+    expect(await activeCellId(page)).toBe(cellBefore);
   });
 
   // A cell holding `typed`, committed with Next; returns its id, active again so Check
@@ -908,7 +971,9 @@ test.describe('crushword', () => {
   test('the help menu holds Check cell, off the keyboard, and closes with ☰ and on Check', async ({ page }) => {
     await load(page, 'crushword');
     await expect(page.locator('#drawn-kb #check-btn')).toHaveCount(0);
-    await expect(page.locator('#check-btn-toggle-label')).toBeHidden();
+    await expect(page.locator('#check-btn-toggle-label')).toHaveCount(0);
+    // Every row is in the panel: cell, clue and puzzle.
+    await expect(page.locator('#help-panel button')).toHaveCount(6);
     await expect(page.locator('#help-panel')).toBeHidden();
     await page.locator('#help-btn').tap();
     await expect(page.locator('#help-panel')).toBeVisible();
@@ -917,6 +982,9 @@ test.describe('crushword', () => {
     await expect(page.locator('#help-panel')).toBeHidden();
     await page.locator('#help-btn').tap();
     await expect(page.locator('#menu-panel')).toBeHidden();
+    // Close it again: its six rows can lie over the grid's middle cell.
+    await page.locator('#help-btn').tap();
+    await expect(page.locator('#help-panel')).toBeHidden();
     await tapMiddleCell(page);
     await key(page, 'A').tap();
     await page.locator('#drawn-kb [data-key="Enter"]:not([data-shift])').tap();

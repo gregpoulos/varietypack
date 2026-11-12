@@ -1,8 +1,30 @@
 # varietypack
 
-A monorepo of variety word puzzle generators.
+[![CI](https://github.com/gregpoulos/varietypack/actions/workflows/ci.yml/badge.svg)](https://github.com/gregpoulos/varietypack/actions/workflows/ci.yml)
+
+varietypack turns a YAML puzzle definition into a single self-contained HTML page: playable in a browser, printable, and needing no back end. It makes four kinds of variety word puzzle: Snake Charmer, Spiral, Marching Bands and Crushword.
 
 **[Try the examples online](https://gregpoulos.github.io/varietypack/examples/)**
+
+## Requirements and install
+
+Node 22.12 or later.
+
+```fish
+git clone https://github.com/gregpoulos/varietypack.git
+cd varietypack
+npm install
+npm link
+```
+
+`npm link` symlinks the package into npm's global prefix and puts `varietypack` on your PATH. To skip it, run the same commands as `node cli.js <subcommand>` from the repo root. Everything below uses `varietypack`.
+
+## How it's built
+
+- **Output has no runtime dependencies.** Each puzzle page inlines its script, styles and data; it loads from `file://` or any web server. (The one opt-in exception is `--font link`, which loads a theme's font from a CDN instead of embedding it.) Clues are rendered from markdown at build time, so the page carries no markdown library.
+- **One build path, in Node and in the browser.** The command line and the [studio](#studio) both build through `shared/build/`, and a test checks that the two produce identical bytes for every example and fixture. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Answer-hidden builds are checked against a board hash.** A muddled puzzle ships a SHA-256 of the board instead of its answers, and the page compares the solver's grid to that hash.
+- **Two test suites.** Unit tests run on `node:test`; browser tests run in Playwright (Chromium, WebKit and Firefox, plus phone-sized projects). See [Testing](#testing) and [docs/TESTING.md](docs/TESTING.md).
 
 ## Usage
 
@@ -29,7 +51,7 @@ varietypack validate puzzle.yaml
 varietypack muddle puzzle.yaml
 ```
 
-The `varietypack` dispatcher reads the `kind` field from each YAML and routes to the correct tool automatically. In directory mode, all YAML files are built; files without a recognized `kind` are skipped with a warning.
+The `varietypack` dispatcher reads the `kind` field from each YAML and routes to the correct tool automatically. In directory mode, all YAML files are built; a file that isn't a puzzle of a known `kind` is reported as an error, and the rest still build.
 
 ### Muddling puzzles
 
@@ -58,7 +80,7 @@ These are supported by every tool:
 | `--theme <name>` | the YAML's `theme:`, else `broadsheet` | Visual theme; overrides the YAML's `theme:` field. The theme list is shared across all tools (see `docs/AUTHORING.md` → "Themes and fonts"); all tools ship at least `broadsheet` and `skeleton`. |
 | `--font <mode>` | `embed` | Font delivery for custom-font themes: `embed` inlines fonts as base64 (self-contained output) or `link` references a CDN via `@import` (needs network at solve time). Defaults to `embed` (or `link` for a theme with no local font files); ignored for system-font themes. |
 | `--embed-origin <origin>` | off | Post the completion message, including the solution, to this one parent origin (e.g. `https://hunt.example.com`) and no other, for embedding. Meaningful with `--muddle`: the host can check the solution against the `boardHash`. |
-| `--minify` | off | Minify the generated HTML: terser-minifies each `<script>`, clean-css minifies each `<style>`, strips comments, and trims trailing whitespace. |
+| `--minify` | off | Minify the generated HTML: terser-minifies each `<script>`, clean-css minifies each `<style>`, and trims trailing whitespace elsewhere. |
 | `-o`, `--output <file>` | `<input-basename>.html` | Output path. Defaults to writing next to the input file. |
 | `-f`, `--force` | off | Overwrite the output file if it already exists. |
 
@@ -82,6 +104,8 @@ See [docs/AUTHORING.md](docs/AUTHORING.md) for the full cross-tool authoring gui
 
 N numbered answers fill a continuous snake-shaped loop of cells. Each answer starts at its numbered cell and proceeds clockwise; the loop is closed so the last answer ends where the first begins. **[Try an example](https://gregpoulos.github.io/varietypack/examples/snake-charmer.html)**
 
+![A Snake Charmer puzzle page](docs/images/snake-charmer.png)
+
 ```yaml
 kind: snake-charmer
 title: "My Snake Charmer"
@@ -102,6 +126,8 @@ See [snake-charmer/docs/SPEC.md](snake-charmer/docs/SPEC.md) for the full format
 ### Spiral
 
 Two sets of entries share every cell: inward entries fill the spiral from the outer edge toward the center; outward entries fill it from the center back out. The inward cells, read in order, must be the reverse of the outward cells. Minimum 40 cells. The generated HTML is print-ready. **[Try an example](https://gregpoulos.github.io/varietypack/examples/spiral.html)**
+
+![A Spiral puzzle page](docs/images/spiral.png)
 
 ```yaml
 kind: spiral
@@ -127,6 +153,8 @@ See [spiral/docs/SPEC.md](spiral/docs/SPEC.md) for the full format reference.
 ### Marching Bands
 
 An N×N grid where words march in two formations: **Rows** (two or more words per numbered row, reading left to right) and **Bands** (words march clockwise around each concentric rectangular band). Every cell belongs to exactly one Row word and one Band word; where words begin and end within a row or band is for the solver to discover. For odd N, the center cell is a black square. The generated HTML is print-ready. **[Try an example](https://gregpoulos.github.io/varietypack/examples/marching-bands.html)**
+
+![A Marching Bands puzzle page](docs/images/marching-bands.png)
 
 ```yaml
 kind: marching-bands
@@ -162,6 +190,8 @@ See [marching-bands/docs/SPEC.md](marching-bands/docs/SPEC.md) for the full form
 
 A rebus crossword: standard American crossword grid and clue numbering (across/down, black squares), plus the repo-wide rebus convention that a bracketed group in an `answer:` occupies a single cell however many letters it holds. Tab jumps between entries (not rows or bands) since a crossword's numbering already reveals entry boundaries to the solver. **[Try an example](https://gregpoulos.github.io/varietypack/examples/crushword.html)**
 
+![A Crushword puzzle page](docs/images/crushword.png)
+
 ```yaml
 kind: crushword
 title: "My Crushword"
@@ -195,28 +225,7 @@ See [crushword/docs/SPEC.md](crushword/docs/SPEC.md) for the full format referen
 
 All tools share one set of themes. A theme controls colors, fonts, and decorative styling — never layout. Select one with the YAML's `theme:` field or `--theme <name>`, which overrides it (default `broadsheet`). The repo ships `broadsheet` (warm newsprint, system serif) and `skeleton` (dark, custom display font).
 
-**Creating a theme** is two steps:
-
-1. Add `shared/themes/<name>-tokens.css` — a `:root { … }` block overriding only the `--theme-*` variables that differ from the neutral defaults in `shared/themes/theme-base.css`. Tool-agnostic component styles in `theme-components.css` pick up the rest, so no per-tool CSS is needed.
-2. Register the name in `THEME_REGISTRY` in `shared/build/themeRegistry.js`.
-
-**Fonts.** A system-font-only theme registers `{ fonts: null }` and needs nothing else. To ship a custom font, commit the `.woff2` to `shared/themes/fonts/<name>/` and declare it in the registry entry:
-
-```js
-skeleton: {
-  fonts: {
-    faces: [{ family: 'Outfit', weight: '100 900', style: 'normal', file: 'fonts/skeleton/outfit-variable.woff2' }],
-    cdn:   { source: 'google', url: 'https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap' },
-  },
-},
-```
-
-Custom-font themes take a `--font` mode (default `embed`, or `link` for a theme with no local font files):
-
-- `--font embed` — base64-inlines `faces` into `@font-face`; the HTML stays self-contained (no network at solve time) at the cost of the font's bytes in every file.
-- `--font link` — emits an `@import` to `cdn.url`; smaller HTML, but the font loads from the CDN in the solver's browser on every open.
-
-Declare `faces` for embed, `cdn` for link, or both. The flag is silently ignored for system-font themes.
+`--font` controls how a custom-font theme's font is delivered (see [Global options](#global-options)). To add a theme, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) → "Themes and print".
 
 ---
 
@@ -258,7 +267,7 @@ addEventListener('message', function (e) {
 </script>
 ```
 
-The page posts `varietypack:resize` whenever its height changes, so the frame fits it. On a phone the puzzle fills the screen, so it asks for a frame one screen high (`fill`) instead. When the solver finishes, it posts one `varietypack:complete` message, with the `solution`, to the origin you named and to nobody else.
+The page posts `varietypack:resize` whenever its height changes, so the frame fits it. On a phone the puzzle fills the screen, so it asks for a frame one screen high (`fill`) instead. When the solver finishes, it posts one `varietypack:complete` message, with the `solution`, to the origin you named and to nobody else. The message also carries `checks` and `reveals`: how many times the solver used Check and Reveal.
 
 To verify a solve on the host's server: check that `e.origin` is the puzzle's origin, then check `sha256hex(solution) === boardHash`, using the `boardHash` from the puzzle's muddled YAML. The server never needs the answers. Only the answers-hidden (`--muddle`) page gives a verifiable solve: a plain page ships its answers, so a posted solution proves nothing. Whether a solver's progress is kept inside a cross-origin iframe depends on the browser, and hasn't been checked. A puzzle can also override theme tokens to match the host site: see [docs/AUTHORING.md](docs/AUTHORING.md) → "Theme overrides".
 
@@ -287,3 +296,5 @@ End-to-end (Playwright) tests are separate from `npm test`:
 ```fish
 npm run test:e2e
 ```
+
+For how the pieces fit together and the testing conventions, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/TESTING.md](docs/TESTING.md).

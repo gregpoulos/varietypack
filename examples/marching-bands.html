@@ -73,6 +73,8 @@ body.has-clue-bar {
 .cell-letter { pointer-events: none; text-anchor: middle; dominant-baseline: middle; font-weight: bold; }
 .cell-num    { pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
 .style-circle { pointer-events: none; }
+/* The active cell's direction chevron (Spiral, Marching Bands). */
+#direction-chevron { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 
 #controls {
   display: flex;
@@ -96,29 +98,30 @@ button {
    reason to change hit-testing behavior. */
 #controls button { touch-action: manipulation; }
 
-/* The solver's "Show Check Cell button" preference hides #check-btn with this class
-   rather than `hidden`: invisible but still laid out, so turning it off moves nothing.
-   #check-btn is taller than its row-mates, and for a small ring it widens Snake
-   Charmer's #ring-wrap, so removing it from layout would shift the page and resize the
-   ring. A hashed page has no Check Cell at all and removes it with `hidden`. */
-#check-btn.check-btn-off { visibility: hidden; }
-
 button:disabled { opacity: 0.4; cursor: default; }
+/* A browser sends no mouse events to a disabled button, so a press on a disabled help row
+   would take focus from the puzzle before setupPopupMenu's panel mousedown handler could
+   stop it. With pointer events off, the press lands on the panel itself, where it can. */
+#help-panel button:disabled { pointer-events: none; }
 
 /* Reserve the width of the widest label each button can show, so swapping the label
    never reflows its container — #menu-panel for #clear-btn (shrink-to-fit width,
    sized off this reservation, not the panel's own min-width), #controls for
-   #rebus-btn. #clear-btn swaps Clear Puzzle→Are you sure?, #rebus-btn Rebus→Done;
-   each reserves its longer string — measured, not eyeballed: 'Are you sure?' is
-   wider than 'Clear Puzzle' despite having fewer wide characters. */
+   #rebus-btn. #clear-btn swaps Clear puzzle→Are you sure?, #rebus-btn Rebus→Done.
+   The two armed buttons reserve both strings, one per line, so the width is the wider of
+   the two whichever font renders them: 'Are you sure?' is wider than 'Clear puzzle' in
+   some fonts and narrower in others (likewise 'Reveal puzzle'). #rebus-btn reserves
+   its longer string, 'Rebus'. */
 #clear-btn::after,
+#reveal-puzzle-btn::after,
 #rebus-btn::after {
   display: block;
   height: 0;
   overflow: hidden;
   visibility: hidden;
 }
-#clear-btn::after { content: 'Are you sure?'; }
+#clear-btn::after { content: 'Clear puzzle\A Are you sure?'; white-space: pre; }
+#reveal-puzzle-btn::after { content: 'Reveal puzzle\A Are you sure?'; white-space: pre; }
 #rebus-btn::after { content: 'Rebus'; }
 
 #hidden-input {
@@ -154,6 +157,23 @@ button:disabled { opacity: 0.4; cursor: default; }
   z-index: 50;
 }
 
+/* The help menu's life-ring button, immediately left of #menu-btn: its 20px inset, the
+   button's 32px and an 8px gap. Same `top` as #menu-btn, so the two share the
+   .has-clue-bar override (theme-components.css). The phone puts it in the top bar
+   instead (html.phone #help-btn, below). */
+#help-btn {
+  position: fixed;
+  top: 20px;
+  right: 60px;
+  z-index: 110;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
 /* Fixed top-right corner, mirroring #keys-btn's bottom-right circle. Snake
    Charmer/Spiral override `top` (theme-components.css) to sit the button
    below #active-clue-bar instead of at this default offset — see that
@@ -169,7 +189,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* Non-modal dropdown — plain div, not <dialog>, so the page behind it stays
    interactive. The [hidden] reset above (!important) wins over this display:flex
    while the panel is closed. */
-#menu-panel {
+#menu-panel,
+#help-panel {
   position: fixed;
   top: 60px;
   right: 20px;
@@ -180,6 +201,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   padding: 10px;
   min-width: 120px;
 }
+/* Opens under #help-btn, aligned to its right edge rather than ☰'s. */
+#help-panel { right: 60px; }
 
 /* Matches #clear-btn's padding/font-size/border-radius (theme-components.css)
    so the menu-panel rows all read as plain, equally-weighted menu items — a flat
@@ -212,22 +235,27 @@ button:disabled { opacity: 0.4; cursor: default; }
   max-height: 100vh;
 }
 
+/* A wrong check's flash, on a grid cell and on a Clues-screen cell. FLASH_WRONG_MS in
+   engine-chrome.mjs must match the duration. */
+:root {
+  --flash-wrong-color: #ef9a9a;
+  --flash-wrong-duration: 600ms;
+}
 @keyframes flash-wrong {
   0%   { opacity: 1; }
   20%  { opacity: 1; }
   100% { opacity: 0; }
 }
 .flash-wrong-overlay {
-  fill: #ef9a9a;
+  fill: var(--flash-wrong-color);
   pointer-events: none;
-  animation: flash-wrong 600ms ease-out forwards;
+  animation: flash-wrong var(--flash-wrong-duration) ease-out forwards;
 }
-/* The same flash on a Clues-screen cell (FLASH_WRONG_MS in engine-chrome.mjs is its
-   length). No end keyframe: it fades to the cell's own background. */
+/* No end keyframe: it fades to the cell's own background. */
 @keyframes flash-wrong-cell {
-  0%, 20% { background: #ef9a9a; }
+  0%, 20% { background: var(--flash-wrong-color); }
 }
-html.phone .list-cell.flash-wrong { animation: flash-wrong-cell 600ms ease-out; }
+html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wrong-duration) ease-out; }
 
 /* ── Phone solving view (html.phone; shared/engine-phone.mjs) ─────────────────────────
    Every rule is prefixed with html.phone, and with #solve-stage where it resizes a
@@ -345,13 +373,10 @@ html.phone .solve-byline {
 html.phone #clues-btn { flex: none; height: 44px; min-width: 64px; }
 html.phone #menu-btn { position: static; flex: none; width: 44px; height: 44px; }
 html.phone #help-btn {
+  position: static;
   flex: none;
   width: 44px;
   height: 44px;
-  padding: 0;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
 }
 html.phone #menu-panel { position: absolute; top: 100%; right: 8px; z-index: 10; }
 /* The help panel opens under its own button, right of ☰'s: the bar's 4px padding, ☰'s
@@ -369,7 +394,7 @@ html.phone #help-panel {
 /* The menus' rows at the 44px tap minimum. */
 html.phone #menu-panel .menu-toggle,
 html.phone #menu-panel #clear-btn,
-html.phone #help-panel #check-btn { min-height: 44px; }
+html.phone #help-panel button { min-height: 44px; }
 
 /* The stage takes what the bars leave. The grid fills it, and the SVG's viewBox scales
    it to fit; the ID rules below undo each tool's desktop sizing. */
@@ -546,7 +571,7 @@ html.phone #drawn-kb .kb-mod { flex-grow: 1.5; font-size: 0.85rem; }
 /* pre-line: a label may break itself over two lines (Crushword's Prev/Next cell). */
 html.phone #drawn-kb .kb-bottom button { font-size: 0.8rem; line-height: 1.15; white-space: pre-line; }
 html.phone #drawn-kb .kb-wide { flex-grow: 2; font-weight: bold; }
-html.phone #drawn-kb .kb-bottom .kb-glyph { font-size: 1.6rem; line-height: 1; }
+html.phone #drawn-kb .kb-arrow { width: 1.1rem; height: 1.1rem; fill: currentColor; }
 /* Holds ABC and ⌫ at the digit layer's edges, where the letter layer has them. */
 html.phone .kb-spacer { flex: 7 1 0; }
 
@@ -660,8 +685,6 @@ html.phone .kb-spacer { flex: 7 1 0; }
   /* Primary button */
   --theme-color-btn-bg:       #333333;
   --theme-color-btn-text:     #ffffff;
-  --theme-color-btn-hover:    #555555;
-  --theme-color-btn-disabled: #999999;
   --theme-button-tracking:    0.05em;
 
   /* Secondary / toggle button colors */
@@ -746,7 +769,6 @@ html.phone .kb-spacer { flex: 7 1 0; }
   --theme-color-soft-border: #bbbbbb;
 
   --theme-color-btn-bg:    #222222;
-  --theme-color-btn-hover: #444444;
 
   --theme-color-btn2-bg:    #f0ece0;
   --theme-color-btn2-hover: #e4e0d4;
@@ -808,23 +830,29 @@ html.phone #clue-full {
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
 }
 
-/* #menu-btn sits *within* #active-clue-bar's own band instead of floating below it
-   as a separate row — no extra vertical space. Pure CSS calc() against the bar's
-   min-height (base.css), not JS-measured: nothing has to re-measure it when the bar or
-   the viewport resizes. 32px is the button's own height (base.css); Marching Bands, with
-   no bar, keeps the plain `top: 20px` default. The phone layout moves the button into
-   its top bar instead (base.css, html.phone). */
-.has-clue-bar #menu-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
+/* #menu-btn and #help-btn sit *within* #active-clue-bar's own band instead of floating
+   below it as a separate row — no extra vertical space. Pure CSS calc() against the
+   bar's min-height (base.css), not JS-measured: nothing has to re-measure it when the
+   bar or the viewport resizes. 32px is the buttons' own height (base.css); Marching
+   Bands, with no bar, keeps the plain `top: 20px` default. The phone layout moves the
+   buttons into its top bar instead (base.css, html.phone). */
+.has-clue-bar #menu-btn,
+.has-clue-bar #help-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
 
-/* #menu-panel opens directly below the bar's bottom edge (8px gap, matching
-   Marching Bands' static button-to-panel gap from base.css) — same
-   CSS-not-JS reasoning as #menu-btn above. */
-.has-clue-bar #menu-panel { top: calc(var(--active-clue-bar-space) + 8px); }
+/* #menu-panel and #help-panel open directly below the bar's bottom edge (8px gap,
+   matching Marching Bands' static button-to-panel gap from base.css) — same
+   CSS-not-JS reasoning as the buttons above. */
+.has-clue-bar #menu-panel,
+.has-clue-bar #help-panel { top: calc(var(--active-clue-bar-space) + 8px); }
 
-/* Right gutter for the bar's own text now that #menu-btn shares its row.
-   Lives here rather than in base.css's shared #active-clue-bar rule since
-   only these three tools ever place the button there. */
+/* Right gutter for the bar's own text now that #menu-btn shares its row: its 32px and
+   the 20px inset, plus 8px to the text. Lives here rather than in base.css's shared
+   #active-clue-bar rule since only these three tools ever place the button there.
+   A page with a help button (setupHelpMenu puts `has-help-btn` on <body>; a hashed
+   build has none) also reserves its 32px and the 8px between them. Same specificity as
+   the rule above, so it follows it, and still below html.phone's override. */
 .has-clue-bar #active-clue-bar { padding-right: 60px; }
+.has-help-btn #active-clue-bar { padding-right: 100px; }
 
 /* Direction label ("Across"/"Down", "In"/"Out") before the bar's clue number. */
 .active-clue-dir {
@@ -859,8 +887,7 @@ html.phone #clue-full {
   padding-bottom: 4px;
 }
 
-/* Primary button: Check on desktop, and the phone's first-visit Start */
-#check-btn,
+/* Primary button: the phone's first-visit Start */
 html.phone .intro-card > button {
   font-family:    var(--theme-font-button);
   font-size:      0.95rem;
@@ -870,9 +897,6 @@ html.phone .intro-card > button {
   border:         none;
   letter-spacing: var(--theme-button-tracking);
 }
-#check-btn:hover:not(:disabled) { background: var(--theme-color-btn-hover); }
-#check-btn:disabled { background: var(--theme-color-btn-disabled); cursor: default; }
-
 /* Clear button — flat, borderless, left-aligned, matching .menu-toggle
    (base.css): all are plain menu-panel rows now, not a bordered pill next to a
    bare checkbox. Color cues (armed, hover) carry entirely through text color
@@ -944,6 +968,10 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 .cell-letter.correct { fill: var(--theme-color-correct-text); }
 .cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 
+/* The direction chevron (Spiral, Marching Bands); each tool sets its stroke width, which
+   scales with its own viewBox. */
+#direction-chevron { stroke: var(--theme-color-active-stroke); opacity: 0.5; }
+
 /* Multi-letter (rebus) cell content. Sized with transform, not font-size: Spiral writes
    its per-puzzle letter size as an SVG presentation attribute, which any CSS font-size
    rule would outrank (e2e/spiral.spec.js asserts exactly that). transform composes with
@@ -976,20 +1004,20 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 }
 #keys-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
-/* Menu button (fixed top-right corner, created by setupOptionsMenu) — same
-   var usage as #keys-btn. */
+/* Menu and help buttons (fixed top-right corner, created by setupOptionsMenu and
+   setupHelpMenu) — same var usage as #keys-btn. */
 #menu-btn,
-html.phone #help-btn {
+#help-btn {
   background: var(--theme-color-btn2-bg);
   border:     1px solid var(--theme-color-btn2-border);
   color:      var(--theme-color-muted);
 }
 #menu-btn:hover,
-html.phone #help-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+#help-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
 /* Menu dropdown card — same var usage as #keys-modal. */
 #menu-panel,
-html.phone #help-panel {
+#help-panel {
   background:    var(--theme-color-bg);
   color:         var(--theme-color-text);
   border:        2px solid var(--theme-color-soft-border);
@@ -997,16 +1025,20 @@ html.phone #help-panel {
 }
 /* #clear-btn is full width inside the dropdown. */
 #menu-panel #clear-btn { width: 100%; }
-/* On a phone #check-btn is a plain row of the help panel, as #clear-btn is of ☰'s. */
-html.phone #help-panel #check-btn {
+/* Each button of the help panel is a plain row, as #clear-btn is of ☰'s. */
+#help-panel button {
   width:          100%;
+  font-family:    var(--theme-font-button);
   font-size:      0.8rem;
   padding:        6px 8px;
   background:     transparent;
+  border:         none;
   color:          var(--theme-color-text);
   text-align:     left;
+  letter-spacing: var(--theme-button-tracking);
 }
-html.phone #help-panel #check-btn:hover:not(:disabled) { background: var(--theme-color-clue-hover); }
+#help-panel button:hover:not(:disabled) { background: var(--theme-color-clue-hover); }
+#reveal-puzzle-btn.armed { color: var(--theme-color-danger); }
 
 /* Keys modal — the <dialog> dim is its ::backdrop (skeleton sets this transparent) */
 #keys-overlay::backdrop { background: var(--theme-color-overlay); }
@@ -1215,10 +1247,11 @@ html.phone .clue-item .list-cell.list-cursor.composing {
 .tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
 .tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
 .tool-marching-bands .clue-group.secondary-entry { background: var(--theme-color-secondary-entry); }
+.tool-marching-bands #direction-chevron { stroke-width: 1.6; }
 
 /* Spiral */
 .tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
-.tool-spiral #direction-chevron { stroke: var(--theme-color-active-stroke); stroke-width: 0.9; opacity: 0.5; }
+.tool-spiral #direction-chevron { stroke-width: 0.9; }
 /* Crushword, and Marching Bands when stacked */
 /* Opaque background is load-bearing, not cosmetic: .puzzle-center is
    position:sticky over the clues (each tool's base.css), which scroll directly
@@ -1251,7 +1284,10 @@ html.phone .clue-item .list-cell.list-cursor.composing {
   #keys-btn,
   #menu-btn,
   #menu-panel,
+  #help-btn,
+  #help-panel,
   #done-wrong,
+  #direction-chevron,
   .solve-top,
   #solve-bar,
   #drawn-kb { display: none !important; }
@@ -1332,7 +1368,6 @@ html.phone .clue-item .list-cell.list-cursor.composing {
             <button class="toggle-opt" data-mode="band">Band</button>
           </div>
           <button id="rebus-btn" type="button">Rebus</button>
-          <button id="check-btn" type="button" disabled>Check Cell</button>
         </div>
         <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
       </div>
@@ -2021,6 +2056,34 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     register(handleVisibility);
     return { onFirstInput, reset, stop, getElapsedMs, restoreMs };
   }
+  function makeHelpRecord() {
+    let checks = 0;
+    let reveals = 0;
+    const asCount = (v) => Number.isInteger(v) && v >= 0 ? v : 0;
+    return {
+      countCheck() {
+        checks++;
+      },
+      countReveal() {
+        reveals++;
+      },
+      reset() {
+        checks = 0;
+        reveals = 0;
+      },
+      get() {
+        return { checks, reveals };
+      },
+      saveFields() {
+        return { help: { checks, reveals } };
+      },
+      restoreFields(saved) {
+        const h = saved.help !== null && typeof saved.help === "object" ? saved.help : {};
+        checks = asCount(h.checks);
+        reveals = asCount(h.reveals);
+      }
+    };
+  }
   function makeCompletionLatch({
     puzzleRoot,
     kind,
@@ -2029,6 +2092,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     getBoardHash,
     getSolution,
     getElapsedMs,
+    getHelp,
     onComplete,
     embedOrigin,
     _postMessage
@@ -2047,13 +2111,14 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       const timeMs = getElapsedMs();
       const solution = getSolution();
       const boardHash = getBoardHash();
-      const detail = { boardHash, kind, title, date, timeMs, solution };
+      const { checks, reveals } = getHelp();
+      const detail = { boardHash, kind, title, date, timeMs, solution, checks, reveals };
       puzzleRoot.dispatchEvent(new CustomEvent("varietypack:complete", {
         bubbles: true,
         composed: true,
         detail
       }));
-      const base = { type: "varietypack:complete", boardHash, kind, title, date, timeMs };
+      const base = { type: "varietypack:complete", boardHash, kind, title, date, timeMs, checks, reveals };
       if (embedOrigin) pm({ ...base, solution }, embedOrigin);
       else pm(base, "*");
       if (onComplete) onComplete(timeMs);
@@ -2073,6 +2138,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     _postMessage
   }) {
     const timer = setupTimer({ onPause: saveState, now, listenVisibility });
+    const helpRecord = makeHelpRecord();
     const latch = makeCompletionLatch({
       puzzleRoot,
       kind: data.kind,
@@ -2081,6 +2147,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       getBoardHash: () => data.boardHash,
       getSolution,
       getElapsedMs: () => timer.getElapsedMs(),
+      getHelp: () => helpRecord.get(),
       onComplete: (timeMs) => {
         timer.stop();
         if (onComplete) onComplete(timeMs);
@@ -2088,7 +2155,26 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       embedOrigin: data.embedOrigin,
       _postMessage
     });
-    return { timer, latch };
+    return { timer, latch, helpRecord };
+  }
+  function makeSavePayload({ cells, helpRecord, timer, composer }) {
+    return {
+      getState() {
+        return {
+          ...cells.saveFields(),
+          ...helpRecord.saveFields(),
+          activeMs: timer.getElapsedMs(),
+          composing: composer.getComposing()
+        };
+      },
+      fits: cells.fitsSave,
+      applyState(saved) {
+        cells.restoreFields(saved);
+        timer.restoreMs(saved.activeMs);
+        helpRecord.restoreFields(saved);
+        composer.restore(saved.composing);
+      }
+    };
   }
   function syncSolveState({ checker, latch, doneWrong }) {
     const solved = checker.isSolved();
@@ -2248,6 +2334,19 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     function checkCell(n) {
       return canCheck(n) ? getContent(n) === getExpected(n) : null;
     }
+    function checkCells(ids) {
+      const right = [];
+      const wrong = [];
+      for (const n of new Set(ids)) {
+        const ok = checkCell(n);
+        if (ok === true) right.push(n);
+        else if (ok === false) wrong.push(n);
+      }
+      return { right, wrong };
+    }
+    function canReveal(n) {
+      return !isCellMarkedCorrect(n);
+    }
     function boardIsCorrect() {
       return hashed ? sha256hex(getSolution()) === getBoardHash() : cellIds.every((n) => getContent(n) === getExpected(n));
     }
@@ -2263,7 +2362,86 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     function repaintIfSolved() {
       if (isSolved()) markSolved();
     }
-    return { isBoardFilled, isEntryFilled, isSolved, getSolution, canCheck, checkCell, checkIfFilled, repaintIfSolved };
+    return {
+      isBoardFilled,
+      isEntryFilled,
+      isSolved,
+      getSolution,
+      canCheck,
+      checkCell,
+      checkCells,
+      canReveal,
+      getExpected,
+      cellIds,
+      checkIfFilled,
+      repaintIfSolved
+    };
+  }
+  function revealCells({ ids, composer, getExpected, canReveal, setCellLetter, setCorrect }) {
+    const composing = composer.getComposing();
+    if (composing !== null && ids.includes(composing) && canReveal(composing)) composer.reset();
+    for (const n of ids) {
+      if (!canReveal(n)) continue;
+      setCellLetter(n, getExpected(n));
+      setCorrect(n, true);
+    }
+  }
+  function makeHelpActions({
+    checker,
+    composer,
+    helpRecord,
+    setCellLetter,
+    setCorrect,
+    saveState,
+    syncUI,
+    refocus,
+    flashWrong: flashWrong2,
+    beforeCheck = () => {
+    },
+    afterReveal = () => {
+      syncUI();
+      refocus();
+    }
+  }) {
+    function endCompositionIfSolved() {
+      if (checker.isSolved()) composer.reset();
+    }
+    function checkSet(ids) {
+      beforeCheck();
+      const { right, wrong } = checker.checkCells(ids);
+      if (right.length + wrong.length === 0) {
+        refocus();
+        return;
+      }
+      helpRecord.countCheck();
+      for (const n of right) setCorrect(n, true);
+      endCompositionIfSolved();
+      checker.checkIfFilled();
+      saveState();
+      flashWrong2(wrong);
+      syncUI();
+      refocus();
+    }
+    function revealSet(ids) {
+      if (!ids.some(checker.canReveal)) {
+        refocus();
+        return;
+      }
+      revealCells({
+        ids,
+        composer,
+        getExpected: checker.getExpected,
+        canReveal: checker.canReveal,
+        setCellLetter,
+        setCorrect
+      });
+      helpRecord.countReveal();
+      endCompositionIfSolved();
+      checker.checkIfFilled();
+      saveState();
+      afterReveal();
+    }
+    return { checkSet, revealSet };
   }
   function restoreAndSeal({ restoreState, checker, latch, composer }) {
     restoreState();
@@ -2271,13 +2449,25 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     checker.repaintIfSolved();
     return composer.getComposing();
   }
-  function resetAndRefocus({ composer, clearBoard, clearState, timer, latch, focusInitial }) {
+  function resetAndRefocus({ composer, clearBoard, clearState, timer, latch, helpRecord, focusInitial }) {
     composer.reset();
     clearBoard();
     clearState();
     timer.reset();
     latch.reset();
+    helpRecord.reset();
     focusInitial();
+  }
+  function stepToUnfilled(order, from, dir, cellsOf, isFilled) {
+    const n = order.length;
+    const at = order.indexOf(from);
+    for (let k = 1; k <= n; k++) {
+      const entry2 = order[((at + dir * k) % n + n) % n];
+      const cell = cellsOf(entry2).find((c) => !isFilled(c));
+      if (cell !== void 0) return { entry: entry2, cell };
+    }
+    const entry = order[((at + dir) % n + n) % n];
+    return { entry, cell: cellsOf(entry)[0] };
   }
 
   // shared/engine-chrome.mjs
@@ -2293,9 +2483,12 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     el.append(...children);
     return el;
   }
+  function setClueHtml(el, clue) {
+    el.innerHTML = clue;
+  }
   function clueTextEl(clue) {
     const el = htmlEl("span", { class: "clue-text" });
-    el.innerHTML = clue;
+    setClueHtml(el, clue);
     return el;
   }
   function onClueClick(el, handler, { capture = false } = {}) {
@@ -2307,8 +2500,8 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     const byline = document.querySelector(".byline");
     if (!byline) return;
     const parts = [];
-    if (data.author) parts.push("by " + data.author);
-    if (data.date) parts.push(String(data.date));
+    if (data.author !== void 0) parts.push("by " + data.author);
+    if (data.date !== void 0) parts.push(String(data.date));
     byline.textContent = parts.join(" \xB7 ");
     byline.hidden = parts.length === 0;
   }
@@ -2318,27 +2511,29 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     el.innerHTML = data.instructions;
     el.hidden = false;
   }
-  function setupClearButton(clearBtn, onConfirmed, refocus) {
+  function setupArmedButton(btn, onConfirmed, refocus) {
+    const restLabel = btn.textContent;
     let armed = false;
     let timer = null;
     function disarm() {
+      clearTimeout(timer);
       armed = false;
-      clearBtn.textContent = "Clear Puzzle";
-      clearBtn.classList.remove("armed");
+      btn.textContent = restLabel;
+      btn.classList.remove("armed");
     }
-    clearBtn.addEventListener("click", () => {
+    btn.addEventListener("click", () => {
       if (!armed) {
         armed = true;
-        clearBtn.textContent = "Are you sure?";
-        clearBtn.classList.add("armed");
+        btn.textContent = "Are you sure?";
+        btn.classList.add("armed");
         timer = setTimeout(disarm, 3e3);
         if (refocus) refocus();
       } else {
-        clearTimeout(timer);
         disarm();
         onConfirmed();
       }
     });
+    return { disarm };
   }
   function setupRebusButton(btn, { onToggle, isComposing, refocus }) {
     function sync() {
@@ -2562,19 +2757,43 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       "aria-expanded": "false"
     }, "\u2630");
     document.body.appendChild(btn);
-    const { label: checkBtnToggleLabel, input: checkBtnToggle } = menuToggle("check-btn-toggle", "Show Check Cell button");
-    const clearBtn = htmlEl("button", { id: "clear-btn", type: "button" }, "Clear Puzzle");
-    const panel = htmlEl(
-      "div",
-      { id: "menu-panel", role: "menu", hidden: "" },
-      checkBtnToggleLabel,
-      clearBtn
-    );
+    const clearBtn = htmlEl("button", { id: "clear-btn", type: "button" }, "Clear puzzle");
+    const panel = htmlEl("div", { id: "menu-panel", role: "menu", hidden: "" }, clearBtn);
     document.body.appendChild(panel);
-    const { close } = setupPopupMenu(btn, panel, refocus);
-    return { clearBtn, close, checkBtnToggle, checkBtnToggleLabel };
+    const { close, onClosed } = setupPopupMenu(btn, panel, refocus);
+    return { clearBtn, close, onClosed };
+  }
+  function setupHelpMenu(refocus, rows, selfClosing = []) {
+    const ring = svgEl("svg", { viewBox: "0 0 24 24", width: 24, height: 24, "aria-hidden": "true" });
+    const stroke = { fill: "none", stroke: "currentColor", "stroke-width": 1.8, "stroke-linecap": "round" };
+    ring.append(svgEl("circle", { cx: 12, cy: 12, r: 9, ...stroke }), svgEl("circle", { cx: 12, cy: 12, r: 4, ...stroke }));
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      ring.append(svgEl("line", {
+        x1: 12 + sx * 2.9,
+        y1: 12 + sy * 2.9,
+        x2: 12 + sx * 6.4,
+        y2: 12 + sy * 6.4,
+        ...stroke
+      }));
+    }
+    const btn = htmlEl("button", {
+      id: "help-btn",
+      type: "button",
+      "aria-label": "Help",
+      "aria-haspopup": "true",
+      "aria-expanded": "false"
+    }, ring);
+    const panel = htmlEl("div", { id: "help-panel", role: "menu", hidden: "" }, ...rows);
+    document.body.append(btn, panel);
+    document.body.classList.add("has-help-btn");
+    const { close, onClosed } = setupPopupMenu(btn, panel, refocus);
+    for (const row of rows) {
+      if (!selfClosing.includes(row)) row.addEventListener("click", close);
+    }
+    return { btn, panel, close, onClosed };
   }
   function setupPopupMenu(btn, panel, refocus) {
+    const closedHooks = [];
     function isOpen() {
       return !panel.hidden;
     }
@@ -2582,6 +2801,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       if (!isOpen()) return;
       panel.hidden = true;
       btn.setAttribute("aria-expanded", "false");
+      for (const fn of closedHooks) fn();
       refocus();
     }
     function open() {
@@ -2590,6 +2810,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       refocus();
     }
     btn.addEventListener("click", () => isOpen() ? close() : open());
+    panel.addEventListener("mousedown", (e) => e.preventDefault());
     document.addEventListener("click", (e) => {
       if (!isOpen()) return;
       if (panel.contains(e.target) || btn.contains(e.target)) return;
@@ -2600,7 +2821,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       if (!isOpen() || MODIFIERS.includes(e.key) || e.metaKey || e.ctrlKey) return;
       close();
     });
-    return { close };
+    return { close, onClosed: (fn) => closedHooks.push(fn) };
   }
   function menuToggle(id, text) {
     const input = htmlEl("input", { type: "checkbox", id });
@@ -2625,43 +2846,98 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     }
     return { load, save };
   }
-  function setupCheckBtnPref(key) {
-    return boolPref(key + ":showCheckBtn", true);
-  }
   function setupControls({
-    checkBtn,
     checker,
     hashed,
-    onCheck,
+    helpActions,
+    activeCell,
+    clueCells,
+    clueNoun = () => "clue",
+    canCheck = (n) => checker.canCheck(n),
     onClear,
-    refocus,
-    key,
-    canCheck = (n) => checker.canCheck(n)
+    refocus
   }) {
-    const { clearBtn, close, checkBtnToggle, checkBtnToggleLabel } = setupOptionsMenu(refocus);
-    setupClearButton(clearBtn, () => {
+    const { clearBtn, close, onClosed } = setupOptionsMenu(refocus);
+    const clear = setupArmedButton(clearBtn, () => {
       onClear();
       close();
     }, refocus);
-    if (hashed) {
-      checkBtn.hidden = true;
-      checkBtnToggleLabel.hidden = true;
-      return { syncCheckBtn() {
-      } };
+    onClosed(clear.disarm);
+    if (hashed) return { syncHelp() {
+    }, helpMenu: null };
+    const canReveal = (n) => checker.canReveal(n);
+    const rows = [
+      {
+        id: "check-btn",
+        label: () => "Check cell",
+        cells: () => [activeCell()],
+        act: (ids) => helpActions.checkSet(ids),
+        can: canCheck
+      },
+      {
+        id: "reveal-btn",
+        label: () => "Reveal cell",
+        cells: () => [activeCell()],
+        act: (ids) => helpActions.revealSet(ids),
+        can: canReveal
+      },
+      {
+        id: "check-clue-btn",
+        label: () => "Check " + clueNoun(),
+        cells: clueCells,
+        act: (ids) => helpActions.checkSet(ids),
+        can: canCheck
+      },
+      {
+        id: "reveal-clue-btn",
+        label: () => "Reveal " + clueNoun(),
+        cells: clueCells,
+        act: (ids) => helpActions.revealSet(ids),
+        can: canReveal
+      },
+      {
+        id: "check-puzzle-btn",
+        label: () => "Check puzzle",
+        cells: () => checker.cellIds,
+        act: (ids) => helpActions.checkSet(ids),
+        can: canCheck
+      },
+      {
+        id: "reveal-puzzle-btn",
+        label: () => "Reveal puzzle",
+        cells: () => checker.cellIds,
+        act: (ids) => helpActions.revealSet(ids),
+        can: canReveal
+      }
+    ];
+    const revealPuzzle = rows.find((row) => row.id === "reveal-puzzle-btn");
+    for (const row of rows) {
+      row.btn = htmlEl("button", { id: row.id, type: "button", disabled: "" }, row.label());
+      if (row !== revealPuzzle) row.btn.addEventListener("click", () => row.act(row.cells()));
     }
-    checkBtn.addEventListener("click", onCheck);
-    const checkBtnPref = setupCheckBtnPref(key);
-    const show = (visible) => checkBtn.classList.toggle("check-btn-off", !visible);
-    checkBtnToggle.checked = checkBtnPref.load();
-    show(checkBtnToggle.checked);
-    checkBtnToggle.addEventListener("change", () => {
-      show(checkBtnToggle.checked);
-      checkBtnPref.save(checkBtnToggle.checked);
-      refocus();
-    });
-    return { syncCheckBtn(n) {
-      checkBtn.disabled = !canCheck(n);
-    } };
+    const revealPuzzleBtn = revealPuzzle.btn;
+    const revealArm = setupArmedButton(
+      revealPuzzleBtn,
+      () => {
+        revealPuzzle.act(revealPuzzle.cells());
+        helpMenu.close();
+      },
+      refocus
+    );
+    const helpMenu = setupHelpMenu(refocus, rows.map((row) => row.btn), [revealPuzzleBtn]);
+    helpMenu.onClosed(revealArm.disarm);
+    const setLabel = (btn, text) => {
+      if (btn.textContent !== text) btn.textContent = text;
+    };
+    return {
+      syncHelp() {
+        for (const row of rows) {
+          setLabel(row.btn, row.label());
+          row.btn.disabled = !row.cells().some(row.can);
+        }
+      },
+      helpMenu
+    };
   }
   function setupEmbedResize({ win = window, root = document.documentElement, RO = win.ResizeObserver } = {}) {
     if (!win.parent || win.parent === win || !RO) return null;
@@ -2690,6 +2966,15 @@ html.phone .clue-item .list-cell.list-cursor.composing {
   }
   function stepIndex(i, n, d) {
     return (i + d + n) % n;
+  }
+  var ARROW_TURN = { up: 0, right: 90, down: 180, left: 270 };
+  function arrowIcon(dir) {
+    const svg = svgEl("svg", { viewBox: "0 0 10 10", class: "kb-arrow", "aria-hidden": "true" });
+    svg.append(svgEl("path", {
+      d: "M5,1.5 L9.5,8.5 L0.5,8.5 Z",
+      transform: `rotate(${ARROW_TURN[dir]} 5 5)`
+    }));
+    return svg;
   }
   function buildKeyboard(bottomRow) {
     const row = (...keys) => htmlEl("div", { class: "kb-row" }, ...keys);
@@ -2723,9 +3008,8 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       if (item.key !== void 0) attrs["data-key"] = item.key;
       if (item.shift) attrs["data-shift"] = "";
       if (item.ariaLabel) attrs["aria-label"] = item.ariaLabel;
-      const classes = [item.wide && "kb-wide", item.glyph && "kb-glyph"].filter(Boolean);
-      if (classes.length) attrs.class = classes.join(" ");
-      const btn = htmlEl("button", attrs, item.label);
+      if (item.wide) attrs.class = "kb-wide";
+      const btn = htmlEl("button", attrs, item.arrow ? arrowIcon(item.arrow) : item.label);
       if (item.onTap) btn.addEventListener("click", item.onTap);
       return btn;
     }));
@@ -2758,7 +3042,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     grid,
     lists,
     clueBar,
-    checkBtn,
+    helpMenu,
     firstVisit,
     ownSteps = false,
     fillList = null,
@@ -2789,15 +3073,14 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     if (byline && !byline.hidden) head.append(htmlEl("span", { class: "solve-byline" }, byline.textContent));
     const cluesBtn = htmlEl("button", { id: "clues-btn", type: "button" }, "Clues");
     const headSlot = htmlEl("div", { class: "solve-head-slot" }, head, doc.getElementById("done-wrong"));
-    const help = setupHelpMenu(doc, checkBtn, refocus);
     const top = htmlEl(
       "div",
       { class: "solve-top" },
       headSlot,
       cluesBtn,
-      ...help ? [help.btn] : [],
+      ...helpMenu ? [helpMenu.btn] : [],
       doc.getElementById("menu-btn"),
-      ...help ? [help.panel] : [],
+      ...helpMenu ? [helpMenu.panel] : [],
       doc.getElementById("menu-panel")
     );
     const gridPane = htmlEl("div", { id: "grid-pane" }, grid);
@@ -2942,46 +3225,28 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       }
       lastCursor = cursor;
     }
-    function flash(isHit) {
+    let flashing = [];
+    let flashTimer = null;
+    function endFlash() {
+      clearTimeout(flashTimer);
+      flashTimer = null;
+      for (const el of flashing) el.classList.remove("flash-wrong");
+      flashing = [];
+    }
+    function flash(ids) {
+      const hit = new Set(ids);
+      const els = [];
       items.forEach(({ cells }, i) => cells.forEach((n, j) => {
-        if (!isHit(n)) return;
-        const el = letterEls[i].cellEls[j];
-        el.classList.remove("flash-wrong");
-        void el.offsetWidth;
-        el.classList.add("flash-wrong");
-        setTimeout(() => el.classList.remove("flash-wrong"), FLASH_WRONG_MS);
+        if (hit.has(n)) els.push(letterEls[i].cellEls[j]);
       }));
+      if (els.length === 0) return;
+      endFlash();
+      void els[0].offsetWidth;
+      for (const el of els) el.classList.add("flash-wrong");
+      flashing = els;
+      flashTimer = setTimeout(endFlash, FLASH_WRONG_MS);
     }
     return { sync, flash };
-  }
-  function setupHelpMenu(doc, checkBtn, refocus) {
-    if (checkBtn.hidden) return null;
-    checkBtn.classList.remove("check-btn-off");
-    checkBtn.textContent = "Check cell";
-    doc.getElementById("check-btn-toggle-label").hidden = true;
-    const ring = svgEl("svg", { viewBox: "0 0 24 24", width: 24, height: 24, "aria-hidden": "true" });
-    const stroke = { fill: "none", stroke: "currentColor", "stroke-width": 1.8, "stroke-linecap": "round" };
-    ring.append(svgEl("circle", { cx: 12, cy: 12, r: 9, ...stroke }), svgEl("circle", { cx: 12, cy: 12, r: 4, ...stroke }));
-    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      ring.append(svgEl("line", {
-        x1: 12 + sx * 2.9,
-        y1: 12 + sy * 2.9,
-        x2: 12 + sx * 6.4,
-        y2: 12 + sy * 6.4,
-        ...stroke
-      }));
-    }
-    const btn = htmlEl("button", {
-      id: "help-btn",
-      type: "button",
-      "aria-label": "Help",
-      "aria-haspopup": "true",
-      "aria-expanded": "false"
-    }, ring);
-    const panel = htmlEl("div", { id: "help-panel", role: "menu", hidden: "" }, checkBtn);
-    const { close } = setupPopupMenu(btn, panel, refocus);
-    checkBtn.addEventListener("click", close);
-    return { btn, panel };
   }
   var LIST_WRAP_KEY = "vp:pref:listWrap";
   function setupListWrapPref({ storage, root = document.documentElement, panel, refocus }) {
@@ -2995,6 +3260,9 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       apply(input.checked);
       pref.save(input.checked);
       refocus();
+    });
+    input.addEventListener("focus", () => {
+      if (!input.matches(":focus-visible")) refocus();
     });
     return { pref, label };
   }
@@ -3036,6 +3304,23 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     if (row < 1 || row > N || col < 1 || col > N) return null;
     const next = (row - 1) * N + col;
     return N % 2 === 1 && next === centerN(N) ? next + dr * N + dc : next;
+  }
+  function leadingStep(mode, cells, id, N) {
+    const pos = cells.indexOf(id);
+    if (pos < 0 || pos === cells.length - 1) return null;
+    if (mode === "row") return { dr: 0, dc: 1 };
+    const rc = (n) => [Math.floor((n - 1) / N), (n - 1) % N];
+    const [r1, c1] = rc(id), [r2, c2] = rc(cells[pos + 1]);
+    return { dr: Math.sign(r2 - r1), dc: Math.sign(c2 - c1) };
+  }
+  function chevronPath(id, step, N, size) {
+    if (!step) return "";
+    const { dr, dc } = step;
+    const x = (id - 1) % N * size, y = Math.floor((id - 1) / N) * size;
+    const mx = x + size / 2 + dc * size / 2, my = y + size / 2 + dr * size / 2;
+    const px = Math.abs(dr) * size / 2, py = Math.abs(dc) * size / 2;
+    const tip = size * 0.15;
+    return `M${mx - px},${my - py} L${mx + dc * tip},${my + dr * tip} L${mx + px},${my + py}`;
   }
 
   // marching-bands/src/template/engine.js
@@ -3159,6 +3444,12 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       activeRect.classList.remove("active-entry");
       activeRect.classList.add("active-cell");
       cellsLayer.appendChild(activeRect);
+      chevronEl.setAttribute("d", chevronPath(
+        activeCell,
+        leadingStep(mode, activeContextCells(), activeCell, N),
+        N,
+        CELL_SIZE
+      ));
       for (const m of Object.values(MODES)) {
         for (const group2 of m.groups) group2.classList.remove("active-clue", "secondary-entry");
       }
@@ -3174,8 +3465,8 @@ html.phone .clue-item .list-cell.list-cursor.composing {
         navGroup = group;
         navIdx = 0;
       }
-      if (phone) navigator2.render();
-      controls.syncCheckBtn(activeCell);
+      if (phone) clueNav.render();
+      controls.syncHelp();
       const activeGroup = activeMode.groups[activeMode.index()];
       if (activeGroup !== lastScrolled) {
         lastScrolled = activeGroup;
@@ -3183,42 +3474,24 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       }
       syncSolveState({ checker, latch, doneWrong });
     }
-    function checkCell() {
-      const n = activeCell;
-      const ok = checker.checkCell(n);
-      if (ok === true) {
-        setCorrect(n, true);
-        saveState();
-      } else if (ok === false) {
-        flashWrong(cellRects[n], flashLayer);
-      }
-      syncUI();
-      refocus();
-    }
-    const saveKey = storageKey("mb", data);
-    const { saveState, restoreState, clearState, hasSave } = setupStorage(saveKey, {
-      getState() {
-        return { ...cells.saveFields(), activeMs: timer.getElapsedMs(), composing: composer.getComposing() };
-      },
-      fits: cells.fitsSave,
-      applyState(saved) {
-        cells.restoreFields(saved);
-        timer.restoreMs(saved.activeMs);
-        composer.restore(saved.composing);
-      }
-    });
     const congratsDialog = setupCongratsDialog({
       title: data.title,
       date: data.date,
       onPlayAgain: () => resetBoard()
     });
-    const { timer, latch } = setupSolveTracking({
+    const { timer, latch, helpRecord } = setupSolveTracking({
       puzzleRoot: document.querySelector(".puzzle-main"),
       data,
       getSolution: () => checker.getSolution(),
-      saveState,
+      saveState: () => saveState(),
+      // defined below: the save payload needs timer and helpRecord
       onComplete: (timeMs) => congratsDialog.open(timeMs)
     });
+    const saveKey = storageKey("mb", data);
+    const { saveState, restoreState, clearState, hasSave } = setupStorage(
+      saveKey,
+      makeSavePayload({ cells, helpRecord, timer, composer })
+    );
     const cellRects = {};
     const letterTexts = {};
     const svg = document.getElementById("puzzle-svg");
@@ -3233,6 +3506,8 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     const lettersLayer = svgEl("g", { id: "letters-layer" });
     const labelsLayer = svgEl("g", { id: "labels-layer" });
     svg.append(cellsLayer, circlesLayer, flashLayer, lettersLayer, labelsLayer);
+    const chevronEl = svgEl("path", { id: "direction-chevron" });
+    svg.appendChild(chevronEl);
     for (let n = 1; n <= N * N; n++) {
       const r = rowOf(n), c = colOf(n);
       const x = (c - 1) * CELL_SIZE, y = (r - 1) * CELL_SIZE;
@@ -3364,7 +3639,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
         const btn = htmlEl("button", { id, type: "button", class: "bar-step", "aria-label": ariaLabel }, glyph);
         btn.addEventListener("click", () => {
           navIdx = stepIndex(navIdx, MODES[mode].data[MODES[mode].index()].entries.length, d);
-          render();
+          syncUI();
         });
         return btn;
       };
@@ -3381,16 +3656,15 @@ html.phone .clue-item .list-cell.list-cursor.composing {
         const entries = m.data[i].entries;
         label.textContent = m.name(i);
         count.textContent = `clue ${navIdx + 1} of ${entries.length}`;
-        text.innerHTML = entries[navIdx].clue;
+        setClueHtml(text, entries[navIdx].clue);
         phone.showingClue(entries[navIdx]);
       }
       return { el, text, render };
     }
-    const navigator2 = buildNavigator();
+    const clueNav = buildNavigator();
     const hiddenInput = document.getElementById("hidden-input");
     const refocus = () => hiddenInput.focus({ preventScroll: true });
     const modeBtns = Array.from(document.querySelectorAll("#mode-toggle .toggle-opt"));
-    const checkBtn = document.getElementById("check-btn");
     const doneWrong = document.getElementById("done-wrong");
     const puzzleCenter = document.querySelector(".puzzle-center");
     const rebusBtn = setupRebusButton(document.getElementById("rebus-btn"), {
@@ -3418,7 +3692,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       refocus
     );
     setupKeydown((e) => {
-      if (latch.solved) return;
+      if (latch.solved && e.key !== "Tab") return;
       if (e.key === ".") {
         e.preventDefault();
         mode = MODES[mode].other;
@@ -3428,8 +3702,14 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       if (e.key === "Tab") {
         e.preventDefault();
         const m = MODES[mode];
-        const step = e.shiftKey ? -1 : 1;
-        focusCell(m.cells[(m.index() + step + m.count) % m.count][0]);
+        const { cell } = stepToUnfilled(
+          m.cells.map((_, i) => i),
+          m.index(),
+          e.shiftKey ? -1 : 1,
+          (i) => m.cells[i],
+          composer.isCellFilled
+        );
+        focusCell(cell);
         return;
       }
       if (e.key === "Enter") {
@@ -3519,6 +3799,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
         clearState,
         timer,
         latch,
+        helpRecord,
         clearBoard() {
           cells.clearCells();
           flashLayer.replaceChildren();
@@ -3527,14 +3808,28 @@ html.phone .clue-item .list-cell.list-cursor.composing {
         focusInitial: () => focusCell(FIRST_CELL)
       });
     }
+    const helpActions = makeHelpActions({
+      checker,
+      composer,
+      helpRecord,
+      setCellLetter,
+      setCorrect,
+      saveState,
+      syncUI,
+      refocus,
+      flashWrong(wrong) {
+        for (const n of wrong) flashWrong(cellRects[n], flashLayer);
+      }
+    });
     const controls = setupControls({
-      checkBtn,
       checker,
       hashed: data.hashed,
-      onCheck: checkCell,
+      helpActions,
+      activeCell: () => activeCell,
+      clueCells: activeContextCells,
+      clueNoun: () => mode,
       onClear: resetBoard,
-      refocus,
-      key: saveKey
+      refocus
     });
     const stepTo = (target) => () => {
       if (!latch.solved) focusCell(target(activeCell));
@@ -3542,17 +3837,17 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     const phone = setupPhoneLayout({
       hiddenInput,
       refocus,
-      checkBtn,
+      helpMenu: controls.helpMenu,
       firstVisit: !hasSave(),
       grid: document.getElementById("grid-wrap"),
       lists: [document.querySelector(".clue-section-rows"), document.querySelector(".clue-section-bands")],
-      clueBar: navigator2,
+      clueBar: clueNav,
       ownSteps: true,
       bottomRow: [
-        { label: "\u25C2", onTap: stepTo(prevCell), glyph: true },
+        { label: "Prev\ncell", onTap: stepTo(prevCell), ariaLabel: "Previous cell" },
         { el: document.getElementById("rebus-btn") },
         { label: "Row \u21C4 Band", key: ".", wide: true },
-        { label: "\u25B8", onTap: stepTo(nextCell), glyph: true }
+        { label: "Next\ncell", onTap: stepTo(nextCell), ariaLabel: "Next cell" }
       ]
     });
     if (phone) {

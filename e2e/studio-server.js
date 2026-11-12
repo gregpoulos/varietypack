@@ -1,7 +1,7 @@
 'use strict';
 
 // Serves a directory over HTTP for the studio's e2e tests, so localStorage behaves the
-// same in Chromium and WebKit (file:// origins differ between them).
+// same in every browser (file:// origins differ between them).
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');

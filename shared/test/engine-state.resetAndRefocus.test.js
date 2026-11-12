@@ -12,9 +12,10 @@ test('resetAndRefocus drops composition first and refocuses last', () => {
     clearState:   () => calls.push('storage'),
     timer:        { reset: () => calls.push('timer') },
     latch:        { reset: () => calls.push('latch') },
+    helpRecord:   { reset: () => calls.push('help') },
     focusInitial: () => calls.push('focus'),
   });
   assert.equal(calls[0], 'composer');
   assert.equal(calls[calls.length - 1], 'focus');
-  assert.deepEqual([...calls].sort(), ['board', 'composer', 'focus', 'latch', 'storage', 'timer']);
+  assert.deepEqual([...calls].sort(), ['board', 'composer', 'focus', 'help', 'latch', 'storage', 'timer']);
 });

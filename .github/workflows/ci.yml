@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR supersedes the run in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  # Whether the change touches anything but documentation (`docs/`, `*.md`). Conservative:
+  # an empty or failed diff counts as code, so e2e is skipped only when it is sure to be
+  # irrelevant. `test` always runs, because test/commentStyle.test.js reads the docs.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then base="origin/$BASE_REF"; else base="$BEFORE"; fi
+          if files=$(git diff --name-only "$base...HEAD" 2>/dev/null) && [ -n "$files" ] \
+              && ! printf '%s\n' "$files" | grep -qvE '^(docs/|.*\.md$)'; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # One job per browser, run in parallel: a standard runner gives Playwright one worker,
+  # so a single job for the whole suite was far slower than the slowest shard.
+  # `projects` are the playwright.config.js projects each shard runs; `browsers` is what
+  # it must install.
+  e2e:
+    name: e2e (${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: chromium
+            projects: --project=chromium
+            browsers: chromium
+          - shard: webkit
+            projects: --project=webkit
+            browsers: webkit
+          - shard: firefox
+            projects: --project=firefox
+            browsers: firefox
+          - shard: phones
+            projects: --project=mobile-chromium --project=mobile-webkit
+            browsers: chromium webkit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browsers }}
+      # The html reporter writes the playwright-report/ uploaded below; without it CI
+      # falls back to the dot reporter and that directory never exists.
+      - run: npm run test:e2e -- --reporter=github,html ${{ matrix.projects }}
+        env:
+          PLAYWRIGHT_HTML_OPEN: never
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-failures-${{ matrix.shard }}
+          path: |
+            playwright-report/
+            test-results/

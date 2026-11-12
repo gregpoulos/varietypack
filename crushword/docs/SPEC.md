@@ -69,7 +69,7 @@ Not every open cell necessarily has an entry in both directions — a cell whose
 
 See `docs/AUTHORING.md` → "Muddling and hashed builds" for what `--muddle` produces and why. Crushword's `boardHash` covers every **open** cell in row-major order (top-left to bottom-right, blocks skipped entirely — not an empty segment), each cell normalized and lowercased individually, then joined with a delimiter so a multi-letter rebus cell can't be mistaken for several single-letter cells. No partial correctness feedback is given until all cells are filled; the complete board is then hashed and compared to `boardHash`.
 
-Crushword has no tool-specific CLI flags — every option comes from the shared set documented in `docs/AUTHORING.md` → "CLI usage", or run `crushword --help`.
+Crushword has no tool-specific CLI flags — every option comes from the shared set documented in `docs/AUTHORING.md` → "CLI usage", or run `varietypack build --help`.
 
 ## Example
 
@@ -132,4 +132,4 @@ down:
 Multi-word/hyphenated answers and answer security are covered in
 `docs/AUTHORING.md`.
 
-- **Entry boundaries are visible**: Unlike Marching Bands, Crushword's numbering tells the solver exactly where each entry starts. Tab and Shift+Tab jump between entries (wrapping) in the current direction, and each clue is individually clickable — there is no row/band-style grouping.
+- **Entry boundaries are visible**: Unlike Marching Bands, Crushword's numbering tells the solver exactly where each entry starts. Tab and Shift+Tab jump between entries, running through the across entries and then the down entries and wrapping, and each clue is individually clickable — there is no row/band-style grouping.

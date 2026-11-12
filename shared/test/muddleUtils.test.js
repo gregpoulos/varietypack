@@ -109,3 +109,14 @@ test('muddlePuzzle: returns errors and a null muddled object when invalid', () =
   assert.equal(r.muddled, null);
   assert.equal(prepared, false);
 });
+
+test('muddlePuzzle: refuses an already-muddled puzzle before validating or preparing', () => {
+  let touched = false;
+  const r = muddlePuzzle({ ...puzzleWithAnswers, boardHash: 'abc' }, {
+    validateFn: () => { touched = true; return { errors: [], warnings: [] }; },
+    prepareFn:  () => { touched = true; return { boardHash: 'x' }; },
+  });
+  assert.deepEqual(r.errors, ['puzzle is already muddled; muddle the source puzzle instead']);
+  assert.equal(r.muddled, null);
+  assert.equal(touched, false);
+});

@@ -1,5 +1,5 @@
-/* The studio's own styles. Not a puzzle theme: system fonts, neutral colors, 1px borders.
-   Tokens follow .superpowers/mockups/studio-layout.html (version B). */
+/* The studio's own styles. Not a puzzle theme: system fonts, neutral colors,
+   1px borders. */
 [hidden] { display: none !important; }
 
 :root {

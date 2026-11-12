@@ -1,8 +1,8 @@
 // typing.mjs holds the pure typing rules, shared with the studio's editor.
 import { normalize } from '../../../shared/normalize.mjs';
 import {
-  makeBoardChecker, makeCellStore, makeComposer, resetAndRefocus, restoreAndSeal,
-  setLetterText, setupSolveTracking, syncSolveState
+  makeBoardChecker, makeCellStore, makeHelpActions, makeComposer, resetAndRefocus, restoreAndSeal,
+  setLetterText, setupSolveTracking, makeSavePayload, stepToUnfilled, syncSolveState
 } from '../../../shared/engine-state.mjs';
 import {
   clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
@@ -15,7 +15,7 @@ import {
   cellCoords, cellDimensions, deriveNumbering, gridDimensions, svgSize
 } from '../layout.mjs';
 import {
-  arrowTarget, buildEntryMaps, deleteBefore, nextCell, prevCell, stepInOrder, typeAt
+  arrowTarget, buildEntryMaps, deleteBefore, nextCell, prevCell, typeAt
 } from '../typing.mjs';
 
 function init() {
@@ -266,57 +266,28 @@ function init() {
     );
     if (phone) phone.showingClue(data[direction][activeInfo.num]);
 
-    // Check Cell button: enabled only while the active cell can be checked.
-    controls.syncCheckBtn(activeCell);
+    // Help rows: each enabled only while it applies to the active cell, clue or board.
+    controls.syncHelp();
 
     // Solve state: the done-wrong banner, and solved-ness for the completion latch.
     syncSolveState({ checker, latch, doneWrong });
   }
 
-  function checkCell() {
-    const n = activeCell;
-    // Checking a typed cell commits it first, as moving off it would, so the solver
-    // needn't (canCheck below lets the button through while it composes).
-    if (composer.isComposing(n)) composer.toggle(n);
-    // The focus call is required on every path out (docs/CROSS_TOOL_SPEC.md → Focus
-    // management).
-    const ok = checker.checkCell(n);
-    if (ok === true) {
-      setCorrect(n, true);
-      saveState();          // only this branch mutates persisted state
-    } else if (ok === false) {
-      flashWrong(cellRects[n], flashLayer);
-      if (phone) phone.fillList.flash(m => m === n);
-    }
-    syncUI();
-    refocus();
-  }
-
-  const saveKey = storageKey('cw', data);
-  const { saveState, restoreState, clearState, hasSave } = setupStorage(saveKey, {
-    getState() {
-      return { ...cells.saveFields(), activeMs: timer.getElapsedMs(), composing: composer.getComposing() };
-    },
-    fits: cells.fitsSave,
-    applyState(saved) {
-      cells.restoreFields(saved);
-      timer.restoreMs(saved.activeMs);
-      // After the letters are painted, so the composing cell shows its partial content.
-      composer.restore(saved.composing);
-    },
-  });
-
   const congratsDialog = setupCongratsDialog({
     title: data.title, date: data.date, onPlayAgain: () => resetBoard(),
   });
 
-  const { timer, latch } = setupSolveTracking({
+  const { timer, latch, helpRecord } = setupSolveTracking({
     puzzleRoot:  document.querySelector('.puzzle-main'),
     data,
     getSolution: () => checker.getSolution(),
-    saveState,
+    saveState: () => saveState(),  // defined below: the save payload needs timer and helpRecord
     onComplete:  (timeMs) => congratsDialog.open(timeMs),
   });
+
+  const saveKey = storageKey('cw', data);
+  const { saveState, restoreState, clearState, hasSave } = setupStorage(
+    saveKey, makeSavePayload({ cells, helpRecord, timer, composer }));
 
   // ── Build SVG ─────────────────────────────────────────────────────────────
   const cellRects = {}, letterTexts = {};
@@ -442,7 +413,6 @@ function init() {
 
   const clueBar = setupClueBar();
 
-  const checkBtn  = document.getElementById('check-btn');
   const doneWrong = document.getElementById('done-wrong');
   const puzzleCenter = document.querySelector('.puzzle-center'); // the sticky grid box
 
@@ -466,16 +436,21 @@ function init() {
   );
 
   setupKeydown(e => {
-    if (latch.solved) return;
+    // A solved board takes no edits, but Tab still steps between entries.
+    if (latch.solved && e.key !== 'Tab') return;
 
     if (e.key === '.') { e.preventDefault(); toggleDirection(); return; }
 
     if (e.key === 'Tab') {
       e.preventDefault();
-      const info = entryInfo(activeCell, direction);
-      const order = entryOrder(direction);
-      const targetNum = stepInOrder(order, info.num, e.shiftKey ? -1 : 1);
-      focusCell(entryCellsOf(targetNum, direction)[0]);
+      // One loop over every across entry then every down entry, so the last of one
+      // direction leads into the first of the other and the cursor changes direction.
+      const loop = ['across', 'down'].flatMap(dir => entryOrder(dir).map(num => ({ dir, num })));
+      const from = loop.find(en => en.dir === direction && en.num === entryInfo(activeCell, direction).num);
+      const { entry, cell } = stepToUnfilled(loop, from, e.shiftKey ? -1 : 1,
+        en => entryCellsOf(en.num, en.dir), composer.isCellFilled);
+      direction = entry.dir;
+      focusCell(cell);
       return;
     }
 
@@ -561,7 +536,7 @@ function init() {
 
   function resetBoard() {
     resetAndRefocus({
-      composer, clearState, timer, latch,
+      composer, clearState, timer, latch, helpRecord,
       clearBoard() {
         cells.clearCells();
         flashLayer.replaceChildren();
@@ -573,10 +548,26 @@ function init() {
     });
   }
 
+  // The help menu's check and reveal actions (shared/engine-state.mjs → makeHelpActions):
+  // one pair over any set of cells, behind every row. Its deps are all defined above;
+  // `phone` is read when a wrong check flashes, long after init has set it.
+  const helpActions = makeHelpActions({
+    checker, composer, helpRecord, setCellLetter, setCorrect, saveState, syncUI, refocus,
+    // A typed cell is committed into the check, as moving off it would.
+    beforeCheck() { if (composer.isComposing(activeCell)) composer.toggle(activeCell); },
+    flashWrong(wrong) {
+      for (const n of wrong) flashWrong(cellRects[n], flashLayer);
+      if (phone) phone.fillList.flash(wrong);
+    },
+    afterReveal: () => focusCell(activeCell), // lands the cursor after the revealed content
+  });
+
   const controls = setupControls({
-    checkBtn, checker, hashed: data.hashed, onCheck: checkCell,
-    onClear: resetBoard, refocus, key: saveKey,
+    checker, hashed: data.hashed, helpActions,
+    activeCell: () => activeCell,
+    clueCells: activeContextCells,
     canCheck: n => checker.canCheck(n) || (composer.isComposing(n) && !isCorrect(n)),
+    onClear: resetBoard, refocus,
   });
 
   // On a touch-first device only: the phone solving view and its drawn keyboard.
@@ -586,7 +577,7 @@ function init() {
   // when the grid shows.
   const phone = setupPhoneLayout({
     hiddenInput,
-    checkBtn,
+    helpMenu: controls.helpMenu,
     refocus,
     firstVisit: !hasSave(),
     grid: svg,
@@ -603,11 +594,12 @@ function init() {
       updateCaret();
     },
     bottomRow: [
-      { label: '◂', key: 'ArrowLeft', glyph: true },
       { label: 'Prev\ncell', key: 'Enter', shift: true, ariaLabel: 'Previous cell' },
+      { key: 'ArrowLeft', arrow: 'left', ariaLabel: 'Left' },
+      { key: 'ArrowUp', arrow: 'up', ariaLabel: 'Up' },
+      { key: 'ArrowDown', arrow: 'down', ariaLabel: 'Down' },
+      { key: 'ArrowRight', arrow: 'right', ariaLabel: 'Right' },
       { label: 'Next\ncell', key: 'Enter', ariaLabel: 'Next cell' },
-      { label: 'Across ⇄ Down', key: '.', wide: true },
-      { label: '▸', key: 'ArrowRight', glyph: true },
     ],
   });
 

@@ -1,6 +1,7 @@
 import sc from '../../model/kinds/snake-charmer.js';
 import { formatCell } from '../../model/cells.js';
 import { useBoardEditing } from './useBoardEditing.js';
+import { keepBoardFocus } from './useBoardInput.js';
 import { displayStatusFor } from './displayStatus.js';
 import { Meter } from './Meter.jsx';
 import { SequenceField } from './SequenceField.jsx';
@@ -119,17 +120,22 @@ export function SnakeCharmerEditor({ dispatch, model, clueView, setClueView, foc
           {clashes.length > 0 && <Meter id="meter-shared" bad><b>{clashes.length}</b> {clashes.length === 1 ? 'cell starts' : 'cells start'} two entries</Meter>}
         </span>
       </div>
-      <div id="board" class={'board ' + (lapNow === 1 ? 'in' : 'out')} onClick={focus}>
+      <div id="board" class={'board ' + (lapNow === 1 ? 'in' : 'out')} onClick={focus} onMouseDown={keepBoardFocus}>
         <input id="board-input" aria-label="Board input" {...inputProps} />
         <RingBoard ring={model.ring} shape={model.shape} caret={caret} composing={composing} starts={model.cut.starts} circles={circleSet}
-          onCellClick={k => moveTo({ caret: (lapNow - 1) * N + k, composing: false })}
+          onCellClick={k => {
+            // Clicking the selected cell again switches lap, as in the solver, but only
+            // once the board has focus: the first click just selects.
+            const focused = document.activeElement && document.activeElement.id === 'board-input';
+            moveTo(k === caret % N && focused ? { caret: twin(model, caret), composing: false } : { caret: (lapNow - 1) * N + k, composing: false });
+          }}
           onGapClick={k => {
             const p = (lapNow - 1) * N + k;
             const r = breakAtCaret(model, p);
             if (r.message) say(r.message); else exec('toggleBreak', [r.index]);
           }} />
       </div>
-      <p class="keys">Click a cell, then: <kbd>A–Z</kbd> fill and move on · <kbd>Space</kbd> clear the cell and move on · <kbd>Enter</kbd> multi-letter cell · <kbd>|</kbd> split or join at the cursor · <kbd>.</kbd> switch lap · <kbd>Tab</kbd> next entry · <kbd>Delete</kbd> remove the cell. The ring is one set of cells read twice, so a letter typed on either lap is the same cell.</p>
+      <p class="keys">Click a cell, then: <kbd>A–Z</kbd> fill and move on · <kbd>Space</kbd> clear the cell and move on · <kbd>Enter</kbd> multi-letter cell · <kbd>|</kbd> split or join at the cursor · <kbd>.</kbd> switch lap · <kbd>Tab</kbd> next entry · <kbd>Delete</kbd> remove the cell. Clicking the selected cell again also switches lap. The ring is one set of cells read twice, so a letter typed on either lap is the same cell.</p>
       <ClueSection clueView={clueView} setClueView={setClueView} orphans={model.orphans} targets={targets}
         onAttach={(id, value) => exec('attachOrphan', [id, Number(value)])}
         onDiscard={id => exec('discardOrphan', [id])}>

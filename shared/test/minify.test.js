@@ -26,20 +26,18 @@ test('minifyHtml: preserves /* */ inside a CSS string value (clean-css is CSS-aw
     `comment-like sequence inside a CSS string must survive; got: ${out}`);
 });
 
-// ── line-only // comment stripping ───────────────────────────────────────────
+// ── comment-like text outside script and style ─────────────────────────────────
 
-test('minifyHtml: strips line-only // comments in non-script content', () => {
-  // simplePass runs on the full HTML string; // comments outside <script> blocks
-  // can appear in template text or inline content
-  const input = `<html>
-// line-only comment
-<p>content</p>
-  // indented comment
-</html>`;
-  const out = minifyHtml(input);
-  assert.ok(!out.includes('// line-only comment'));
-  assert.ok(!out.includes('// indented comment'));
-  assert.ok(out.includes('<p>content</p>'));
+// Outside <script>/<style> there are no JS or CSS comments: /* */ and // there are page
+// text, such as a puzzle title.
+test('minifyHtml: keeps /* */ in page text outside script and style blocks', () => {
+  const out = minifyHtml('<title>A /* b */ c</title><h1>A /* b */ c</h1>');
+  assert.equal(out, '<title>A /* b */ c</title><h1>A /* b */ c</h1>');
+});
+
+test('minifyHtml: keeps a line starting with // outside script and style blocks', () => {
+  const out = minifyHtml('<html>\n// not a comment\n<p>content</p>\n</html>');
+  assert.ok(out.includes('// not a comment'), out);
 });
 
 // ── blank line collapsing ─────────────────────────────────────────────────────

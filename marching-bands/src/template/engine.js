@@ -1,16 +1,18 @@
 import { normalize } from '../../../shared/normalize.mjs';
 import {
-  makeBoardChecker, makeCellStore, makeComposer, resetAndRefocus, restoreAndSeal,
-  setupSolveTracking, syncSolveState
+  makeBoardChecker, makeCellStore, makeHelpActions, makeComposer, resetAndRefocus, restoreAndSeal,
+  setupSolveTracking, makeSavePayload, stepToUnfilled, syncSolveState
 } from '../../../shared/engine-state.mjs';
 import {
   clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
   scrollByKey, scrollIntoViewBelow, setupCellClicks, setupCongratsDialog,
   setupControls, setupEmbedResize, setupKeydown, setupKeysOverlay, setupRebusButton,
-  setupStorage, storageKey, svgEl
+  setClueHtml, setupStorage, storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
 import { setupPhoneLayout, stepIndex } from '../../../shared/engine-phone.mjs';
-import { arrowTarget, bandCells, bandIndexOf, centerN, rowCells } from '../layout.mjs';
+import {
+  arrowTarget, bandCells, bandIndexOf, centerN, chevronPath, leadingStep, rowCells
+} from '../layout.mjs';
 
 function init() {
   // ── Data & constants ─────────────────────────────────────────────────────
@@ -164,6 +166,10 @@ function init() {
     // Last in its layer, so no neighbor paints over its border (e2e/shared.spec.js).
     cellsLayer.appendChild(activeRect);
 
+    // Chevron on the active cell's leading edge, pointing the way typing advances.
+    chevronEl.setAttribute('d', chevronPath(
+      activeCell, leadingStep(mode, activeContextCells(), activeCell, N), N, CELL_SIZE));
+
     // Clue list: highlight the active and crossing clues.
     // Clear all clue highlights
     for (const m of Object.values(MODES)) {
@@ -185,10 +191,10 @@ function init() {
     // Phone clue navigator: back to the first clue whenever the row or band changes.
     const group = `${mode}:${activeMode.index()}`;
     if (group !== navGroup) { navGroup = group; navIdx = 0; }
-    if (phone) navigator.render();
+    if (phone) clueNav.render();
 
-    // Check Cell button: enabled only while the active cell can be checked.
-    controls.syncCheckBtn(activeCell);
+    // Help rows: each enabled only while it applies to the active cell, clue or board.
+    controls.syncHelp();
 
     // Scrolled into view only when it changes (docs/CROSS_TOOL_SPEC.md → "syncUI()
     // contract").
@@ -202,48 +208,23 @@ function init() {
     syncSolveState({ checker, latch, doneWrong });
   }
 
-  function checkCell() {
-    const n = activeCell;
-    // The focus call is required on every path out (docs/CROSS_TOOL_SPEC.md → Focus
-    // management).
-    const ok = checker.checkCell(n);
-    if (ok === true) {
-      setCorrect(n, true);
-      saveState();          // only this branch mutates persisted state
-    } else if (ok === false) {
-      flashWrong(cellRects[n], flashLayer);
-    }
-    syncUI();
-    refocus();
-  }
-
-  const saveKey = storageKey('mb', data);
-  const { saveState, restoreState, clearState, hasSave } = setupStorage(saveKey, {
-    getState() {
-      return { ...cells.saveFields(), activeMs: timer.getElapsedMs(), composing: composer.getComposing() };
-    },
-    fits: cells.fitsSave,
-    applyState(saved) {
-      cells.restoreFields(saved);
-      timer.restoreMs(saved.activeMs);
-      // After the letters are painted, so the composing cell shows its partial content.
-      composer.restore(saved.composing);
-    },
-  });
-
   const congratsDialog = setupCongratsDialog({
     title: data.title,
     date: data.date,
     onPlayAgain: () => resetBoard(),
   });
 
-  const { timer, latch } = setupSolveTracking({
+  const { timer, latch, helpRecord } = setupSolveTracking({
     puzzleRoot:  document.querySelector('.puzzle-main'),
     data,
     getSolution: () => checker.getSolution(),
-    saveState,
+    saveState: () => saveState(),  // defined below: the save payload needs timer and helpRecord
     onComplete:  (timeMs) => congratsDialog.open(timeMs),
   });
+
+  const saveKey = storageKey('mb', data);
+  const { saveState, restoreState, clearState, hasSave } = setupStorage(
+    saveKey, makeSavePayload({ cells, helpRecord, timer, composer }));
 
   // ── Build SVG ─────────────────────────────────────────────────────────────
   const cellRects  = {};  // n → <rect>
@@ -263,6 +244,9 @@ function init() {
   const lettersLayer = svgEl('g', { id: 'letters-layer' });
   const labelsLayer  = svgEl('g', { id: 'labels-layer' });
   svg.append(cellsLayer, circlesLayer, flashLayer, lettersLayer, labelsLayer);
+  // After the groups, so it paints over the neighbor cell it points into.
+  const chevronEl = svgEl('path', { id: 'direction-chevron' });
+  svg.appendChild(chevronEl);
 
   for (let n = 1; n <= N * N; n++) {
     const r = rowOf(n), c = colOf(n);
@@ -374,8 +358,9 @@ function init() {
   // The phone's clue navigator, for the bar row (Event wiring): `Row 1` / `clue 2 of 3`,
   // that clue, and ‹ › through the active row's or band's clues. A tap on its text shows
   // a cut-off clue in full (setupClueExpand); the bottom row's switch key and a tap on
-  // the active cell change the mode. Built everywhere, shown and rendered only in the
-  // phone layout.
+  // the active cell change the mode. Built everywhere, shown only in the phone layout,
+  // where syncUI renders it; ‹ › move navIdx and end in syncUI, as every state change
+  // does.
   function buildNavigator() {
     const label = htmlEl('span', { class: 'nav-label' });
     const count = htmlEl('span', { class: 'nav-count' });
@@ -384,7 +369,7 @@ function init() {
       const btn = htmlEl('button', { id, type: 'button', class: 'bar-step', 'aria-label': ariaLabel }, glyph);
       btn.addEventListener('click', () => {
         navIdx = stepIndex(navIdx, MODES[mode].data[MODES[mode].index()].entries.length, d);
-        render();
+        syncUI();
       });
       return btn;
     };
@@ -397,12 +382,12 @@ function init() {
       const entries = m.data[i].entries;
       label.textContent = m.name(i);
       count.textContent = `clue ${navIdx + 1} of ${entries.length}`;
-      text.innerHTML = entries[navIdx].clue;   // pre-rendered markdown, as clueTextEl
+      setClueHtml(text, entries[navIdx].clue);
       phone.showingClue(entries[navIdx]);
     }
     return { el, text, render };
   }
-  const navigator = buildNavigator();
+  const clueNav = buildNavigator();
 
   // ── Event wiring ──────────────────────────────────────────────────────────
   // The page's static elements. Logic functions above use them (focusCell calls
@@ -411,7 +396,6 @@ function init() {
   const refocus = () => hiddenInput.focus({ preventScroll: true });
 
   const modeBtns   = Array.from(document.querySelectorAll('#mode-toggle .toggle-opt'));
-  const checkBtn   = document.getElementById('check-btn');
   const doneWrong  = document.getElementById('done-wrong');
   const puzzleCenter = document.querySelector('.puzzle-center'); // the sticky grid box
 
@@ -443,7 +427,8 @@ function init() {
     refocus
   );
   setupKeydown(e => {
-    if (latch.solved) return;
+    // A solved board takes no edits, but Tab still steps between entries.
+    if (latch.solved && e.key !== 'Tab') return;
     if (e.key === '.') {
       e.preventDefault();
       mode = MODES[mode].other;
@@ -454,8 +439,9 @@ function init() {
     if (e.key === 'Tab') {
       e.preventDefault();
       const m = MODES[mode];
-      const step = e.shiftKey ? -1 : 1;
-      focusCell(m.cells[(m.index() + step + m.count) % m.count][0]);
+      const { cell } = stepToUnfilled(m.cells.map((_, i) => i), m.index(),
+        e.shiftKey ? -1 : 1, i => m.cells[i], composer.isCellFilled);
+      focusCell(cell);
       return;
     }
 
@@ -534,7 +520,7 @@ function init() {
 
   function resetBoard() {
     resetAndRefocus({
-      composer, clearState, timer, latch,
+      composer, clearState, timer, latch, helpRecord,
       clearBoard() {
         cells.clearCells();
         flashLayer.replaceChildren();
@@ -544,9 +530,22 @@ function init() {
     });
   }
 
+  // The help menu's check and reveal actions (shared/engine-state.mjs → makeHelpActions):
+  // one pair over any set of cells, behind every row. Its deps are all defined above;
+  // `phone` is read when a wrong check flashes, long after init has set it.
+  const helpActions = makeHelpActions({
+    checker, composer, helpRecord, setCellLetter, setCorrect, saveState, syncUI, refocus,
+    flashWrong(wrong) {
+      for (const n of wrong) flashWrong(cellRects[n], flashLayer);
+    },
+  });
+
   const controls = setupControls({
-    checkBtn, checker, hashed: data.hashed, onCheck: checkCell,
-    onClear: resetBoard, refocus, key: saveKey,
+    checker, hashed: data.hashed, helpActions,
+    activeCell: () => activeCell,
+    clueCells: activeContextCells,
+    clueNoun: () => mode,
+    onClear: resetBoard, refocus,
   });
 
   // On a touch-first device only: the phone solving view and its drawn keyboard. ◂ ▸
@@ -556,17 +555,17 @@ function init() {
   const phone = setupPhoneLayout({
     hiddenInput,
     refocus,
-    checkBtn,
+    helpMenu: controls.helpMenu,
     firstVisit: !hasSave(),
     grid: document.getElementById('grid-wrap'),
     lists: [document.querySelector('.clue-section-rows'), document.querySelector('.clue-section-bands')],
-    clueBar: navigator,
+    clueBar: clueNav,
     ownSteps: true,
     bottomRow: [
-      { label: '◂', onTap: stepTo(prevCell), glyph: true },
+      { label: 'Prev\ncell', onTap: stepTo(prevCell), ariaLabel: 'Previous cell' },
       { el: document.getElementById('rebus-btn') },
       { label: 'Row ⇄ Band', key: '.', wide: true },
-      { label: '▸', onTap: stepTo(nextCell), glyph: true },
+      { label: 'Next\ncell', onTap: stepTo(nextCell), ariaLabel: 'Next cell' },
     ],
   });
 

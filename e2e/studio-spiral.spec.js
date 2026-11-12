@@ -37,6 +37,11 @@ async function openFile(page, file) {
   await expect(page.locator('#board')).toBeVisible();
 }
 
+// Gap lines are clicked plainly, not forced. Spiral's are diagonal, so Playwright sees
+// them as visible and waits for the click point to settle, which matters after a clue
+// fill scrolls the pane: a forced click missed about 1 run in 8 in Firefox. Snake
+// Charmer's and Marching Bands' are axis-aligned, so their boxes have zero width,
+// Playwright calls them hidden, and their specs use clickGapLine (e2e/helpers.js).
 const cell = (page, i) => page.locator(`.sp-cell[data-index="${i}"]`);
 const letter = (page, i) => page.locator(`.sp-ltr[data-index="${i}"]`);
 async function type(page, letters) {
@@ -129,7 +134,7 @@ test('the sequence field replaces the cells', async ({ page }) => {
 
 test('a boundary click splits an inward entry', async ({ page }) => {
   await newSpiral(page);
-  await page.locator('.sp-gap[data-gap="4"]').click({ force: true });
+  await page.locator('.sp-gap[data-gap="4"]').click();
   await expect(page.locator('#meter-inward')).toContainText('2 entries');
   const mark = page.locator('.sp-break.in[data-gap="4"]');
   await expect(mark).toHaveCount(1);
@@ -159,9 +164,9 @@ test('inserting a cell redraws the spiral', async ({ page }) => {
 test('undo restores a removed break', async ({ page }) => {
   await newSpiral(page);
   const gap = page.locator('.sp-gap[data-gap="4"]');
-  await gap.click({ force: true });
+  await gap.click();
   await expect(page.locator('#meter-inward')).toContainText('2 entries');
-  await gap.click({ force: true });
+  await gap.click();
   await expect(page.locator('#meter-inward')).toContainText('1 entry');
   await page.locator('#btn-undo').click();
   await expect(page.locator('#meter-inward')).toContainText('2 entries');
@@ -180,10 +185,10 @@ test('the selected-entry panel follows the cursor', async ({ page }) => {
 
 test('a removed break\'s clue goes to the orphan tray and can be reattached', async ({ page }) => {
   await newSpiral(page);
-  await page.locator('.sp-gap[data-gap="4"]').click({ force: true });
+  await page.locator('.sp-gap[data-gap="4"]').click();
   await cell(page, 10).click();
   await page.locator('#entry-clue').fill('second entry clue');
-  await page.locator('.sp-gap[data-gap="4"]').click({ force: true });
+  await page.locator('.sp-gap[data-gap="4"]').click();
   await expect(page.locator('#orphan-tray .orphan')).toHaveCount(1);
   await page.locator('#orphan-tray .orphan-target').selectOption('inward:0');
   await page.locator('#orphan-tray .orphan-attach').click();
@@ -195,9 +200,9 @@ test('a complete puzzle exports YAML that validates', async ({ page }) => {
   await newSpiral(page);
   await page.locator('#sequence-field').fill('ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN');
   await page.locator('#sequence-field').press('Enter');
-  await page.locator('.sp-gap[data-gap="20"]').click({ force: true });
+  await page.locator('.sp-gap[data-gap="20"]').click();
   await page.locator('#cut-toggle [data-cut="outward"]').click();
-  await page.locator('.sp-gap[data-gap="20"]').click({ force: true });
+  await page.locator('.sp-gap[data-gap="20"]').click();
   await page.locator('#header-title').fill('Made In The Studio');
   await page.locator('#clue-view [data-view="all"]').click();
   const inputs = page.locator('.clue-input');
@@ -275,3 +280,23 @@ test('clicking the selected cell again switches direction', async ({ page }) => 
   await expect(page.locator('#cut-toggle [data-cut="outward"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
+
+test('a space typed alone, as a soft keyboard sends it, also clears the cell and moves on', async ({ page }) => {
+  await newSpiral(page, 40);
+  await cell(page, 0).click();
+  await type(page, 'a');
+  await page.keyboard.press('ArrowLeft');
+  await expect(letter(page, 0)).toHaveText('A');
+  await page.locator('#board-input').fill(' ');   // an input event with no keydown
+  await expect(letter(page, 0)).toHaveCount(0);
+  await type(page, 'b');
+  await expect(letter(page, 1)).toHaveText('B');
+});
+
+test('pasting a spaced answer fills its letters and skips its spaces', async ({ page }) => {
+  await newSpiral(page, 40);
+  await cell(page, 0).click();
+  await page.locator('#board-input').fill('lie to');   // one input event, as a paste is
+  for (const [i, ch] of [...'LIETO'].entries()) await expect(letter(page, i)).toHaveText(ch);
+  await expect(letter(page, 5)).toHaveCount(0);
+});

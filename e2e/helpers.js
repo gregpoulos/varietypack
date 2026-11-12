@@ -65,4 +65,47 @@ async function solveRingBoard(page, { wrong } = {}) {
   for (const l of letters) await page.keyboard.press(`Key${(wrong || l).toUpperCase()}`);
 }
 
-module.exports = { typeCell, cellLetterPairs, fillCrushwordCell, solveCrushwordBoard, solveRingBoard };
+// Opens the help menu and clicks one of its rows (`#check-btn`, ...). A real user's path:
+// the rows are in a closed panel until #help-btn opens it.
+async function clickHelpRow(page, rowId) {
+  await page.locator('#help-btn').click();
+  await page.locator('#help-panel ' + rowId).click();
+}
+
+// Clicks a studio gap line (Snake Charmer's `.rgap`, Marching Bands' `.split-hit`). These
+// lines are axis-aligned, so their boxes have zero width and Playwright calls them
+// hidden: the click must be forced, which also skips its wait for the target to stop
+// moving. Do that wait here. Right after a clue fill the board pane is still settling,
+// and a forced click lands where the line was (about 1 run in 8 in Firefox).
+async function clickGapLine(line) {
+  await line.scrollIntoViewIfNeeded();
+  await line.evaluate(el => new Promise(resolve => {
+    let prev = '', still = 0;
+    const tick = () => {
+      const r = el.getBoundingClientRect();
+      const at = r.x + ',' + r.y;
+      still = at === prev ? still + 1 : 0;
+      prev = at;
+      if (still >= 3) resolve(); else requestAnimationFrame(tick);
+    };
+    tick();
+  }));
+  await line.click({ force: true });
+}
+
+// Rewrites the puzzle's auto-save on the next load: `edit` mutates the saved payload, and
+// an init script writes it back as the reloaded document starts. It has to be that late:
+// leaving the page saves again (the timer's visibility flush), which would overwrite an
+// edit made before the reload. The init script only writes, never reads, because a read
+// at document start can see an empty store: Chromium flushes the leaving page's writes
+// asynchronously (the save went missing in about 1 run in 5 when this read it there).
+async function rewriteSaveOnNextLoad(page, edit) {
+  const [key, saved] = await page.evaluate(() => {
+    const k = Object.keys(localStorage)[0];
+    return [k, JSON.parse(localStorage.getItem(k))];
+  });
+  edit(saved);
+  await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [key, JSON.stringify(saved)]);
+}
+
+module.exports = { rewriteSaveOnNextLoad, clickGapLine, clickHelpRow, typeCell, cellLetterPairs, fillCrushwordCell, solveCrushwordBoard, solveRingBoard };

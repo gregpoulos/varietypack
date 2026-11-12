@@ -72,8 +72,34 @@ function setupTimer({ onPause, listenVisibility, now: _now = () => performance.n
   return { onFirstInput, reset, stop, getElapsedMs, restoreMs };
 }
 
+// How much help the solver used: counts of Check and Reveal actions, kept apart so a
+// later feature can tell "only checked" from "revealed too". Part of one attempt's
+// progress: saved with the board, zeroed with it (resetAndRefocus), reported on the
+// completion event. It never enters the board string, so it cannot touch boardHash.
+function makeHelpRecord() {
+  let checks = 0;
+  let reveals = 0;
+
+  // A save written before the record existed has no `help`, and a hand-edited one may
+  // hold anything: only a non-negative integer counts, everything else reads as zero.
+  const asCount = v => (Number.isInteger(v) && v >= 0 ? v : 0);
+
+  return {
+    countCheck()  { checks++; },
+    countReveal() { reveals++; },
+    reset()       { checks = 0; reveals = 0; },
+    get()         { return { checks, reveals }; },
+    saveFields()  { return { help: { checks, reveals } }; },
+    restoreFields(saved) {
+      const h = saved.help !== null && typeof saved.help === 'object' ? saved.help : {};
+      checks = asCount(h.checks);
+      reveals = asCount(h.reveals);
+    },
+  };
+}
+
 function makeCompletionLatch({
-  puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs,
+  puzzleRoot, kind, title, date, getBoardHash, getSolution, getElapsedMs, getHelp,
   onComplete, embedOrigin,
   _postMessage,
 }) {
@@ -92,14 +118,15 @@ function makeCompletionLatch({
     const timeMs = getElapsedMs();
     const solution = getSolution();
     const boardHash = getBoardHash();
-    const detail = { boardHash, kind, title, date, timeMs, solution };
+    const { checks, reveals } = getHelp();
+    const detail = { boardHash, kind, title, date, timeMs, solution, checks, reveals };
     puzzleRoot.dispatchEvent(new CustomEvent('varietypack:complete', {
       bubbles: true, composed: true, detail,
     }));
     // Exactly one message either way, so a host never counts a solve twice. With
     // embedOrigin the named host alone receives it, solution included; otherwise the
     // unchanged default.
-    const base = { type: 'varietypack:complete', boardHash, kind, title, date, timeMs };
+    const base = { type: 'varietypack:complete', boardHash, kind, title, date, timeMs, checks, reveals };
     if (embedOrigin) pm({ ...base, solution }, embedOrigin);
     else pm(base, '*');
     if (onComplete) onComplete(timeMs);
@@ -119,6 +146,7 @@ function setupSolveTracking({
   now, listenVisibility, _postMessage,
 }) {
   const timer = setupTimer({ onPause: saveState, now, listenVisibility });
+  const helpRecord = makeHelpRecord();
   const latch = makeCompletionLatch({
     puzzleRoot,
     kind:         data.kind,
@@ -127,11 +155,34 @@ function setupSolveTracking({
     getBoardHash: () => data.boardHash,
     getSolution,
     getElapsedMs: () => timer.getElapsedMs(),
+    getHelp:      () => helpRecord.get(),
     onComplete:   timeMs => { timer.stop(); if (onComplete) onComplete(timeMs); },
     embedOrigin:  data.embedOrigin,
     _postMessage,
   });
-  return { timer, latch };
+  return { timer, latch, helpRecord };
+}
+
+// What every engine hands setupStorage: { getState, fits, applyState } over the cell
+// store, help record, timer and composer. The payload is the cells' fields, `help`,
+// `activeMs` and `composing`. Restoring runs the composer last, after the letters are
+// painted, so the composing cell shows its partial content.
+function makeSavePayload({ cells, helpRecord, timer, composer }) {
+  return {
+    getState() {
+      return {
+        ...cells.saveFields(), ...helpRecord.saveFields(),
+        activeMs: timer.getElapsedMs(), composing: composer.getComposing(),
+      };
+    },
+    fits: cells.fitsSave,
+    applyState(saved) {
+      cells.restoreFields(saved);
+      timer.restoreMs(saved.activeMs);
+      helpRecord.restoreFields(saved);
+      composer.restore(saved.composing);
+    },
+  };
 }
 
 // The board's solve state, for syncUI: the done-wrong banner shows only on a filled
@@ -368,8 +419,9 @@ function makeBoardChecker({
   }
 
   // Check Cell (non-hashed builds): the one place that decides whether a cell may be
-  // checked, so "every path that applies .correct has checked isCellFilled" holds by
-  // construction. canCheck also drives the button's disabled state. checkCell returns
+  // checked, so Check applies .correct only to a filled cell by construction (Reveal gets
+  // there by making its cell filled first, see revealCells). canCheck also drives the
+  // button's disabled state. checkCell returns
   // null when the cell can't be checked (empty, composing, or already correct — no
   // re-save), else whether its content is right; the engine does its own marking.
   function canCheck(n) { return isCellFilled(n) && !isCellMarkedCorrect(n); }
@@ -377,6 +429,27 @@ function makeBoardChecker({
   function checkCell(n) {
     return canCheck(n) ? getContent(n) === getExpected(n) : null;
   }
+
+  // Check Clue and Check Puzzle: checkCell over a set of cells in one pass. A cell that
+  // cannot be checked (empty, composing, already correct) is skipped, so a set with
+  // nothing checkable returns two empty lists. The engine marks `right` correct and
+  // flashes `wrong`; neither is marked here, as checkCell marks nothing.
+  function checkCells(ids) {
+    const right = [];
+    const wrong = [];
+    // Each cell once: Snake Charmer's entry list holds a ring position twice when an
+    // entry is longer than the ring.
+    for (const n of new Set(ids)) {
+      const ok = checkCell(n);
+      if (ok === true) right.push(n);
+      else if (ok === false) wrong.push(n);
+    }
+    return { right, wrong };
+  }
+
+  // Reveal Cell may act on any cell not already marked correct: empty, wrong or composing
+  // (revealCells ends the composition). The button's disabled state comes from this.
+  function canReveal(n) { return !isCellMarkedCorrect(n); }
 
   function boardIsCorrect() {
     return hashed
@@ -402,7 +475,90 @@ function makeBoardChecker({
   // Call order: docs/CROSS_TOOL_SPEC.md → "localStorage key format" → Timing contract.
   function repaintIfSolved() { if (isSolved()) markSolved(); }
 
-  return { isBoardFilled, isEntryFilled, isSolved, getSolution, canCheck, checkCell, checkIfFilled, repaintIfSolved };
+  return {
+    isBoardFilled, isEntryFilled, isSolved, getSolution, canCheck, checkCell, checkCells,
+    canReveal, getExpected, cellIds, checkIfFilled, repaintIfSolved,
+  };
+}
+
+// Reveal Cell, Clue and Puzzle: fills each cell of `ids` that `canReveal` accepts with
+// its answer (`getExpected(n)`) and marks it correct, whatever it held. The order is the
+// point. Composition ends first, without onCommit: committing would adjudicate the
+// half-typed prefix as an answer and could complete or wrong-flag the board before the
+// reveal lands. And a cell the composer still held would end up `.correct` and composing
+// at once, so the next keystroke would append to the revealed answer. Only a composing
+// cell that is itself revealed loses its composition: one already marked correct can be
+// composing too (Enter opens composition on it), and a reveal that leaves that cell alone
+// must leave it composing. Each write comes before its mark because the writer clears the
+// correct mark. The caller then counts the reveal, runs the completion path
+// (checkIfFilled, syncUI) and only then saves; `makeHelpActions` says why.
+function revealCells({ ids, composer, getExpected, canReveal, setCellLetter, setCorrect }) {
+  const composing = composer.getComposing();
+  if (composing !== null && ids.includes(composing) && canReveal(composing)) composer.reset();
+  for (const n of ids) {
+    if (!canReveal(n)) continue;
+    setCellLetter(n, getExpected(n));
+    setCorrect(n, true);
+  }
+}
+
+// The check and reveal actions behind the help menu's rows, shared so the order that
+// matters exists once. Every row, for a cell, a clue or the whole board, is one of two
+// calls over a set of cells: checkSet(ids) and revealSet(ids).
+//
+// The order in each is the point: count, the completion path (checkIfFilled, which paints
+// a board these cells finished), and only then save. A save before it stores a finished
+// board as unsolved: it reloads with the done-wrong banner and the completion latch open,
+// so the next keystroke fires a second varietypack:complete.
+//
+// The engine supplies what differs:
+//   flashWrong(wrong) → flash the wrong cells (and the phone list's); `wrong` is cell ids
+//   beforeCheck()     → runs before a check, so Crushword can commit a typed cell into it
+//   afterReveal()     → ends a reveal; the default syncs and refocuses, and Crushword's
+//                       lands its cursor after the revealed content instead
+// A set with nothing to check or reveal counts nothing, writes nothing and only
+// refocuses: the button's disabled state is UX only, so the action guards itself.
+function makeHelpActions({
+  checker, composer, helpRecord, setCellLetter, setCorrect, saveState, syncUI, refocus,
+  flashWrong, beforeCheck = () => {}, afterReveal = () => { syncUI(); refocus(); },
+}) {
+  // These actions are the only way to mark other cells while one cell composes. A
+  // composing cell still marked correct holds exactly the content that was marked, since
+  // any edit clears the mark, so ending its composition discards nothing. It must end
+  // when the marks complete the board: checkIfFilled returns early on a composing cell,
+  // so the completion path (markSolved, painting the clues) would never run.
+  function endCompositionIfSolved() {
+    if (checker.isSolved()) composer.reset();
+  }
+
+  function checkSet(ids) {
+    beforeCheck();
+    const { right, wrong } = checker.checkCells(ids);
+    if (right.length + wrong.length === 0) { refocus(); return; }
+    helpRecord.countCheck();
+    for (const n of right) setCorrect(n, true);
+    endCompositionIfSolved();
+    checker.checkIfFilled();
+    saveState();
+    flashWrong(wrong);
+    syncUI();
+    refocus();
+  }
+
+  function revealSet(ids) {
+    if (!ids.some(checker.canReveal)) { refocus(); return; }
+    revealCells({
+      ids, composer, getExpected: checker.getExpected, canReveal: checker.canReveal,
+      setCellLetter, setCorrect,
+    });
+    helpRecord.countReveal();
+    endCompositionIfSolved();
+    checker.checkIfFilled();
+    saveState();
+    afterReveal();
+  }
+
+  return { checkSet, revealSet };
 }
 
 // The restore-time epilogue every engine's init() runs just before its first focusCell():
@@ -424,17 +580,37 @@ function restoreAndSeal({ restoreState, checker, latch, composer }) {
 // is the composing cell. focusInitial() runs last, so syncUI re-derives every highlight
 // and the done-wrong banner from the fully reset board. `clearBoard` is the engine's own
 // teardown: letters, correct marks, flash overlays, navigation sub-mode.
-function resetAndRefocus({ composer, clearBoard, clearState, timer, latch, focusInitial }) {
+function resetAndRefocus({ composer, clearBoard, clearState, timer, latch, helpRecord, focusInitial }) {
   composer.reset();
   clearBoard();
   clearState();
   timer.reset();
   latch.reset();
+  helpRecord.reset();
   focusInitial();
 }
 
+// Where Tab / Shift+Tab (and the phone's prev / next clue) land. From entry `from`, walks
+// `order` (entry keys, wrapping) in `dir` (+1 / -1) to the first entry with an unfilled
+// cell, and returns { entry, cell } with that entry's first unfilled cell. The starting
+// entry is the last one tried, so a lone incomplete entry is its own target. When every
+// entry is filled there is nothing to skip to, so it steps plainly: the neighbor's first
+// cell. `cellsOf(entry)` lists an entry's cells in reading order and `isFilled(cell)` is
+// the board checker's notion of a filled cell.
+function stepToUnfilled(order, from, dir, cellsOf, isFilled) {
+  const n = order.length;
+  const at = order.indexOf(from);
+  for (let k = 1; k <= n; k++) {
+    const entry = order[(((at + dir * k) % n) + n) % n];
+    const cell = cellsOf(entry).find(c => !isFilled(c));
+    if (cell !== undefined) return { entry, cell };
+  }
+  const entry = order[(((at + dir) % n) + n) % n];
+  return { entry, cell: cellsOf(entry)[0] };
+}
+
 export {
-  setupTimer, makeCompletionLatch, makeComposer, setLetterText, letterLenClass, makeCellStore,
-  makeBoardChecker,
-  setupSolveTracking, syncSolveState, restoreAndSeal, resetAndRefocus,
+  setupTimer, makeHelpRecord, makeCompletionLatch, makeComposer, setLetterText, letterLenClass, makeCellStore,
+  makeBoardChecker, revealCells, makeHelpActions, stepToUnfilled,
+  setupSolveTracking, makeSavePayload, syncSolveState, restoreAndSeal, resetAndRefocus,
 };

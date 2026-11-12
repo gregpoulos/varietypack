@@ -4,7 +4,7 @@ import { exportFileName } from '../model/filenames.js';
 import { buildEmbed, embedSnippet } from '../model/exporters.js';
 import { download } from './download.js';
 
-// Export for embedding in another site (spec §10): the answers-hidden page built to post
+// Export for embedding in another site: the answers-hidden page built to post
 // solves to the host's origin only, and the iframe snippet to paste there. Opened from
 // the Export panel.
 export function EmbedDialog({ doc, font, title, dispatch, onClose }) {

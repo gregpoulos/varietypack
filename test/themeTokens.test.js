@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
 const { buildFromObject } = require('../shared/build/buildFromObject');
-const { TOOLS } = require('../shared/cli/toolRegistry');
+const { KINDS, hooksFor } = require('../shared/build/tools');
 
 const FIXTURE = {
   'snake-charmer':  'snake-charmer/test/fixtures/circle-36.yaml',
@@ -17,9 +17,9 @@ const FIXTURE = {
   'crushword':      'crushword/test/fixtures/cw-9.yaml',
 };
 
-for (const kind of Object.keys(TOOLS)) {
+for (const kind of KINDS) {
   test(`${kind}: themeTokens land in the built page's CSS, and are absent without the field`, () => {
-    const hooks = require(`../${kind}/src/builder`).HOOKS;
+    const hooks = hooksFor(kind);
     const puzzle = yaml.load(fs.readFileSync(path.join(__dirname, '..', FIXTURE[kind]), 'utf8'));
     const withTokens = buildFromObject({ ...puzzle, themeTokens: { 'color-bg': '#abc123' } }, {}, hooks).html;
     assert.ok(withTokens.includes('--theme-color-bg: #abc123;'));

@@ -21,10 +21,13 @@ const PHONE_SPECS = /(mobile|phone)\.spec\.js/;
 module.exports = defineConfig({
   testDir: './e2e',
   fullyParallel: true,
+  // A stray `test.only` would otherwise let CI pass on a fraction of the suite.
+  forbidOnly: !!process.env.CI,
   use: { screenshot: 'only-on-failure' },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: PHONE_SPECS },
     { name: 'webkit',   use: { ...devices['Desktop Safari'] }, testIgnore: PHONE_SPECS },
+    { name: 'firefox',  use: { ...devices['Desktop Firefox'] }, testIgnore: PHONE_SPECS },
     ...PHONES.map(({ project, device }) => ({
       // Traces only here: recording one for every desktop test costs ~45% of the run.
       name: project, use: { ...devices[device], trace: 'retain-on-failure' }, testMatch: PHONE_SPECS,

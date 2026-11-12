@@ -37,7 +37,7 @@ function validateCommonHeader(puzzle, kind, errors) {
   if (puzzle.hashed !== undefined && puzzle.boardHash === undefined) {
     errors.push('"hashed:" is not valid in source puzzles; use \'varietypack build --muddle\' to produce a hashed build');
   }
-  // format: 2 — see root CLAUDE.md -> "Muddled YAML format" for the full rule.
+  // format: 2 — see docs/ARCHITECTURE.md -> "Muddled YAML" for the full rule.
   const isMuddled = puzzle.boardHash !== undefined;
   if (puzzle.format !== undefined && !isMuddled) {
     errors.push('"format:" is not valid in source puzzles; it is written by \'varietypack muddle\'');
@@ -51,6 +51,15 @@ function validateCommonHeader(puzzle, kind, errors) {
   if (puzzle.instructions !== undefined &&
       (typeof puzzle.instructions !== 'string' || !puzzle.instructions.trim())) {
     errors.push('"instructions" must be a non-empty string');
+  }
+  if (puzzle.author !== undefined &&
+      (typeof puzzle.author !== 'string' || !puzzle.author.trim())) {
+    errors.push('"author" must be a non-empty string');
+  }
+  const { date } = puzzle;
+  if (date !== undefined &&
+      !((typeof date === 'string' && date.trim()) || (typeof date === 'number' && Number.isFinite(date)))) {
+    errors.push('"date" must be a non-empty string or a number');
   }
   if (puzzle.theme !== undefined && !VALID_THEMES.includes(puzzle.theme)) {
     errors.push(`"theme" must be one of: ${VALID_THEMES.join(', ')}, got: ${JSON.stringify(puzzle.theme)}`);

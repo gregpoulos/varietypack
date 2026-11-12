@@ -14,7 +14,10 @@
   #keys-btn,
   #menu-btn,
   #menu-panel,
+  #help-btn,
+  #help-panel,
   #done-wrong,
+  #direction-chevron,
   .solve-top,
   #solve-bar,
   #drawn-kb { display: none !important; }

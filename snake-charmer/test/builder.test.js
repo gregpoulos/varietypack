@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const yaml = require('js-yaml');
 const { buildHtml, HOOKS } = require('../src/builder');
-const { buildPuzzle } = require('../cli');
+const { buildPuzzleFile } = require('../../test/helpers');
 const { buildFromObject } = require('../../shared/build/buildFromObject');
 const { loadPuzzle } = require('../../shared/cli/puzzleFiles');
 const { ringFor, SHAPES } = require('../src/layout');
@@ -34,16 +34,16 @@ test('buildHtml: PUZZLE_DATA carries loops and ring, and omits cells (entry mapp
   assert.equal(data.ring.N, 72);
 });
 
-// ── buildPuzzle auto-shape ────────────────────────────────────────────────────
+// ── auto-shape ────────────────────────────────────────────────────────────────
 
-test('buildPuzzle: no shape specified — uses double-turn for compatible puzzle', () => {
+test('build: no shape specified — uses double-turn for compatible puzzle', () => {
   const outPath = path.join(os.tmpdir(), 'sc-test-autoshape-dt.html');
-  buildPuzzle(SAMPLE, outPath);
+  buildPuzzleFile(SAMPLE, outPath);
   const data = takePuzzleData(outPath);
   assert.equal(data.shape, 'double-turn');
 });
 
-test('buildPuzzle: shape field in YAML used when no --shape flag', () => {
+test('build: shape field in YAML used when no --shape flag', () => {
   const puzzle = {
     kind: 'snake-charmer', title: 'T', shape: 'stadium',
     entries: [
@@ -55,11 +55,11 @@ test('buildPuzzle: shape field in YAML used when no --shape flag', () => {
   const inPath  = path.join(os.tmpdir(), 'sc-test-yaml-shape-in.yaml');
   const outPath = path.join(os.tmpdir(), 'sc-test-yaml-shape-out.html');
   fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
-  try { buildPuzzle(inPath, outPath); } finally { fs.unlinkSync(inPath); }
+  try { buildPuzzleFile(inPath, outPath); } finally { fs.unlinkSync(inPath); }
   assert.equal(takePuzzleData(outPath).shape, 'stadium');
 });
 
-test('buildPuzzle: --shape flag overrides shape field in YAML', () => {
+test('build: --shape flag overrides shape field in YAML', () => {
   const puzzle = {
     kind: 'snake-charmer', title: 'T', shape: 'turn',
     entries: [
@@ -71,11 +71,11 @@ test('buildPuzzle: --shape flag overrides shape field in YAML', () => {
   const inPath  = path.join(os.tmpdir(), 'sc-test-yaml-shape-override-in.yaml');
   const outPath = path.join(os.tmpdir(), 'sc-test-yaml-shape-override-out.html');
   fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
-  try { buildPuzzle(inPath, outPath, { shape: 'stadium' }); } finally { fs.unlinkSync(inPath); }
+  try { buildPuzzleFile(inPath, outPath, { shape: 'stadium' }); } finally { fs.unlinkSync(inPath); }
   assert.equal(takePuzzleData(outPath).shape, 'stadium');
 });
 
-test('buildPuzzle: YAML shape disables auto-select fallback — throws on incompatible shape', () => {
+test('build: YAML shape disables auto-select fallback — throws on incompatible shape', () => {
   // N=8 is too small for double-turn; auto-select would fall back to stadium.
   // With shape: 'double-turn' in the YAML the fallback is disabled, so it must throw.
   const puzzle = {
@@ -90,14 +90,14 @@ test('buildPuzzle: YAML shape disables auto-select fallback — throws on incomp
   const outPath = path.join(os.tmpdir(), 'sc-test-yaml-shape-nofallback-out.html');
   fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
   try {
-    assert.throws(() => buildPuzzle(inPath, outPath));
+    assert.throws(() => buildPuzzleFile(inPath, outPath));
   } finally {
     try { fs.unlinkSync(inPath); } catch {}
     try { fs.unlinkSync(outPath); } catch {}
   }
 });
 
-// ── buildPuzzle (full pipeline) ───────────────────────────────────────────────
+// ── ring data in PUZZLE_DATA ─────────────────────────────────────────────────
 
 test('buildHtml: PUZZLE_DATA contains ring object with all stadium fields', () => {
   const puzzle = loadPuzzle(SAMPLE);
@@ -112,9 +112,9 @@ test('buildHtml: PUZZLE_DATA contains ring object with all stadium fields', () =
   assert.ok(Math.abs(data.ring.cy - data.ring.svgHeight / 2) < 0.01, 'cy = svgHeight/2');
 });
 
-test('buildPuzzle: turn shape writes ring with turn-specific fields', () => {
+test('build: turn shape writes ring with turn-specific fields', () => {
   const outPath = path.join(os.tmpdir(), 'sc-test-turn.html');
-  buildPuzzle(SAMPLE, outPath, { shape: 'turn' });
+  buildPuzzleFile(SAMPLE, outPath, { shape: 'turn' });
   const data = takePuzzleData(outPath);
   assert.equal(data.shape, 'turn');
   assert.equal(data.ring.N, 72);

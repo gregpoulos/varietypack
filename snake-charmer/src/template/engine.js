@@ -1,7 +1,7 @@
 import { normalize } from '../../../shared/normalize.mjs';
 import {
-  makeBoardChecker, makeCellStore, makeComposer, resetAndRefocus, restoreAndSeal,
-  setupSolveTracking, syncSolveState
+  makeBoardChecker, makeCellStore, makeHelpActions, makeComposer, resetAndRefocus, restoreAndSeal,
+  setupSolveTracking, makeSavePayload, stepToUnfilled, syncSolveState
 } from '../../../shared/engine-state.mjs';
 import {
   clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
@@ -118,9 +118,9 @@ function init() {
     rebusBtn.sync();
 
     // Active entry, plus the other loop's entry through the same cell as the secondary
-    // highlight (snake-charmer-specific — see CLAUDE.md → SVG ring rendering).
+    // highlight (snake-charmer-specific; `.secondary-entry`).
     const activeEntryIdx = entryAtCell[activeRingPos][activeLoop];
-    const activeEntryPositions = new Set(ringPosByEntry[activeEntryIdx]);
+    const activeEntryPositions = new Set(activeContextCells());
     const otherLoop = (activeLoop + 1) % data.loops;
     const secondaryEntryIdx = entryAtCell[activeRingPos][otherLoop];
     const secondaryPositions = new Set(
@@ -158,43 +158,17 @@ function init() {
     );
     if (phone) phone.showingClue(data.entries[activeEntryIdx]);
 
-    // Check Cell button: enabled only while the active cell can be checked.
-    controls.syncCheckBtn(activeRingPos);
+    // Help rows: each enabled only while it applies to the active cell, clue or board.
+    controls.syncHelp();
 
     // Solve state: the done-wrong banner, and solved-ness for the completion latch.
     syncSolveState({ checker, latch, doneWrong });
   }
 
-  // Check Cell (non-hashed mode only)
-  function checkCell() {
-    const rp = activeRingPos;
-    // The focus call is required on every path out (docs/CROSS_TOOL_SPEC.md → Focus
-    // management).
-    const ok = checker.checkCell(rp);
-    if (ok === true) {
-      setCorrect(rp, true);
-      saveState();          // only this branch mutates persisted state
-    } else if (ok === false) {
-      flashWrong(cellPaths[rp], flashLayer);
-      if (phone) phone.fillList.flash(p => p % ringSize === rp);
-    }
-    syncUI();
-    refocus();
+  // The ring positions of the active entry: what Check clue and Reveal clue act on.
+  function activeContextCells() {
+    return ringPosByEntry[entryAtCell[activeRingPos][activeLoop]];
   }
-
-  const saveKey = storageKey('sc', data);
-  const { saveState, restoreState, clearState, hasSave } = setupStorage(saveKey, {
-    getState() {
-      return { ...cells.saveFields(), activeMs: timer.getElapsedMs(), composing: composer.getComposing() };
-    },
-    fits: cells.fitsSave,
-    applyState(saved) {
-      cells.restoreFields(saved);
-      timer.restoreMs(saved.activeMs);
-      // After the letters are painted, so the composing cell shows its partial content.
-      composer.restore(saved.composing);
-    },
-  });
 
   const congratsDialog = setupCongratsDialog({
     title: data.title,
@@ -202,13 +176,17 @@ function init() {
     onPlayAgain: () => resetBoard(),
   });
 
-  const { timer, latch } = setupSolveTracking({
+  const { timer, latch, helpRecord } = setupSolveTracking({
     puzzleRoot:  document.querySelector('.puzzle-main'),
     data,
     getSolution: () => checker.getSolution(),
-    saveState,
+    saveState: () => saveState(),  // defined below: the save payload needs timer and helpRecord
     onComplete:  (timeMs) => congratsDialog.open(timeMs),
   });
+
+  const saveKey = storageKey('sc', data);
+  const { saveState, restoreState, clearState, hasSave } = setupStorage(
+    saveKey, makeSavePayload({ cells, helpRecord, timer, composer }));
 
   // ── Build SVG ─────────────────────────────────────────────────────────────
   document.querySelector('.puzzle-main').classList.add(`layout-${data.shape}`);
@@ -293,7 +271,6 @@ function init() {
 
   const clueBar = setupClueBar();
 
-  const checkBtn  = document.getElementById('check-btn');
   const doneWrong = document.getElementById('done-wrong');
 
   // #rebus-btn — docs/CROSS_TOOL_SPEC.md → Enter / Rebus button.
@@ -341,7 +318,8 @@ function init() {
   );
 
   setupKeydown(e => {
-    if (latch.solved) return;
+    // A solved board takes no edits, but Tab still steps between entries.
+    if (latch.solved && e.key !== 'Tab') return;
     if (e.key === '.') {
       e.preventDefault();
       focusCell(activeRingPos, (activeLoop + 1) % data.loops);
@@ -350,10 +328,9 @@ function init() {
     if (e.key === 'Tab') {
       e.preventDefault();
       const activeEntryIdx = entryAtCell[activeRingPos][activeLoop];
-      const step = e.shiftKey ? -1 : 1;
-      const nextEntryIdx = (activeEntryIdx + step + data.entries.length) % data.entries.length;
-      const { ringPos: targetRingPos, loop: targetLoop } = canonicalStart[nextEntryIdx];
-      focusCell(targetRingPos, targetLoop);
+      const { entry, cell } = stepToUnfilled(data.entries.map((_, i) => i), activeEntryIdx,
+        e.shiftKey ? -1 : 1, i => ringPosByEntry[i], composer.isCellFilled);
+      focusCell(cell, entryAtCell[cell].indexOf(entry));
       return;
     }
     if (e.key === 'Enter') {
@@ -381,8 +358,8 @@ function init() {
     if (e.key === ' ') {
       e.preventDefault();
       setCellLetter(activeRingPos, '');
-      saveState();
       advanceCell();
+      saveState();
       return;
     }
     if (e.key === 'ArrowRight') {
@@ -425,7 +402,7 @@ function init() {
 
   function resetBoard() {
     resetAndRefocus({
-      composer, clearState, timer, latch,
+      composer, clearState, timer, latch, helpRecord,
       clearBoard() {
         cells.clearCells();
         Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
@@ -435,9 +412,25 @@ function init() {
     });
   }
 
+  // The help menu's check and reveal actions (shared/engine-state.mjs → makeHelpActions):
+  // one pair over any set of cells, behind every row. Its deps are all defined above;
+  // `phone` is read when a wrong check flashes, long after init has set it.
+  const helpActions = makeHelpActions({
+    checker, composer, helpRecord, setCellLetter, setCorrect, saveState, syncUI, refocus,
+    flashWrong(wrong) {
+      for (const rp of wrong) flashWrong(cellPaths[rp], flashLayer);
+      // The list's ids are snake positions, one per loop of each ring position.
+      if (phone) {
+        phone.fillList.flash(wrong.flatMap(rp => Array.from({ length: data.loops }, (_, l) => snakePos(rp, l))));
+      }
+    },
+  });
+
   const controls = setupControls({
-    checkBtn, checker, hashed: data.hashed, onCheck: checkCell,
-    onClear: resetBoard, refocus, key: saveKey,
+    checker, hashed: data.hashed, helpActions,
+    activeCell: () => activeRingPos,
+    clueCells: activeContextCells,
+    onClear: resetBoard, refocus,
   });
 
   // On a touch-first device only: the phone solving view and its drawn keyboard.
@@ -445,7 +438,7 @@ function init() {
   // entry lies in: an entry can straddle the loop boundary, or run past the ring.
   const phone = setupPhoneLayout({
     hiddenInput,
-    checkBtn,
+    helpMenu: controls.helpMenu,
     refocus,
     firstVisit: !hasSave(),
     grid: document.getElementById('ring-container'),
@@ -462,10 +455,10 @@ function init() {
       },
     },
     bottomRow: [
-      { label: '◂', key: 'ArrowLeft', glyph: true },
+      { label: 'Prev\ncell', key: 'ArrowLeft', ariaLabel: 'Previous cell' },
       { el: document.getElementById('rebus-btn') },
       { label: 'Loop ⇄', key: '.', wide: true },
-      { label: '▸', key: 'ArrowRight', glyph: true },
+      { label: 'Next\ncell', key: 'ArrowRight', ariaLabel: 'Next cell' },
     ],
   });
 

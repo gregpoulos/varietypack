@@ -22,7 +22,7 @@ function resizeSummary(model, R2, C2) {
 }
 
 // The grid's size and letters-per-cell live in the puzzle's settings, away from the
-// editing controls so a resize isn't triggered by accident (spec §5.2). The resize form
+// editing controls so a resize isn't triggered by accident. The resize form
 // is the confirmation: it says what it will set aside before it applies.
 export function CrushwordSettings({ model, dispatch }) {
   const { rows, cols } = model;

@@ -1,7 +1,7 @@
 // Grid geometry shared by the validator, the prepare step and the browser engine — the
 // engine imports it, which is what keeps its band traversal and the validator's from
-// drifting apart. An ES module, like the rest of the page code (root CLAUDE.md →
-// Shared library pattern).
+// drifting apart. An ES module, like the rest of the page code (docs/ARCHITECTURE.md →
+// Shared library).
 
 function bandIndexOf(row, col, N) {
   return Math.min(row - 1, col - 1, N - row, N - col);
@@ -68,4 +68,37 @@ function arrowTarget(id, dr, dc, N) {
   return N % 2 === 1 && next === centerN(N) ? next + dr * N + dc : next;
 }
 
-export { bandIndexOf, bandCells, rowCells, centerFlatIndex, centerN, onBandBottomEdge, arrowTarget };
+// The step { dr, dc } a cursor takes from cell `id` along the active row or band, for the
+// chevron on that cell's leading edge; null where there is no next cell within it (the
+// last cell of a row or band, whose successor is in another row or band, and the lone
+// center cell's band). `cells` is the row's or band's cells in traversal order. A row
+// runs right; a band's step is the direction to its next cell, so a corner cell already
+// points down its new side.
+function leadingStep(mode, cells, id, N) {
+  const pos = cells.indexOf(id);
+  if (pos < 0 || pos === cells.length - 1) return null;
+  if (mode === 'row') return { dr: 0, dc: 1 };
+  const rc = n => [Math.floor((n - 1) / N), (n - 1) % N];
+  const [r1, c1] = rc(id), [r2, c2] = rc(cells[pos + 1]);
+  return { dr: Math.sign(r2 - r1), dc: Math.sign(c2 - c1) };
+}
+
+// The open chevron "<" path for cell `id` on its leading edge, as SVG path data (empty
+// for a null step): both arms on the edge, spanning it, and the tip a little past it at
+// its middle, pointing along the step. `size` is the cell's side. Cells sit at
+// (col * size, row * size), the board's origin.
+function chevronPath(id, step, N, size) {
+  if (!step) return '';
+  const { dr, dc } = step;
+  const x = ((id - 1) % N) * size, y = Math.floor((id - 1) / N) * size;
+  const mx = x + size / 2 + dc * size / 2, my = y + size / 2 + dr * size / 2;
+  // The edge runs perpendicular to the step; the tip leaves by 15% of a cell.
+  const px = Math.abs(dr) * size / 2, py = Math.abs(dc) * size / 2;
+  const tip = size * 0.15;
+  return `M${mx - px},${my - py} L${mx + dc * tip},${my + dr * tip} L${mx + px},${my + py}`;
+}
+
+export {
+  bandIndexOf, bandCells, rowCells, centerFlatIndex, centerN, onBandBottomEdge, arrowTarget,
+  leadingStep, chevronPath,
+};

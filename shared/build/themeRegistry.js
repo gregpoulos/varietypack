@@ -31,7 +31,7 @@ const THEME_TOKENS = [
   'font-body', 'font-display', 'font-button', 'font-cell', 'color-header-rule',
   'title-tracking', 'title-transform', 'color-title', 'byline-style', 'byline-size',
   'color-bg', 'color-text', 'color-muted', 'color-bar-border', 'color-soft-border',
-  'color-btn-bg', 'color-btn-text', 'color-btn-hover', 'color-btn-disabled', 'button-tracking',
+  'color-btn-bg', 'color-btn-text', 'button-tracking',
   'color-btn2-bg', 'color-btn2-border', 'color-btn2-hover', 'color-clear-fg',
   'color-clear-hover-fg', 'color-cell-bg', 'color-cell-stroke', 'color-cell-text',
   'color-highlight', 'color-band-even', 'color-highlight-band-even', 'color-active',

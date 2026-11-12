@@ -5,7 +5,7 @@ const fs   = require('fs');
 const os   = require('os');
 const path = require('path');
 const { startServer, serveStudio } = require('./studio-server');
-const { buildPuzzle } = require('../snake-charmer/cli');
+const { buildPuzzleFile } = require('../test/helpers');
 const { sha256hex } = require('../shared/sha256hex.mjs');
 
 const REPO = path.resolve(__dirname, '..');
@@ -32,7 +32,7 @@ test.afterAll(async () => { await host.close(); fs.rmSync(hostDir, { recursive: 
 let built = 0;
 function buildFor(embedOrigin) {
   const name = `puzzle-${process.pid}-${built++}.html`;
-  buildPuzzle(FIXTURE, path.join(hostDir, name), { muddle: true, ...(embedOrigin ? { embedOrigin } : {}) });
+  buildPuzzleFile(FIXTURE, path.join(hostDir, name), { muddle: true, ...(embedOrigin ? { embedOrigin } : {}) });
   return name;
 }
 

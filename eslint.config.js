@@ -42,6 +42,18 @@ module.exports = [
     files: ['*/src/template/engine.js'],
     languageOptions: { sourceType: 'module', globals: globals.browser },
   },
+  // Clue and instructions HTML reach a page only through engine-chrome.mjs (setClueHtml,
+  // renderInstructions), so no other page code may assign innerHTML.
+  {
+    files: ['*/src/**/*.{js,mjs}', 'shared/*.mjs'],
+    ignores: ['shared/engine-chrome.mjs', 'studio/**'],
+    rules: {
+      'no-restricted-syntax': ['error', {
+        selector: "AssignmentExpression > MemberExpression.left[property.name='innerHTML']",
+        message: 'Set clue HTML with setClueHtml (shared/engine-chrome.mjs).',
+      }],
+    },
+  },
   // Studio UI: ES modules with JSX. The studio's core and model, and gridGeometry.js, are
   // CommonJS so node:test can load them, and take the Node block above.
   {

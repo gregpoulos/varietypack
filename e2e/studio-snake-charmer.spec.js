@@ -5,6 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
+const { clickGapLine } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../snake-charmer/src/builder');
 const { validate } = require('../snake-charmer/src/validator');
@@ -89,11 +90,11 @@ test('a new Snake Charmer opens on the ring', async ({ page }) => {
 test('a break near the end of lap 1 makes an entry that straddles into lap 2', async ({ page }) => {
   await newRing(page, 16);
   await fillRing(page, 'ABCDEFGHIJKLMNOP');
-  await gap(page, 5).click({ force: true });
-  await gap(page, 11).click({ force: true });
+  await clickGapLine(gap(page, 5));
+  await clickGapLine(gap(page, 11));
   await lap(page, 2).click();
-  await gap(page, 6).click({ force: true });      // position 22
-  await gap(page, 12).click({ force: true });     // position 28
+  await clickGapLine(gap(page, 6));      // position 22
+  await clickGapLine(gap(page, 12));     // position 28
   await page.locator('#clue-view [data-view="all"]').click();
   await expect(page.locator('.clue-row')).toHaveCount(5);
   await expect(page.locator('.clash')).toHaveCount(0);
@@ -115,7 +116,7 @@ test('typing on lap 2 edits the shared ring cell', async ({ page }) => {
 test('a cell where two entries start shows both numbers', async ({ page }) => {
   await newRing(page, 16);
   await lap(page, 2).click();
-  await gap(page, 0).click({ force: true });
+  await clickGapLine(gap(page, 0));
   await expect(page.locator('text.rnum.clash')).toHaveText('1/2');
   await expect(page.locator('#meter-shared')).toBeVisible();
 });
@@ -150,8 +151,8 @@ test('a Snake Charmer fixture round-trips through the editor', async ({ page }) 
 test('a complete puzzle exports YAML that validates', async ({ page }) => {
   await newRing(page, 16);
   await fillRing(page, 'ABCDEFGHIJKLMNOP');
-  await gap(page, 5).click({ force: true });
-  await gap(page, 11).click({ force: true });
+  await clickGapLine(gap(page, 5));
+  await clickGapLine(gap(page, 11));
   await page.locator('#header-title').fill('Ring Made In The Studio');
   await page.locator('#clue-view [data-view="all"]').click();
   const inputs = page.locator('.clue-input');
@@ -210,4 +211,13 @@ test('Space clears the cell and moves on, as on the puzzle page', async ({ page 
   expect((await letter(page, 0).allTextContents()).join('')).toBe('');
   await page.locator('#board-input').fill('b');
   await expect(letter(page, 1)).toHaveText('B');
+});
+
+test('clicking the selected cell again switches lap, as on the puzzle page', async ({ page }) => {
+  await newRing(page, 16);
+  await cell(page, 3).click();
+  await expect(lap(page, 1)).toHaveAttribute('aria-pressed', 'true');
+  await cell(page, 3).click();
+  await expect(lap(page, 2)).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.locator('.rcaret').getAttribute('d')).toBe(await cell(page, 3).getAttribute('d'));
 });

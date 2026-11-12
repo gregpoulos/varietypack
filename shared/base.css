@@ -67,6 +67,8 @@ body.has-clue-bar {
 .cell-letter { pointer-events: none; text-anchor: middle; dominant-baseline: middle; font-weight: bold; }
 .cell-num    { pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
 .style-circle { pointer-events: none; }
+/* The active cell's direction chevron (Spiral, Marching Bands). */
+#direction-chevron { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 
 #controls {
   display: flex;
@@ -90,29 +92,30 @@ button {
    reason to change hit-testing behavior. */
 #controls button { touch-action: manipulation; }
 
-/* The solver's "Show Check Cell button" preference hides #check-btn with this class
-   rather than `hidden`: invisible but still laid out, so turning it off moves nothing.
-   #check-btn is taller than its row-mates, and for a small ring it widens Snake
-   Charmer's #ring-wrap, so removing it from layout would shift the page and resize the
-   ring. A hashed page has no Check Cell at all and removes it with `hidden`. */
-#check-btn.check-btn-off { visibility: hidden; }
-
 button:disabled { opacity: 0.4; cursor: default; }
+/* A browser sends no mouse events to a disabled button, so a press on a disabled help row
+   would take focus from the puzzle before setupPopupMenu's panel mousedown handler could
+   stop it. With pointer events off, the press lands on the panel itself, where it can. */
+#help-panel button:disabled { pointer-events: none; }
 
 /* Reserve the width of the widest label each button can show, so swapping the label
    never reflows its container — #menu-panel for #clear-btn (shrink-to-fit width,
    sized off this reservation, not the panel's own min-width), #controls for
-   #rebus-btn. #clear-btn swaps Clear Puzzle→Are you sure?, #rebus-btn Rebus→Done;
-   each reserves its longer string — measured, not eyeballed: 'Are you sure?' is
-   wider than 'Clear Puzzle' despite having fewer wide characters. */
+   #rebus-btn. #clear-btn swaps Clear puzzle→Are you sure?, #rebus-btn Rebus→Done.
+   The two armed buttons reserve both strings, one per line, so the width is the wider of
+   the two whichever font renders them: 'Are you sure?' is wider than 'Clear puzzle' in
+   some fonts and narrower in others (likewise 'Reveal puzzle'). #rebus-btn reserves
+   its longer string, 'Rebus'. */
 #clear-btn::after,
+#reveal-puzzle-btn::after,
 #rebus-btn::after {
   display: block;
   height: 0;
   overflow: hidden;
   visibility: hidden;
 }
-#clear-btn::after { content: 'Are you sure?'; }
+#clear-btn::after { content: 'Clear puzzle\A Are you sure?'; white-space: pre; }
+#reveal-puzzle-btn::after { content: 'Reveal puzzle\A Are you sure?'; white-space: pre; }
 #rebus-btn::after { content: 'Rebus'; }
 
 #hidden-input {
@@ -148,6 +151,23 @@ button:disabled { opacity: 0.4; cursor: default; }
   z-index: 50;
 }
 
+/* The help menu's life-ring button, immediately left of #menu-btn: its 20px inset, the
+   button's 32px and an 8px gap. Same `top` as #menu-btn, so the two share the
+   .has-clue-bar override (theme-components.css). The phone puts it in the top bar
+   instead (html.phone #help-btn, below). */
+#help-btn {
+  position: fixed;
+  top: 20px;
+  right: 60px;
+  z-index: 110;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
 /* Fixed top-right corner, mirroring #keys-btn's bottom-right circle. Snake
    Charmer/Spiral override `top` (theme-components.css) to sit the button
    below #active-clue-bar instead of at this default offset — see that
@@ -163,7 +183,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* Non-modal dropdown — plain div, not <dialog>, so the page behind it stays
    interactive. The [hidden] reset above (!important) wins over this display:flex
    while the panel is closed. */
-#menu-panel {
+#menu-panel,
+#help-panel {
   position: fixed;
   top: 60px;
   right: 20px;
@@ -174,6 +195,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   padding: 10px;
   min-width: 120px;
 }
+/* Opens under #help-btn, aligned to its right edge rather than ☰'s. */
+#help-panel { right: 60px; }
 
 /* Matches #clear-btn's padding/font-size/border-radius (theme-components.css)
    so the menu-panel rows all read as plain, equally-weighted menu items — a flat
@@ -206,22 +229,27 @@ button:disabled { opacity: 0.4; cursor: default; }
   max-height: 100vh;
 }
 
+/* A wrong check's flash, on a grid cell and on a Clues-screen cell. FLASH_WRONG_MS in
+   engine-chrome.mjs must match the duration. */
+:root {
+  --flash-wrong-color: #ef9a9a;
+  --flash-wrong-duration: 600ms;
+}
 @keyframes flash-wrong {
   0%   { opacity: 1; }
   20%  { opacity: 1; }
   100% { opacity: 0; }
 }
 .flash-wrong-overlay {
-  fill: #ef9a9a;
+  fill: var(--flash-wrong-color);
   pointer-events: none;
-  animation: flash-wrong 600ms ease-out forwards;
+  animation: flash-wrong var(--flash-wrong-duration) ease-out forwards;
 }
-/* The same flash on a Clues-screen cell (FLASH_WRONG_MS in engine-chrome.mjs is its
-   length). No end keyframe: it fades to the cell's own background. */
+/* No end keyframe: it fades to the cell's own background. */
 @keyframes flash-wrong-cell {
-  0%, 20% { background: #ef9a9a; }
+  0%, 20% { background: var(--flash-wrong-color); }
 }
-html.phone .list-cell.flash-wrong { animation: flash-wrong-cell 600ms ease-out; }
+html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wrong-duration) ease-out; }
 
 /* ── Phone solving view (html.phone; shared/engine-phone.mjs) ─────────────────────────
    Every rule is prefixed with html.phone, and with #solve-stage where it resizes a
@@ -339,13 +367,10 @@ html.phone .solve-byline {
 html.phone #clues-btn { flex: none; height: 44px; min-width: 64px; }
 html.phone #menu-btn { position: static; flex: none; width: 44px; height: 44px; }
 html.phone #help-btn {
+  position: static;
   flex: none;
   width: 44px;
   height: 44px;
-  padding: 0;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
 }
 html.phone #menu-panel { position: absolute; top: 100%; right: 8px; z-index: 10; }
 /* The help panel opens under its own button, right of ☰'s: the bar's 4px padding, ☰'s
@@ -363,7 +388,7 @@ html.phone #help-panel {
 /* The menus' rows at the 44px tap minimum. */
 html.phone #menu-panel .menu-toggle,
 html.phone #menu-panel #clear-btn,
-html.phone #help-panel #check-btn { min-height: 44px; }
+html.phone #help-panel button { min-height: 44px; }
 
 /* The stage takes what the bars leave. The grid fills it, and the SVG's viewBox scales
    it to fit; the ID rules below undo each tool's desktop sizing. */
@@ -540,6 +565,6 @@ html.phone #drawn-kb .kb-mod { flex-grow: 1.5; font-size: 0.85rem; }
 /* pre-line: a label may break itself over two lines (Crushword's Prev/Next cell). */
 html.phone #drawn-kb .kb-bottom button { font-size: 0.8rem; line-height: 1.15; white-space: pre-line; }
 html.phone #drawn-kb .kb-wide { flex-grow: 2; font-weight: bold; }
-html.phone #drawn-kb .kb-bottom .kb-glyph { font-size: 1.6rem; line-height: 1; }
+html.phone #drawn-kb .kb-arrow { width: 1.1rem; height: 1.1rem; fill: currentColor; }
 /* Holds ABC and ⌫ at the digit layer's edges, where the letter layer has them. */
 html.phone .kb-spacer { flex: 7 1 0; }

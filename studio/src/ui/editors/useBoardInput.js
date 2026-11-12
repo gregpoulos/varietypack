@@ -18,7 +18,8 @@ function isBoardKey(e) {
 //   onLetter(ch): once per letter typed (a–z or 0–9), normalized as the build path does (é → e)
 //   onKey(event): for the keys above. Space reaches it from keydown and also from a space typed on
 //     a soft keyboard, which arrives as input with no usable keydown (then `event` is a bare
-//     { key: ' ' } with no modifiers).
+//     { key: ' ' } with no modifiers). Only a space that is the whole input counts: one inside
+//     longer text (a pasted "LIE TO") is part of the text, skipped as the puzzle page skips it.
 export function useBoardInput({ onLetter, onKey }) {
   const ref = useRef(null);
   const inputProps = {
@@ -30,10 +31,11 @@ export function useBoardInput({ onLetter, onKey }) {
     onInput(e) {
       const text = e.currentTarget.value;
       e.currentTarget.value = '';
-      for (const ch of text) {
-        if (ch === ' ') onKey({ key: ' ', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, preventDefault() {} });
-        else for (const letter of normalize(ch)) onLetter(letter);
+      if (text === ' ') {
+        onKey({ key: ' ', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, preventDefault() {} });
+        return;
       }
+      for (const ch of text) for (const letter of normalize(ch)) onLetter(letter);
     },
     onKeyDown(e) {
       if (isBoardKey(e)) onKey(e);

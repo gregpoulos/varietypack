@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { makeBoardChecker } = require('../engine-state.mjs');
+const { makeBoardChecker, makeComposer, revealCells } = require('../engine-state.mjs');
 const { sha256hex } = require('../sha256hex.mjs');
 const { joinCells } = require('../boardString.mjs');
 
@@ -192,4 +192,86 @@ test('checkCell returns null, without reading the answer, when the cell cannot b
   assert.equal(checker.checkCell(0), null, 'already correct');
   assert.equal(checker.checkCell(2), null, 'empty');
   assert.equal(calls.getExpected, 0);
+});
+
+// ── Reveal Cell ───────────────────────────────────────────────────────────────
+
+test('canReveal is true for an empty, a wrong and a composing cell, false for a correct one', () => {
+  const { checker } = harness({ content: { 1: 'x', 2: 'd' }, marked: [2], composing: 1 });
+  assert.equal(checker.canReveal(0), true, 'empty');
+  assert.equal(checker.canReveal(1), true, 'wrong and composing');
+  assert.equal(checker.canReveal(2), false, 'already marked correct');
+});
+
+// The `.correct` invariant (docs/CROSS_TOOL_SPEC.md → "'Filled' excludes composing
+// cells"): Reveal applies it only after ending composition and writing the answer.
+// Pinned here with a real composer: revealing the last cell while it composes must leave
+// a board the checker reads as filled and solved, and no cell composing.
+test('revealing the last cell while it composes lets the board finish', () => {
+  const store = { 0: 'a', 1: 'bc' };
+  const marked = new Set([0, 1]);
+  let solvedPaints = 0;
+  const composer = makeComposer({
+    getContent: n => store[n] || '', setContent: (n, s) => { store[n] = s; },
+    onCommit: () => {}, isSolved: () => false,
+  });
+  composer.toggle(2);
+  store[2] = 'dd'; // a half-typed prefix
+  const checker = makeBoardChecker({
+    cellIds: CELL_IDS, getContent: n => store[n] || '', isCellFilled: composer.isCellFilled,
+    isCellMarkedCorrect: n => marked.has(n), hashed: false, getExpected: n => ANSWER[n],
+    getBoardHash: () => CORRECT_HASH, markSolved: () => { solvedPaints++; marked.add(2); },
+    syncUI: () => {},
+  });
+  assert.equal(checker.isBoardFilled(), false, 'composing: not filled yet');
+
+  revealCells({
+    ids: [2], composer, getExpected: n => ANSWER[n], canReveal: () => true,
+    setCellLetter: (n, s) => { store[n] = s; marked.delete(n); },
+    setCorrect: (n, on) => { if (on) marked.add(n); else marked.delete(n); },
+  });
+  checker.checkIfFilled();
+
+  assert.equal(composer.getComposing(), null);
+  assert.equal(checker.isSolved(), true);
+  assert.equal(solvedPaints, 1);
+});
+
+test('getExpected hands the engine a cell\'s answer for Reveal', () => {
+  const { checker } = harness();
+  assert.equal(checker.getExpected(1), 'bc');
+});
+
+// ── Check clue ────────────────────────────────────────────────────────────────
+
+test('checkCells splits the checkable cells into right and wrong, and skips the rest', () => {
+  const { checker } = harness({ content: { 0: 'a', 1: 'xy' } }); // cell 2 is empty
+  assert.deepEqual(checker.checkCells([0, 1, 2]), { right: [0], wrong: [1] });
+});
+
+test('checkCells skips a cell already marked correct and one still composing', () => {
+  const { checker, calls } = harness({ content: { 0: 'a', 1: 'b', 2: 'd' }, marked: [0], composing: 1 });
+  assert.deepEqual(checker.checkCells([0, 1, 2]), { right: [2], wrong: [] });
+  assert.equal(calls.getExpected, 1, 'only the checkable cell reads its answer');
+});
+
+test('checkCells over cells with nothing to check returns nothing', () => {
+  const { checker } = harness();
+  assert.deepEqual(checker.checkCells([0, 1, 2]), { right: [], wrong: [] });
+  assert.deepEqual(checker.checkCells([]), { right: [], wrong: [] });
+});
+
+test('checkCells judges only the cells it is given', () => {
+  const { checker } = harness({ content: SOLVED });
+  assert.deepEqual(checker.checkCells([1]), { right: [1], wrong: [] });
+});
+
+test('cellIds hands the engine the board\'s cells, the set Check puzzle and Reveal puzzle act on', () => {
+  const { checker } = harness();
+  assert.deepEqual(checker.cellIds, [0, 1, 2]);
+});
+
+test('checkCells lists a cell once however many times it is given', () => {
+  const { checker } = harness({ content: { 0: 'a', 1: 'xy' } });
+  assert.deepEqual(checker.checkCells([0, 1, 0, 1]), { right: [0], wrong: [1] });
 });

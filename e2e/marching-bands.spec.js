@@ -2,7 +2,7 @@
 
 // Browser-engine behavior specific to Marching Bands — what node:test can't cover: Tab
 // by row and band, arrow keys across the grid, the clue-group list, the options menu's
-// Clear and Check Cell toggle, the solved-board restore, and a rebus solve that marks no
+// Clear, the solved-board restore, and a rebus solve that marks no
 // clue item (its clue groups hide entry boundaries). Behavior it shares with the other
 // engines lives in e2e/shared.spec.js.
 
@@ -12,8 +12,8 @@ const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
 const yaml = require('js-yaml');
-const { buildPuzzle } = require('../marching-bands/cli');
-const { typeCell } = require('./helpers');
+const { buildPuzzleFile } = require('../test/helpers');
+const { clickHelpRow, typeCell } = require('./helpers');
 
 const FIX = path.join(__dirname, '..', 'marching-bands', 'test', 'fixtures');
 
@@ -26,11 +26,11 @@ test.beforeAll(() => {
   tmpDir     = fs.mkdtempSync(path.join(os.tmpdir(), 'mb-e2e-'));
   htmlPath   = path.join(tmpDir, 'puzzle.html');
   hashedPath = path.join(tmpDir, 'puzzle-hashed.html');
-  buildPuzzle(path.join(FIX, 'mb-5.yaml'),         htmlPath);
-  buildPuzzle(path.join(FIX, 'mb-5.muddled.yaml'), hashedPath);
+  buildPuzzleFile(path.join(FIX, 'mb-5.yaml'),         htmlPath);
+  buildPuzzleFile(path.join(FIX, 'mb-5.muddled.yaml'), hashedPath);
 
   rebusPath       = path.join(tmpDir, 'rebus.html');
-  buildPuzzle(path.join(FIX, 'rebus-5.yaml'),         rebusPath);
+  buildPuzzleFile(path.join(FIX, 'rebus-5.yaml'),         rebusPath);
 });
 
 test.afterAll(() => {
@@ -70,7 +70,7 @@ test('a clue with markdown formatting renders as HTML, not literal syntax', asyn
   const yamlPath = path.join(tmpDir, 'markdown-smoke.yaml');
   const htmlPath = path.join(tmpDir, 'markdown-smoke.html');
   fs.writeFileSync(yamlPath, yaml.dump(source));
-  buildPuzzle(yamlPath, htmlPath);
+  buildPuzzleFile(yamlPath, htmlPath);
 
   await page.goto('file://' + htmlPath);
   await expect(page.locator('#puzzle-svg .cell').first()).toBeVisible();
@@ -83,7 +83,7 @@ test('a clue with markdown formatting renders as HTML, not literal syntax', asyn
 // padding that keeps a clue clear of a pinned grid (scrollIntoViewBelow in
 // shared/engine-chrome.mjs) must not apply; the next test covers the narrow side.
 test('in the wide layout, a clue scrolled into view is not pushed below the grid beside it', async ({ page }) => {
-  await page.setViewportSize({ width: 1000, height: 300 });
+  await page.setViewportSize({ width: 1000, height: 200 });
   await page.goto('file://' + htmlPath);
   await ready(page);
   const rect = sel => page.evaluate(s => document.querySelector(s).getBoundingClientRect().toJSON(), sel);
@@ -209,10 +209,10 @@ test('the options menu panel does not resize when Clear arms to "Are you sure?"'
   await ready(page);
 
   await page.click('#menu-btn');
-  await expect(page.locator('#clear-btn')).toHaveText('Clear Puzzle');
+  await expect(page.locator('#clear-btn')).toHaveText('Clear puzzle');
   const before = await page.locator('#menu-panel').boundingBox();
 
-  // #clear-btn::after (base.css) reserves the wider of "Clear Puzzle"/"Are you
+  // #clear-btn::after (base.css) reserves the wider of "Clear puzzle"/"Are you
   // sure?" so #menu-panel's shrink-to-fit width doesn't change across the
   // arm/confirm cycle — without it, the panel visibly narrows and shifts while armed.
   await page.click('#clear-btn');
@@ -220,48 +220,6 @@ test('the options menu panel does not resize when Clear arms to "Are you sure?"'
   const after = await page.locator('#menu-panel').boundingBox();
 
   expect(after).toEqual(before);
-});
-
-test('the "Show Check Cell button" toggle hides #check-btn and persists across reload', async ({ page }) => {
-  await page.goto(`file://${htmlPath}`);
-  await ready(page);
-
-  await page.click('#menu-btn');
-  await expect(page.locator('#check-btn-toggle-label')).toBeVisible();
-  await expect(page.locator('#check-btn-toggle')).toBeChecked();
-  await expect(page.locator('#check-btn')).toBeVisible();
-
-  await page.click('#check-btn-toggle');
-  await expect(page.locator('#check-btn')).toBeHidden();
-
-  await page.reload();
-  await ready(page);
-  await page.click('#menu-btn');
-  await expect(page.locator('#check-btn-toggle')).not.toBeChecked();
-  await expect(page.locator('#check-btn')).toBeHidden();
-});
-
-test('the "Show Check Cell button" toggle is absent in a hashed puzzle', async ({ page }) => {
-  await page.goto(`file://${hashedPath}`);
-  await ready(page);
-
-  await page.click('#menu-btn');
-  await expect(page.locator('#check-btn-toggle-label')).toBeHidden();
-  await expect(page.locator('#check-btn')).toBeHidden();
-});
-
-test('Clear Puzzle does not reset the Check Cell button visibility preference', async ({ page }) => {
-  await page.goto(`file://${htmlPath}`);
-  await ready(page);
-
-  await page.click('#menu-btn');
-  await page.click('#check-btn-toggle');
-  await expect(page.locator('#check-btn')).toBeHidden();
-
-  await page.click('#clear-btn');
-  await page.click('#clear-btn'); // second click confirms
-  await expect(page.locator('#check-btn')).toBeHidden();
-  await expect(page.locator('#check-btn-toggle')).not.toBeChecked();
 });
 
 // Not the clue-restore test its Snake Charmer / Spiral siblings are: MB marks no clue
@@ -286,7 +244,7 @@ test('a solved board restores sealed — Enter cannot open composition', async (
 
   // Post-reload the latch is sealed by sealIfSolved() on a page that never opened a
   // dialog, so key injection is unimpaired here — unlike the post-Escape point in
-  // 'board is locked after solve', where root CLAUDE.md warns it is unreliable.
+  // 'board is locked after solve'.
   await page.keyboard.press('Enter');
   await expect(page.locator('#puzzle-svg .cell.composing')).toHaveCount(0);
 
@@ -338,3 +296,78 @@ test('a non-hashed rebus puzzle marks every cell correct on solve, but no clue i
   await expect(page.locator('.clue-item.correct')).toHaveCount(0);
 });
 
+
+// ---- Direction chevron --------------------------------------------------------------
+// A small chevron on the active cell's leading edge, pointing the way typing advances:
+// right along a row, clockwise round a band. None on the last cell of a row or band.
+
+// The chevron's box against the active cell's, in SVG units.
+async function chevronBoxes(page) {
+  return page.evaluate(() => {
+    const box = el => { const b = el.getBBox(); return { l: b.x, r: b.x + b.width, t: b.y, b: b.y + b.height }; };
+    const chev = document.getElementById('direction-chevron');
+    const cell = document.querySelector('#puzzle-svg .cell.active-cell');
+    return { d: chev.getAttribute('d') || '', chev: box(chev), cell: box(cell) };
+  });
+}
+
+test('the chevron sits on the active cell\'s right edge in row mode', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  await page.locator('#cell-2').click();
+  const { chev, cell } = await chevronBoxes(page);
+  expect(chev.r).toBeGreaterThan(cell.r);              // the tip leaves the cell, rightward
+  expect(chev.l).toBeGreaterThan(cell.l + (cell.r - cell.l) / 2); // and it stays on the right half
+  expect(chev.t).toBeGreaterThanOrEqual(cell.t - 1);
+  expect(chev.b).toBeLessThanOrEqual(cell.b + 1);
+});
+
+test('in band mode the chevron turns the corner: a top-right cell points down', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  const N = await page.evaluate(() => window.PUZZLE_DATA.size);
+  await page.locator('#cell-' + N).click();            // the top-right corner, in band A
+  await page.keyboard.press('.');
+  await expect(page.locator('#mode-toggle .toggle-opt.active')).toHaveText('Band');
+  const { chev, cell } = await chevronBoxes(page);
+  expect(chev.b).toBeGreaterThan(cell.b);              // the tip leaves the bottom edge
+  expect(chev.t).toBeGreaterThan(cell.t + (cell.b - cell.t) / 2);
+});
+
+test('the chevron is absent on the last cell of a row, and printed pages never show it', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  const N = await page.evaluate(() => window.PUZZLE_DATA.size);
+  await page.locator('#cell-' + N).click();            // end of row 1 in row mode
+  expect((await chevronBoxes(page)).d).toBe('');
+
+  await page.locator('#cell-2').click();
+  expect((await chevronBoxes(page)).d).not.toBe('');
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('#direction-chevron')).toBeHidden();
+});
+
+// Check/Reveal clue act on the active row or band, never on a single entry: an entry's
+// boundaries are hidden from the solver. The labels follow the mode, so the menu names
+// the set of cells it will act on.
+test('the clue rows read Check row and Reveal row, and change with the mode', async ({ page }) => {
+  await page.goto(`file://${htmlPath}`);
+  await ready(page);
+  await expect(page.locator('#help-panel #check-clue-btn')).toHaveText('Check row');
+  await expect(page.locator('#help-panel #reveal-clue-btn')).toHaveText('Reveal row');
+
+  await page.keyboard.press('.');
+  await expect(page.locator('#mode-toggle .toggle-opt.active')).toHaveText('Band');
+  await expect(page.locator('#help-panel #check-clue-btn')).toHaveText('Check band');
+  await expect(page.locator('#help-panel #reveal-clue-btn')).toHaveText('Reveal band');
+});
+
+test('Reveal row fills the whole first row and nothing else', async ({ page }) => {
+  await page.goto(`file://${htmlPath}`);
+  await ready(page);
+  const N = await page.evaluate(() => window.PUZZLE_DATA.size);
+
+  await clickHelpRow(page, '#reveal-clue-btn');
+  await expect(page.locator('#puzzle-svg .cell.correct')).toHaveCount(N);
+  for (let c = 1; c <= N; c++) await expect(page.locator('#cell-' + c)).toHaveClass(/\bcorrect\b/);
+});

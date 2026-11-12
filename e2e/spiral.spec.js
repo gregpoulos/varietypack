@@ -9,7 +9,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
-const { buildPuzzle } = require('../spiral/cli');
+const { buildPuzzleFile } = require('../test/helpers');
 
 const FIX = path.join(__dirname, '..', 'spiral', 'test', 'fixtures');
 
@@ -19,7 +19,7 @@ let tmpDir;       // unique temp directory per worker
 test.beforeAll(() => {
   tmpDir     = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-e2e-'));
   htmlPath   = path.join(tmpDir, 'puzzle.html');
-  buildPuzzle(path.join(FIX, 'test-78.yaml'),         htmlPath);
+  buildPuzzleFile(path.join(FIX, 'test-78.yaml'),         htmlPath);
 });
 
 test.afterAll(() => {

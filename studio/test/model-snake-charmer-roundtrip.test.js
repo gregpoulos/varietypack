@@ -1,6 +1,6 @@
 'use strict';
 
-// The guard for import and export (spec §4.6): importing then exporting an unedited valid
+// The guard for import and export: importing then exporting an unedited valid
 // file must build byte-identical HTML.
 const { test } = require('node:test');
 const assert   = require('node:assert/strict');

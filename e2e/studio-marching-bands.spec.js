@@ -5,6 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
+const { clickGapLine } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../marching-bands/src/builder');
 
@@ -95,11 +96,11 @@ test('each entry is a loop', async ({ page }) => {
 test('clicking a boundary splits and joins', async ({ page }) => {
   await newGrid(page, 5);
   const hit = page.locator('line.split-hit[data-gap="rows:0:2"]');
-  await hit.click({ force: true });
+  await clickGapLine(hit);
   await expect(page.locator('polyline.loop[data-group="rows"][data-g="0"]')).toHaveCount(2);
   await cell(page, 0, 3).click();
   await page.locator('#entry-clue').fill('second entry clue');
-  await hit.click({ force: true });
+  await clickGapLine(hit);
   await expect(page.locator('polyline.loop[data-group="rows"][data-g="0"]')).toHaveCount(1);
   await expect(page.locator('#orphan-tray .orphan')).toHaveCount(1);
 });

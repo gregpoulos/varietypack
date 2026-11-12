@@ -38,6 +38,25 @@ test('validateCommonHeader: rejects hashed: in source puzzles (no boardHash), ac
   assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', hashed: true, format: 2, boardHash: 'abc' }).errors, []);
 });
 
+test('validateCommonHeader: author must be a non-empty string when present', () => {
+  for (const bad of ['', '   ', 42, ['x', 'y'], { a: 1 }, null]) {
+    assert.ok(runHeader({ kind: 'spiral', title: 'Hi', author: bad }).errors
+      .includes('"author" must be a non-empty string'), JSON.stringify(bad));
+  }
+  assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', author: 'Ann' }).errors, []);
+  assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi' }).errors, []);
+});
+
+test('validateCommonHeader: date must be a non-empty string or a finite number when present', () => {
+  for (const bad of ['', '   ', ['2026'], { y: 1 }, null, true, NaN, Infinity, new Date(0)]) {
+    assert.ok(runHeader({ kind: 'spiral', title: 'Hi', date: bad }).errors
+      .includes('"date" must be a non-empty string or a number'), String(bad));
+  }
+  for (const good of ['Nov 2026', 2026, 0, 1.5]) {
+    assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', date: good }).errors, [], String(good));
+  }
+});
+
 test('validateCommonHeader: rejects empty/whitespace/non-string instructions, accepts non-empty', () => {
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', instructions: '' }).errors.some(e => e.includes('"instructions"')));
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', instructions: '   ' }).errors.some(e => e.includes('"instructions"')));

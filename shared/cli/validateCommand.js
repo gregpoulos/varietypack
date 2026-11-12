@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { loadAndValidate, listYamlFiles } = require('./toolRegistry');
+const { loadAndValidate, listYamlFiles } = require('./cliTools');
 const { formatWarnings, formatValidationErrors } = require('../build/validation');
 const { writeHelpIfRequested } = require('./globalHelp');
 const parseCliArgs = require('./parseCliArgs');

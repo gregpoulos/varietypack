@@ -86,3 +86,24 @@ test('prose and identifiers use American spelling', () => {
   }
   assert.deepEqual(found, [], 'British spellings');
 });
+
+// Private files never ship in the public snapshot (see `publish.sh`), so a public file
+// that cites one leaves its reader with a reference they cannot follow. `.gitignore` has
+// to name them, and this file names them in the patterns below. The patterns mirror the
+// script's STRIP array by hand, since the script is itself stripped: a file added there
+// is added here too.
+const PRIVATE_FILE =
+  /(^|\/)CLAUDE\.md$|^TODOS\.md$|^\.claude\/|^publish\.sh$|^docs\/superpowers\/|(^|\/)deploy\.config\.json$/;
+const PRIVATE_CITATION =
+  /CLAUDE\.md|TODOS\.md|\.claude\/|\.superpowers|docs\/superpowers|deploy\.config\.json|publish\.sh|spec §/;
+
+test('public files do not cite private files or the private spec', () => {
+  const offenders = [];
+  for (const f of files) {
+    if (PRIVATE_FILE.test(f) || f === '.gitignore' || f === 'test/commentStyle.test.js') continue;
+    linesOf(f).forEach((line, i) => {
+      if (PRIVATE_CITATION.test(line)) offenders.push(`${f}:${i + 1}: ${line.trim()}`);
+    });
+  }
+  assert.deepEqual(offenders, []);
+});

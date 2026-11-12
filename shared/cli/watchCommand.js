@@ -3,7 +3,8 @@
 const path = require('path');
 const fs = require('fs');
 const { spawnSync } = require('child_process');
-const { TOOLS } = require('./toolRegistry');
+const { toolDir } = require('./cliTools');
+const { KINDS } = require('../build/tools');
 const { writeHelpIfRequested } = require('./globalHelp');
 const { parseBuildArgs } = require('./buildCommand');
 
@@ -82,7 +83,7 @@ function watchCommand(args) {
 
   const sourceDirs = [
     path.join(ROOT, 'shared'),
-    ...Object.values(TOOLS).map((tool) => path.join(tool.dir, 'src')),
+    ...KINDS.map((kind) => path.join(toolDir(kind), 'src')),
   ];
   for (const srcDir of sourceDirs) {
     if (fs.existsSync(srcDir)) {

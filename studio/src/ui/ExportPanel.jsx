@@ -20,7 +20,7 @@ function blockedText(check) {
 }
 
 // A modal <dialog>: Escape or Close hide it, and every download is refused unless the
-// real validator reports no errors (spec §6 and §8).
+// real validator reports no errors.
 export function ExportPanel({ state, dispatch, title }) {
   const { doc, check } = state;
   const ref = useRef(null);

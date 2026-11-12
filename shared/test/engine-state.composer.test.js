@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { makeComposer, setLetterText, letterLenClass } = require('../engine-state.mjs');
 
 // Mock letter element: only textContent, classList, style and x/y are touched. Mirrors
-// the mock-object pattern in engine-chrome.clear-button.test.js — no DOM, no jsdom.
+// the mock-object pattern in engine-chrome.armed-button.test.js — no DOM, no jsdom.
 function makeEl() {
   const classes = new Set();
   return {

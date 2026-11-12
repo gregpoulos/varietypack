@@ -10,7 +10,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
-const { buildPuzzle } = require('../snake-charmer/cli');
+const { buildPuzzleFile } = require('../test/helpers');
 const { typeCell } = require('./helpers');
 
 const FIX = path.join(__dirname, '..', 'snake-charmer', 'test', 'fixtures');
@@ -23,11 +23,11 @@ let tmpDir;       // unique temp directory per worker
 test.beforeAll(() => {
   tmpDir     = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-e2e-'));
   htmlPath   = path.join(tmpDir, 'puzzle.html');
-  buildPuzzle(path.join(FIX, 'circle-8.yaml'),         htmlPath);
+  buildPuzzleFile(path.join(FIX, 'circle-8.yaml'),         htmlPath);
   rebusPath       = path.join(tmpDir, 'rebus.html');
   rebusHashedPath = path.join(tmpDir, 'rebus-hashed.html');
-  buildPuzzle(path.join(FIX, 'rebus-8.yaml'),         rebusPath);
-  buildPuzzle(path.join(FIX, 'rebus-8.muddled.yaml'), rebusHashedPath);
+  buildPuzzleFile(path.join(FIX, 'rebus-8.yaml'),         rebusPath);
+  buildPuzzleFile(path.join(FIX, 'rebus-8.muddled.yaml'), rebusHashedPath);
 });
 
 test.afterAll(() => {
@@ -302,7 +302,7 @@ test('an entry longer than the ring is never shown as its own secondary', async 
     '  - { clue: "Three more", answer: FGH }',
   ].join('\n'));
   const out = path.join(tmpDir, 'long-entry.html');
-  buildPuzzle(src, out);
+  buildPuzzleFile(src, out);
   await page.goto(`file://${out}`);
   await ready(page);
 

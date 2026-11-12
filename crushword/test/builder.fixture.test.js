@@ -5,15 +5,14 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { buildPuzzle } = require('../cli');
-const { puzzleDataOf } = require('../../test/helpers');
+const { buildPuzzleFile, puzzleDataOf } = require('../../test/helpers');
 
 const SAMPLE = path.join(__dirname, '../../examples/crushword.yaml');
 
-test('buildPuzzle: examples/crushword.yaml PUZZLE_DATA has correct structure', () => {
+test('build: examples/crushword.yaml PUZZLE_DATA has correct structure', () => {
   const out = path.join(os.tmpdir(), `cw-fixture2-${Date.now()}.html`);
   try {
-    buildPuzzle(SAMPLE, out);
+    buildPuzzleFile(SAMPLE, out);
     const pd = puzzleDataOf(fs.readFileSync(out, 'utf8'));
 
     assert.equal(pd.kind, 'crushword');

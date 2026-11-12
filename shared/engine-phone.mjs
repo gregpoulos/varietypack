@@ -6,7 +6,7 @@
 // tested via mocks (shared/test/engine-phone.test.js).
 
 import {
-  FLASH_WRONG_MS, PHONE_CLASS, boolPref, htmlEl, menuToggle, onClueClick, setupPopupMenu, svgEl,
+  FLASH_WRONG_MS, PHONE_CLASS, boolPref, htmlEl, menuToggle, onClueClick, svgEl,
 } from './engine-chrome.mjs';
 
 // Detection is by the main input method, not by width, so tablets get the phone layout
@@ -33,18 +33,31 @@ function stepIndex(i, n, d) {
   return (i + d + n) % n;
 }
 
+// A triangle pointing `dir`, drawn so all four arrows are the same size and colored by
+// the key's text (fill: currentColor).
+const ARROW_TURN = { up: 0, right: 90, down: 180, left: 270 };
+function arrowIcon(dir) {
+  const svg = svgEl('svg', { viewBox: '0 0 10 10', class: 'kb-arrow', 'aria-hidden': 'true' });
+  svg.append(svgEl('path', {
+    d: 'M5,1.5 L9.5,8.5 L0.5,8.5 Z', transform: `rotate(${ARROW_TURN[dir]} 5 5)`,
+  }));
+  return svg;
+}
+
 // The drawn keyboard: a letter layer and a digit layer, built once and swapped with
 // `hidden`, above the tool's bottom row. Every layer has the same number of rows, and
 // each row a fixed height (base.css), so switching layers never resizes the grid. The
 // bottom row is built once too: it holds moved buttons with their own listeners.
 //   bottomRow, each item one of:
-//     { label, key, wide?, glyph? }  a synthetic key (setupPhoneLayout says why)
-//     { label, onTap, wide?, glyph? } a key that calls the engine directly, for an
-//                                     action no real key has (Marching Bands' ◂ ▸).
-//                                     It bypasses setupKeydown, so onTap does its own
-//                                     solved-board check.
-//     { el, label? }                  an existing button moved in, relabeled if given
-//   `wide` makes the switch key widest; `glyph` draws a symbol label (◂ ▸) larger.
+//     { label, key, wide?, ariaLabel? }   a synthetic key (setupPhoneLayout says why)
+//     { label, onTap, wide?, ariaLabel? } a key that calls the engine directly, for an
+//                                         action no real key has (Marching Bands' Prev /
+//                                         Next cell). It bypasses setupKeydown, so onTap
+//                                         does its own solved-board check.
+//     { el, label? }                      an existing button moved in, relabeled if given
+//   `wide` makes the switch key widest. `arrow` ('left' | 'up' | 'down' | 'right') draws a
+//   triangle in place of `label`, so it needs an `ariaLabel`: the triangle characters
+//   differ in size from font to font.
 function buildKeyboard(bottomRow) {
   const row = (...keys) => htmlEl('div', { class: 'kb-row' }, ...keys);
   const chars = s => [...s].map(ch => htmlEl('button', { type: 'button', 'data-char': ch }, ch));
@@ -70,9 +83,8 @@ function buildKeyboard(bottomRow) {
     if (item.key !== undefined) attrs['data-key'] = item.key;
     if (item.shift) attrs['data-shift'] = '';
     if (item.ariaLabel) attrs['aria-label'] = item.ariaLabel;
-    const classes = [item.wide && 'kb-wide', item.glyph && 'kb-glyph'].filter(Boolean);
-    if (classes.length) attrs.class = classes.join(' ');
-    const btn = htmlEl('button', attrs, item.label);
+    if (item.wide) attrs.class = 'kb-wide';
+    const btn = htmlEl('button', attrs, item.arrow ? arrowIcon(item.arrow) : item.label);
     if (item.onTap) btn.addEventListener('click', item.onTap);
     return btn;
   }));
@@ -118,8 +130,8 @@ function setupClueExpand(barRow, clueText, win) {
 //                desktop and print layouts need no wrapper)
 //   clueBar:     { el, text } for the bar row: the bar, and the element in it holding
 //                the clue, clamped to two lines (base.css)
-//   checkBtn:    #check-btn, which the help menu holds instead of the keyboard, so a
-//                stray tap beside ▸ can't check a cell (see setupHelpMenu)
+//   helpMenu:    { btn, panel } of the help menu setupControls built, or null (a hashed
+//                page has none); moved into the top bar beside ☰
 //   firstVisit:  nothing saved to restore, so the instructions show over the view
 //   ownSteps:    the bar brings its own ‹ › and handles its own taps
 //   fillList:    { items, getLetter, isCorrect, onCellTap, isComposing? } for a fill-in
@@ -129,9 +141,9 @@ function setupClueExpand(barRow, clueText, win) {
 //   onGridShown: called when the list closes and the grid shows again
 //   bottomRow:   the keyboard's bottom row (buildKeyboard)
 // Returns { listPane, hideList, fillList, showingClue }, `fillList` being
-// setupFillList's { sync } or null, and showingClue setupClueExpand's.
+// setupFillList's { sync, flash } or null, and showingClue setupClueExpand's.
 function setupPhoneLayout({
-  hiddenInput, refocus, grid, lists, clueBar, checkBtn, firstVisit, ownSteps = false, fillList = null,
+  hiddenInput, refocus, grid, lists, clueBar, helpMenu, firstVisit, ownSteps = false, fillList = null,
   onGridShown = () => {}, bottomRow, win = window,
 }) {
   if (!isTouchFirst(win)) return null;
@@ -164,10 +176,9 @@ function setupPhoneLayout({
   // The done-wrong banner, shown when the board is full but wrong, lies over the title
   // (base.css): there it hides no cell and no clue, which the solver now needs to check.
   const headSlot = htmlEl('div', { class: 'solve-head-slot' }, head, doc.getElementById('done-wrong'));
-  const help = setupHelpMenu(doc, checkBtn, refocus);
   const top = htmlEl('div', { class: 'solve-top' },
-    headSlot, cluesBtn, ...(help ? [help.btn] : []), doc.getElementById('menu-btn'),
-    ...(help ? [help.panel] : []), doc.getElementById('menu-panel'));
+    headSlot, cluesBtn, ...(helpMenu ? [helpMenu.btn] : []), doc.getElementById('menu-btn'),
+    ...(helpMenu ? [helpMenu.panel] : []), doc.getElementById('menu-panel'));
 
   // Stage: the grid pane, or the list pane in its place. The grid goes in a div because
   // Crushword's is the <svg> itself, which has no `hidden` property.
@@ -291,15 +302,14 @@ function setupPhoneLayout({
 //   onCellTap: (itemIndex, cellIndex) → the engine makes that item's direction or loop
 //              active and focuses the cell; a tap on the row never reaches the clue's
 //              own click handler (onClueClick)
-// Returns { sync(activeCell, activeLi, caretPos), flash(isHit) }: sync is for syncUI,
+// Returns { sync(activeCell, activeLi, caretPos), flash(ids) }: sync is for syncUI,
 // `activeLi` the active clue's item, and `caretPos`, for Crushword alone, the cursor's
 // place among its cell's letters, drawn there as a `.list-caret` as the grid draws its
-// own; flash(isHit) flashes every cell whose number isHit accepts, as
-// the grid's flashWrong does a wrong check, which the Clues screen would otherwise hide.
+// own; flash(ids) flashes the cells with those ids, in every row holding them, as the
+// grid's flashWrong does a wrong check, which the Clues screen would otherwise hide.
 // A board cell sits in two items (two directions, or two loops), so it shows its letter
 // in both, but the cursor is marked only in the active item. The active item's row is
-// styled through its li's `.active-clue`; neither class reuses the grid's
-// `.active-cell`/`.active-entry`. A tap on a cell reaches onCellTap alone because
+// styled through its li's `.active-clue`. A tap on a cell reaches onCellTap alone because
 // onClueClick (shared/engine-chrome.mjs) skips `.list-cell`; stopping the tap here
 // instead would also keep it from the options menu's close-on-outside-click.
 function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = () => false, onCellTap }) {
@@ -368,58 +378,42 @@ function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = ()
     }
     lastCursor = cursor;
   }
-  function flash(isHit) {
+  // The cells of the flash still running and the timer that ends it, so the next flash
+  // can end it first: left pending, that timer would cut the new flash short on any cell
+  // the two share.
+  let flashing = [];
+  let flashTimer = null;
+  function endFlash() {
+    clearTimeout(flashTimer);
+    flashTimer = null;
+    for (const el of flashing) el.classList.remove('flash-wrong');
+    flashing = [];
+  }
+  function flash(ids) {
+    const hit = new Set(ids);
+    const els = [];
     items.forEach(({ cells }, i) => cells.forEach((n, j) => {
-      if (!isHit(n)) return;
-      const el = letterEls[i].cellEls[j];
-      // Off and on again, so a second wrong check restarts the animation.
-      el.classList.remove('flash-wrong');
-      void el.offsetWidth;
-      el.classList.add('flash-wrong');
-      setTimeout(() => el.classList.remove('flash-wrong'), FLASH_WRONG_MS);
+      if (hit.has(n)) els.push(letterEls[i].cellEls[j]);
     }));
+    if (els.length === 0) return;
+    // Off, one layout read, then on, so a second wrong check restarts the animation.
+    endFlash();
+    void els[0].offsetWidth;
+    for (const el of els) el.classList.add('flash-wrong');
+    flashing = els;
+    flashTimer = setTimeout(endFlash, FLASH_WRONG_MS);
   }
   return { sync, flash };
-}
-
-// The help menu: a life-ring button in the top bar, beside ☰, opening a panel that holds
-// #check-btn (moved here with its wiring intact, relabeled Check cell). Checking is
-// help, not typing, so it isn't a key next to ▸. Later check and reveal actions join it.
-// A hashed page has no Check, so no help menu: returns null. The "Show Check Cell
-// button" setting means nothing here, so its row hides and its stored "off" is ignored.
-// Returns { btn, panel }.
-function setupHelpMenu(doc, checkBtn, refocus) {
-  if (checkBtn.hidden) return null;
-  checkBtn.classList.remove('check-btn-off');
-  checkBtn.textContent = 'Check cell';
-  doc.getElementById('check-btn-toggle-label').hidden = true;
-
-  const ring = svgEl('svg', { viewBox: '0 0 24 24', width: 24, height: 24, 'aria-hidden': 'true' });
-  const stroke = { fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round' };
-  ring.append(svgEl('circle', { cx: 12, cy: 12, r: 9, ...stroke }), svgEl('circle', { cx: 12, cy: 12, r: 4, ...stroke }));
-  // The four bands across the ring, on the diagonals from inner to outer circle.
-  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    ring.append(svgEl('line', {
-      x1: 12 + sx * 2.9, y1: 12 + sy * 2.9, x2: 12 + sx * 6.4, y2: 12 + sy * 6.4, ...stroke,
-    }));
-  }
-  const btn = htmlEl('button', {
-    id: 'help-btn', type: 'button', 'aria-label': 'Help',
-    'aria-haspopup': 'true', 'aria-expanded': 'false',
-  }, ring);
-  const panel = htmlEl('div', { id: 'help-panel', role: 'menu', hidden: '' }, checkBtn);
-  const { close } = setupPopupMenu(btn, panel, refocus);
-  checkBtn.addEventListener('click', close);
-  return { btn, panel };
 }
 
 // The options menu's "Wrap long rows of cells" checkbox: a clue's row of cells on the
 // Clues screen wraps onto more lines when it is too long for one, or, unchecked, shrinks
 // to stay on one (`list-nowrap` on <html>). A solver's preference for every puzzle, so
-// its key names no puzzle. `panel` is #menu-panel; the row goes above Clear Puzzle, as
-// the other display setting does. It changes nothing but the Clues screen, so the caller
-// shows its label only there (`label.hidden`). `refocus` runs on each change: a tap on
-// the label focuses the checkbox in Chromium, mousedown or not.
+// its key names no puzzle. `panel` is #menu-panel; the row goes above Clear puzzle, a
+// plain display setting before the destructive action. It changes nothing but the Clues
+// screen, so the caller shows its label only there (`label.hidden`). `refocus` runs on
+// each change, and on a pointer-driven focus: a tap on the label focuses the checkbox in
+// Chromium, mousedown or not.
 // Returns { pref, label }, `pref` being the preference's { load, save }.
 const LIST_WRAP_KEY = 'vp:pref:listWrap';
 function setupListWrapPref({ storage, root = document.documentElement, panel, refocus }) {
@@ -434,6 +428,10 @@ function setupListWrapPref({ storage, root = document.documentElement, panel, re
     pref.save(input.checked);
     refocus();
   });
+  // A browser may focus the checkbox only after `change` has run (WebKit on Linux does),
+  // so refocusing there is not enough. A tap's focus is not :focus-visible; a keyboard
+  // user's is, and keeps it.
+  input.addEventListener('focus', () => { if (!input.matches(':focus-visible')) refocus(); });
   return { pref, label };
 }
 

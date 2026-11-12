@@ -124,7 +124,7 @@ test('validate: explicit loops:2 is accepted', () => {
 
 test('validate: loops:3 is rejected — multi-loop (>2) is not yet supported', () => {
   // Even a puzzle that satisfies the period-3 constraint is rejected: the browser
-  // engine only handles loops=2. Multi-loop is a planned future feature (see TODOS.md).
+  // engine only handles loops=2. Multi-loop is a planned future feature.
   const p = {
     kind: 'snake-charmer', title: 'T',
     loops: 3,

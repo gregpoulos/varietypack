@@ -1,6 +1,6 @@
 'use strict';
 
-// Thrown when a puzzle can't be represented as cells plus starts (spec §4.6): the
+// Thrown when a puzzle can't be represented as cells plus starts: the
 // lengths don't tile, the bracket grammar is invalid, or an entry is muddled.
 class StructureError extends Error {
   constructor(message) {

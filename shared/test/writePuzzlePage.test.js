@@ -6,12 +6,14 @@ const fs       = require('fs');
 const os       = require('os');
 const path     = require('path');
 const yaml     = require('js-yaml');
-const { runBuildPuzzle } = require('../cli/runBuildPuzzle');
+const { writePuzzlePage } = require('../cli/writePuzzlePage');
 
-// runBuildPuzzle is the CLI's file wrapper around buildFromObject (load → build → print
+// writePuzzlePage is the CLI's file wrapper around buildFromObject (build → print
 // warnings/notes → minify → mkdir → write → return title). These tests exercise it with
 // minimal stub hooks instead of through a real tool's builder, so the behavior is
 // covered once rather than once per tool. buildFromObject.test.js covers the build.
+
+const loadYaml = (p) => yaml.load(fs.readFileSync(p, 'utf8'));
 
 const alwaysOk = () => ({ errors: [], warnings: [] });
 
@@ -24,30 +26,30 @@ const stubBuildHtml = (prepared) => `<html><!-- ${prepared.title} --></html>`;
 const hooks = (over = {}) => ({ validateFn: alwaysOk, prepareFn: stubPrepare, buildHtmlFn: stubBuildHtml, ...over });
 
 function writeTmpYaml(puzzle) {
-  const p = path.join(os.tmpdir(), `runBuildPuzzle-test-${Date.now()}-${Math.random().toString(36).slice(2)}.yaml`);
+  const p = path.join(os.tmpdir(), `writePuzzlePage-test-${Date.now()}-${Math.random().toString(36).slice(2)}.yaml`);
   fs.writeFileSync(p, yaml.dump(puzzle), 'utf8');
   return p;
 }
 
-// Runs runBuildPuzzle with a stderr of its own and returns what reached it, plus the
+// Runs writePuzzlePage with a stderr of its own and returns what reached it, plus the
 // error when it throws. Injected rather than patched over process.stderr, so a message
 // written to process.stderr instead goes missing here.
 function buildCapturingStderr(inPath, outPath, puzzleHooks) {
   let out = '';
   const stderr = { write: chunk => { out += chunk; } };
   try {
-    runBuildPuzzle(inPath, outPath, {}, puzzleHooks, { stderr });
+    writePuzzlePage(loadYaml(inPath), inPath, outPath, {}, puzzleHooks, { stderr });
   } catch (err) {
     return { out, err };
   }
   return { out };
 }
 
-test('runBuildPuzzle: returns { title } from the prepared puzzle', () => {
+test('writePuzzlePage: returns { title } from the prepared puzzle', () => {
   const inPath = writeTmpYaml({ kind: 'stub', title: 'Consolidated Title' });
-  const outPath = path.join(os.tmpdir(), `runBuildPuzzle-test-out-${Date.now()}.html`);
+  const outPath = path.join(os.tmpdir(), `writePuzzlePage-test-out-${Date.now()}.html`);
   try {
-    const result = runBuildPuzzle(inPath, outPath, {}, {
+    const result = writePuzzlePage(loadYaml(inPath), inPath, outPath, {}, {
       validateFn: alwaysOk,
       prepareFn: stubPrepare,
       buildHtmlFn: stubBuildHtml,
@@ -59,12 +61,12 @@ test('runBuildPuzzle: returns { title } from the prepared puzzle', () => {
   }
 });
 
-test('runBuildPuzzle: creates the output directory if it does not exist', () => {
+test('writePuzzlePage: creates the output directory if it does not exist', () => {
   const inPath = writeTmpYaml({ kind: 'stub', title: 'T' });
-  const dir = path.join(os.tmpdir(), `runBuildPuzzle-newdir-${Date.now()}`);
+  const dir = path.join(os.tmpdir(), `writePuzzlePage-newdir-${Date.now()}`);
   const outPath = path.join(dir, 'out.html');
   try {
-    runBuildPuzzle(inPath, outPath, {}, {
+    writePuzzlePage(loadYaml(inPath), inPath, outPath, {}, {
       validateFn: alwaysOk,
       prepareFn: stubPrepare,
       buildHtmlFn: stubBuildHtml,
@@ -76,11 +78,11 @@ test('runBuildPuzzle: creates the output directory if it does not exist', () => 
   }
 });
 
-test('runBuildPuzzle: writes the buildHtmlFn output verbatim (or minified when options.minify)', () => {
+test('writePuzzlePage: writes the buildHtmlFn output verbatim (or minified when options.minify)', () => {
   const inPath = writeTmpYaml({ kind: 'stub', title: 'T' });
-  const outPath = path.join(os.tmpdir(), `runBuildPuzzle-test-write-${Date.now()}.html`);
+  const outPath = path.join(os.tmpdir(), `writePuzzlePage-test-write-${Date.now()}.html`);
   try {
-    runBuildPuzzle(inPath, outPath, {}, {
+    writePuzzlePage(loadYaml(inPath), inPath, outPath, {}, {
       validateFn: alwaysOk,
       prepareFn: stubPrepare,
       buildHtmlFn: stubBuildHtml,
@@ -92,12 +94,12 @@ test('runBuildPuzzle: writes the buildHtmlFn output verbatim (or minified when o
   }
 });
 
-test('runBuildPuzzle: throws and writes nothing when validateFn reports errors', () => {
+test('writePuzzlePage: throws and writes nothing when validateFn reports errors', () => {
   const inPath = writeTmpYaml({ kind: 'stub', title: 'T' });
-  const outPath = path.join(os.tmpdir(), `runBuildPuzzle-test-invalid-${Date.now()}.html`);
+  const outPath = path.join(os.tmpdir(), `writePuzzlePage-test-invalid-${Date.now()}.html`);
   try {
     assert.throws(
-      () => runBuildPuzzle(inPath, outPath, {}, {
+      () => writePuzzlePage(loadYaml(inPath), inPath, outPath, {}, {
         validateFn: () => ({ errors: ['bad puzzle'], warnings: [] }),
         prepareFn: stubPrepare,
         buildHtmlFn: stubBuildHtml,
@@ -111,9 +113,9 @@ test('runBuildPuzzle: throws and writes nothing when validateFn reports errors',
   }
 });
 
-test('runBuildPuzzle: prints warnings to the injected stderr before writing', () => {
+test('writePuzzlePage: prints warnings to the injected stderr before writing', () => {
   const inPath = writeTmpYaml({ kind: 'stub', title: 'T' });
-  const outPath = path.join(os.tmpdir(), `runBuildPuzzle-test-warn-${Date.now()}.html`);
+  const outPath = path.join(os.tmpdir(), `writePuzzlePage-test-warn-${Date.now()}.html`);
   try {
     const { out } = buildCapturingStderr(inPath, outPath, hooks({
       validateFn: () => ({ errors: [], warnings: ['w1'] }),
@@ -125,9 +127,9 @@ test('runBuildPuzzle: prints warnings to the injected stderr before writing', ()
   }
 });
 
-test('runBuildPuzzle: prints warnings to the injected stderr even when validation fails', () => {
+test('writePuzzlePage: prints warnings to the injected stderr even when validation fails', () => {
   const inPath = writeTmpYaml({ kind: 'stub', title: 'T' });
-  const outPath = path.join(os.tmpdir(), `runBuildPuzzle-test-warnfail-${Date.now()}.html`);
+  const outPath = path.join(os.tmpdir(), `writePuzzlePage-test-warnfail-${Date.now()}.html`);
   try {
     const { out, err } = buildCapturingStderr(inPath, outPath, hooks({
       validateFn: () => ({ errors: ['bad'], warnings: ['w1'] }),
@@ -140,9 +142,9 @@ test('runBuildPuzzle: prints warnings to the injected stderr even when validatio
   }
 });
 
-test('runBuildPuzzle: prints buildHtmlFn notes to the injected stderr', () => {
+test('writePuzzlePage: prints buildHtmlFn notes to the injected stderr', () => {
   const inPath = writeTmpYaml({ kind: 'stub', title: 'T' });
-  const outPath = path.join(os.tmpdir(), `runBuildPuzzle-test-notes-${Date.now()}.html`);
+  const outPath = path.join(os.tmpdir(), `writePuzzlePage-test-notes-${Date.now()}.html`);
   try {
     const { out } = buildCapturingStderr(inPath, outPath, hooks({
       buildHtmlFn: (prepared, raw, opts, notes) => { notes.push('Note: x'); return '<html></html>'; },
@@ -154,9 +156,9 @@ test('runBuildPuzzle: prints buildHtmlFn notes to the injected stderr', () => {
   }
 });
 
-test('runBuildPuzzle: prints the notes made before buildHtmlFn threw to the injected stderr', () => {
+test('writePuzzlePage: prints the notes made before buildHtmlFn threw to the injected stderr', () => {
   const inPath = writeTmpYaml({ kind: 'stub', title: 'T' });
-  const outPath = path.join(os.tmpdir(), `runBuildPuzzle-test-notesfail-${Date.now()}.html`);
+  const outPath = path.join(os.tmpdir(), `writePuzzlePage-test-notesfail-${Date.now()}.html`);
   try {
     const { out, err } = buildCapturingStderr(inPath, outPath, hooks({
       buildHtmlFn: (prepared, raw, opts, notes) => { notes.push('Note: x'); throw new Error('boom'); },

@@ -27,8 +27,6 @@
   /* Primary button */
   --theme-color-btn-bg:       #333333;
   --theme-color-btn-text:     #ffffff;
-  --theme-color-btn-hover:    #555555;
-  --theme-color-btn-disabled: #999999;
   --theme-button-tracking:    0.05em;
 
   /* Secondary / toggle button colors */

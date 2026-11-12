@@ -132,8 +132,6 @@ function curlPath(lastCell) {
   return curlD;
 }
 
-// The points across a cell's end edge (where the next cell starts): where the studio
-// draws splits. The engine doesn't use it.
 // The cell numbers each entry covers, in reading order: `lengths` are the entries' cell
 // counts, numbered from `firstCell` by `step`. The inward entries count up from cell 1;
 // the outward entries count down from the last cell, so the two directions index the
@@ -143,6 +141,8 @@ function cellsOfEntries(lengths, firstCell, step) {
   return lengths.map(length => Array.from({ length }, () => { const n = cell; cell += step; return n; }));
 }
 
+// The points across a cell's end edge (where the next cell starts): where the studio
+// draws splits. The engine doesn't use it.
 function boundaryPoints(cell) {
   return {
     inner: polar(cell.r_inner_end, cell.theta_end),

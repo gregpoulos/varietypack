@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const yaml = require('js-yaml');
-const { buildPuzzle } = require('../cli');
+const { buildPuzzleFile } = require('../../test/helpers');
 
 // 5x5 grid, one crossing rebus cell at (0,1): across[5]="E[TH]FGH" pos1,
 // down[2]="B[TH]JO" pos1.
@@ -41,26 +41,10 @@ function withTmpFiles(fn) {
   }
 }
 
-test('buildPuzzle: PUZZLE_DATA contains maxCellLetters (defaulted to 3)', () => {
+test('build: PUZZLE_DATA contains maxCellLetters (defaulted to 3)', () => {
   withTmpFiles((yamlPath, htmlPath) => {
-    buildPuzzle(yamlPath, htmlPath);
+    buildPuzzleFile(yamlPath, htmlPath);
     const html = fs.readFileSync(htmlPath, 'utf8');
     assert.ok(html.includes('"maxCellLetters": 3'));
   });
 });
-
-test('buildPuzzle: --muddle HTML contains boardHash, no letters, no plaintext answers', () => {
-  withTmpFiles((yamlPath, htmlPath) => {
-    buildPuzzle(yamlPath, htmlPath, { muddle: true });
-    const html = fs.readFileSync(htmlPath, 'utf8');
-    assert.ok(html.includes('"boardHash"'));
-    assert.ok(!html.includes('"letters"'));
-    assert.ok(!html.includes('"abc"'));
-  });
-});
-
-// "buildPuzzle returns { title }" is a pure composition of two facts each tested
-// elsewhere: prepareCommon sets .title from the puzzle metadata ("prepareCommon: carries
-// title, kind, author and date" in shared/test/prepare.test.js) and runBuildPuzzle
-// returns { title: prepared.title } verbatim (shared/test/runBuildPuzzle.test.js), so no
-// crushword-specific wiring can fail without one of those also failing.

@@ -7,16 +7,17 @@
 // scripts, built ahead of time by studio/build.js.
 
 const path = require('path');
-const esbuild = require('esbuild');
+const { KINDS } = require('./tools');
 
 const ROOT = path.join(__dirname, '..', '..');
-const TOOLS = ['snake-charmer', 'spiral', 'marching-bands', 'crushword'];
 
 const cache = new Map();
 
 function engineJs(tool) {
-  if (!TOOLS.includes(tool)) throw new Error(`unknown tool "${tool}"`);
+  if (!KINDS.includes(tool)) throw new Error(`unknown tool "${tool}"`);
   if (!cache.has(tool)) {
+    // Required here, not at load: commands that never build a page don't pay for esbuild.
+    const esbuild = require('esbuild');
     const { outputFiles } = esbuild.buildSync({
       entryPoints: [path.join(ROOT, tool, 'src/template/engine.js')],
       bundle: true,
@@ -33,4 +34,4 @@ function engineJs(tool) {
   return cache.get(tool);
 }
 
-module.exports = { engineJs, TOOLS };
+module.exports = { engineJs };

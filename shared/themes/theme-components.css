@@ -44,23 +44,29 @@ html.phone #clue-full {
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
 }
 
-/* #menu-btn sits *within* #active-clue-bar's own band instead of floating below it
-   as a separate row — no extra vertical space. Pure CSS calc() against the bar's
-   min-height (base.css), not JS-measured: nothing has to re-measure it when the bar or
-   the viewport resizes. 32px is the button's own height (base.css); Marching Bands, with
-   no bar, keeps the plain `top: 20px` default. The phone layout moves the button into
-   its top bar instead (base.css, html.phone). */
-.has-clue-bar #menu-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
+/* #menu-btn and #help-btn sit *within* #active-clue-bar's own band instead of floating
+   below it as a separate row — no extra vertical space. Pure CSS calc() against the
+   bar's min-height (base.css), not JS-measured: nothing has to re-measure it when the
+   bar or the viewport resizes. 32px is the buttons' own height (base.css); Marching
+   Bands, with no bar, keeps the plain `top: 20px` default. The phone layout moves the
+   buttons into its top bar instead (base.css, html.phone). */
+.has-clue-bar #menu-btn,
+.has-clue-bar #help-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
 
-/* #menu-panel opens directly below the bar's bottom edge (8px gap, matching
-   Marching Bands' static button-to-panel gap from base.css) — same
-   CSS-not-JS reasoning as #menu-btn above. */
-.has-clue-bar #menu-panel { top: calc(var(--active-clue-bar-space) + 8px); }
+/* #menu-panel and #help-panel open directly below the bar's bottom edge (8px gap,
+   matching Marching Bands' static button-to-panel gap from base.css) — same
+   CSS-not-JS reasoning as the buttons above. */
+.has-clue-bar #menu-panel,
+.has-clue-bar #help-panel { top: calc(var(--active-clue-bar-space) + 8px); }
 
-/* Right gutter for the bar's own text now that #menu-btn shares its row.
-   Lives here rather than in base.css's shared #active-clue-bar rule since
-   only these three tools ever place the button there. */
+/* Right gutter for the bar's own text now that #menu-btn shares its row: its 32px and
+   the 20px inset, plus 8px to the text. Lives here rather than in base.css's shared
+   #active-clue-bar rule since only these three tools ever place the button there.
+   A page with a help button (setupHelpMenu puts `has-help-btn` on <body>; a hashed
+   build has none) also reserves its 32px and the 8px between them. Same specificity as
+   the rule above, so it follows it, and still below html.phone's override. */
 .has-clue-bar #active-clue-bar { padding-right: 60px; }
+.has-help-btn #active-clue-bar { padding-right: 100px; }
 
 /* Direction label ("Across"/"Down", "In"/"Out") before the bar's clue number. */
 .active-clue-dir {
@@ -95,8 +101,7 @@ html.phone #clue-full {
   padding-bottom: 4px;
 }
 
-/* Primary button: Check on desktop, and the phone's first-visit Start */
-#check-btn,
+/* Primary button: the phone's first-visit Start */
 html.phone .intro-card > button {
   font-family:    var(--theme-font-button);
   font-size:      0.95rem;
@@ -106,9 +111,6 @@ html.phone .intro-card > button {
   border:         none;
   letter-spacing: var(--theme-button-tracking);
 }
-#check-btn:hover:not(:disabled) { background: var(--theme-color-btn-hover); }
-#check-btn:disabled { background: var(--theme-color-btn-disabled); cursor: default; }
-
 /* Clear button — flat, borderless, left-aligned, matching .menu-toggle
    (base.css): all are plain menu-panel rows now, not a bordered pill next to a
    bare checkbox. Color cues (armed, hover) carry entirely through text color
@@ -180,6 +182,10 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 .cell-letter.correct { fill: var(--theme-color-correct-text); }
 .cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 
+/* The direction chevron (Spiral, Marching Bands); each tool sets its stroke width, which
+   scales with its own viewBox. */
+#direction-chevron { stroke: var(--theme-color-active-stroke); opacity: 0.5; }
+
 /* Multi-letter (rebus) cell content. Sized with transform, not font-size: Spiral writes
    its per-puzzle letter size as an SVG presentation attribute, which any CSS font-size
    rule would outrank (e2e/spiral.spec.js asserts exactly that). transform composes with
@@ -212,20 +218,20 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 }
 #keys-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
-/* Menu button (fixed top-right corner, created by setupOptionsMenu) — same
-   var usage as #keys-btn. */
+/* Menu and help buttons (fixed top-right corner, created by setupOptionsMenu and
+   setupHelpMenu) — same var usage as #keys-btn. */
 #menu-btn,
-html.phone #help-btn {
+#help-btn {
   background: var(--theme-color-btn2-bg);
   border:     1px solid var(--theme-color-btn2-border);
   color:      var(--theme-color-muted);
 }
 #menu-btn:hover,
-html.phone #help-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+#help-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
 /* Menu dropdown card — same var usage as #keys-modal. */
 #menu-panel,
-html.phone #help-panel {
+#help-panel {
   background:    var(--theme-color-bg);
   color:         var(--theme-color-text);
   border:        2px solid var(--theme-color-soft-border);
@@ -233,16 +239,20 @@ html.phone #help-panel {
 }
 /* #clear-btn is full width inside the dropdown. */
 #menu-panel #clear-btn { width: 100%; }
-/* On a phone #check-btn is a plain row of the help panel, as #clear-btn is of ☰'s. */
-html.phone #help-panel #check-btn {
+/* Each button of the help panel is a plain row, as #clear-btn is of ☰'s. */
+#help-panel button {
   width:          100%;
+  font-family:    var(--theme-font-button);
   font-size:      0.8rem;
   padding:        6px 8px;
   background:     transparent;
+  border:         none;
   color:          var(--theme-color-text);
   text-align:     left;
+  letter-spacing: var(--theme-button-tracking);
 }
-html.phone #help-panel #check-btn:hover:not(:disabled) { background: var(--theme-color-clue-hover); }
+#help-panel button:hover:not(:disabled) { background: var(--theme-color-clue-hover); }
+#reveal-puzzle-btn.armed { color: var(--theme-color-danger); }
 
 /* Keys modal — the <dialog> dim is its ::backdrop (skeleton sets this transparent) */
 #keys-overlay::backdrop { background: var(--theme-color-overlay); }
@@ -451,10 +461,11 @@ html.phone .clue-item .list-cell.list-cursor.composing {
 .tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
 .tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
 .tool-marching-bands .clue-group.secondary-entry { background: var(--theme-color-secondary-entry); }
+.tool-marching-bands #direction-chevron { stroke-width: 1.6; }
 
 /* Spiral */
 .tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
-.tool-spiral #direction-chevron { stroke: var(--theme-color-active-stroke); stroke-width: 0.9; opacity: 0.5; }
+.tool-spiral #direction-chevron { stroke-width: 0.9; }
 /* Crushword, and Marching Bands when stacked */
 /* Opaque background is load-bearing, not cosmetic: .puzzle-center is
    position:sticky over the clues (each tool's base.css), which scroll directly

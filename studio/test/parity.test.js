@@ -9,17 +9,17 @@ const yaml     = require('js-yaml');
 const { bundleCore, ROOT } = require('../build');
 const { buildFromObject } = require('../../shared/build/buildFromObject');
 const { muddlePuzzle, MUDDLED_DUMP_OPTIONS } = require('../../shared/build/muddleUtils');
-const { TOOLS } = require('../../shared/build/engineBundle');
+const { KINDS } = require('../../shared/build/tools');
 
 // The studio's core is the repo's build path bundled for the browser. These tests prove
-// it produces the CLI's bytes for every example and fixture. See studio/CLAUDE.md for
-// what to do when one fails.
+// it produces the CLI's bytes for every example and fixture. A failure means the
+// studio bundle has drifted from the build path.
 
-const HOOKS = Object.fromEntries(TOOLS.map(k => [k, require(`../../${k}/src/builder`).HOOKS]));
+const HOOKS = Object.fromEntries(KINDS.map(k => [k, require(`../../${k}/src/builder`).HOOKS]));
 
 function sourceFiles() {
   const files = [];
-  for (const kind of TOOLS) {
+  for (const kind of KINDS) {
     files.push(path.join(ROOT, 'examples', `${kind}.yaml`));
     const dir = path.join(ROOT, kind, 'test', 'fixtures');
     for (const f of fs.readdirSync(dir).sort()) if (/\.yaml$/.test(f)) files.push(path.join(dir, f));

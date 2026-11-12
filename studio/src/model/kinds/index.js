@@ -1,5 +1,5 @@
 'use strict';
-// The kinds with a structured editor. Phases 3a–3c added them.
+// The kinds with a structured editor.
 module.exports = {
   STRUCTURED: {
     spiral: require('./spiral'),

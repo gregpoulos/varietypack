@@ -19,7 +19,7 @@ function resizeSummary(model, n2) {
 }
 
 // The grid's size lives in the puzzle's settings, away from the editing controls so a
-// resize isn't triggered by accident (spec §5.2). The form is the confirmation: it says
+// resize isn't triggered by accident. The form is the confirmation: it says
 // what it will set aside before it applies.
 export function MarchingBandsSettings({ model, dispatch }) {
   const N = model.size;

@@ -22,7 +22,7 @@ test('loadPuzzle: parses a valid YAML file', () => {
 });
 
 // Nothing on the build path converts Dates: it relies on the YAML 1.2 parser never making
-// one.
+// one. It is also why docs/AUTHORING.md can tell authors a calendar date needs no quotes.
 test('loadPuzzle: an unquoted date stays a string', () => {
   const tmp = path.join(os.tmpdir(), `builderutils-test-date-${Date.now()}.yaml`);
   fs.writeFileSync(tmp, 'kind: test\ntitle: Hello\ndate: 2026-05-01\n');
@@ -34,7 +34,7 @@ test('loadPuzzle: an unquoted date stays a string', () => {
 });
 
 test('loadPuzzle: throws on missing file', () => {
-  assert.throws(() => loadPuzzle('/no/such/file.yaml'), /Cannot read file/);
+  assert.throws(() => loadPuzzle('/no/such/file.yaml'), /cannot read file/);
 });
 
 test('loadPuzzle: throws on invalid YAML syntax', () => {
@@ -51,7 +51,7 @@ test('loadPuzzle: throws when YAML content is not an object', () => {
   const tmp = path.join(os.tmpdir(), `builderutils-test-${Date.now()}.yaml`);
   fs.writeFileSync(tmp, '- just a list\n- not an object\n');
   try {
-    assert.throws(() => loadPuzzle(tmp), /does not contain a valid YAML object/);
+    assert.throws(() => loadPuzzle(tmp), /does not contain a YAML object/);
   } finally {
     fs.rmSync(tmp, { force: true });
   }

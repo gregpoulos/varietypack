@@ -1,11 +1,11 @@
 'use strict';
-// The Crushword kind module (the contract is at the top of the Phase 2 plan).
+// The Crushword kind module (the contract is at the top of `spiral.js`).
 //
 // A rows × cols grid of cells and blocks; every slot (a run of two or more open cells,
 // across or down) is an entry. Numbers are derived (`deriveSlots`) and shift whenever a
 // block moves, so a clue belongs to its slot's direction and start cell, never to its
 // number: the key is 'A r,c' or 'D r,c' (0-based). After a grid edit a clue stays with a
-// slot that still starts at its cell; otherwise it goes to the orphan tray (spec §4.4).
+// slot that still starts at its cell; otherwise it goes to the orphan tray.
 //
 // Model:
 //   { kind: 'crushword', header, maxCellLetters: number|null, rows, cols,
@@ -241,7 +241,7 @@ function toYaml(model) {
   };
 }
 
-// ── completeness (spec §6 layer 1) ──────────────────────────────────────────
+// ── completeness ──────────────────────────────────────────
 
 const MAX_LISTED = 10;
 const place = (key) => { const [r, c] = parseCell(key); return `(${r + 1}, ${c + 1})`; };

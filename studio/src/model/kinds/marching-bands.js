@@ -1,5 +1,5 @@
 'use strict';
-// The Marching Bands kind module (the contract is at the top of the Phase 2 plan).
+// The Marching Bands kind module (the contract is at the top of `spiral.js`).
 //
 // An N×N grid of cells (the center is a block when N is odd) with one cut per row, over
 // the row's cells (skipping the center), and one cut per band, over bandCells(k, N): the
@@ -269,7 +269,7 @@ function toYaml(model) {
   };
 }
 
-// ── completeness (spec §6 layer 1) ──────────────────────────────────────────
+// ── completeness ──────────────────────────────────────────
 
 const MAX_LISTED = 10;
 

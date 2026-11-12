@@ -177,23 +177,43 @@ test('setupFillList: sync marks a checked cell .correct in every row holding it,
   assert.deepEqual(marks(items[1].li), [false, false]);
 });
 
-// A timer the test runs by hand, so a 600ms flash needn't be waited out.
+// A timer the test runs by hand, so a 600ms flash needn't be waited out. A cleared timer
+// stays in `queued` as a no-op, so its index still counts the timers started.
 function withFakeTimers(fn) {
-  const saved = globalThis.setTimeout, queued = [];
+  const saved = globalThis.setTimeout, savedClear = globalThis.clearTimeout, queued = [];
   globalThis.setTimeout = f => { queued.push(f); return queued.length; };
-  try { return fn(queued); } finally { globalThis.setTimeout = saved; }
+  globalThis.clearTimeout = id => { if (id) queued[id - 1] = () => {}; };
+  try { return fn(queued); } finally {
+    globalThis.setTimeout = saved;
+    globalThis.clearTimeout = savedClear;
+  }
 }
 
-test('setupFillList: flash marks every cell the predicate matches, in every row, until its timer ends', () => {
+test('setupFillList: flash marks every cell id it is given, in every row, until its timer ends', () => {
   const { items, fillList } = fillHarness();
   withFakeTimers(queued => {
     const flashed = li => cellsOf(li).map(c => has(c, 'flash-wrong'));
-    fillList.flash(n => n === 3);
+    fillList.flash([3]);
     assert.deepEqual(flashed(items[0].li), [false, false, true]);
     assert.deepEqual(flashed(items[1].li), [true, false]);
     queued.forEach(f => f());
     assert.deepEqual(flashed(items[0].li), [false, false, false]);
     assert.deepEqual(flashed(items[1].li), [false, false]);
+  });
+});
+
+test('setupFillList: a second flash is not cut short by the first one\'s timer', () => {
+  const { items, fillList } = fillHarness();
+  withFakeTimers(queued => {
+    const flashed = li => cellsOf(li).map(c => has(c, 'flash-wrong'));
+    fillList.flash([1, 3]);
+    fillList.flash([3]);
+    // The first flash ended when the second began, on the cell they do not share too.
+    assert.deepEqual(flashed(items[0].li), [false, false, true]);
+    queued[0]();
+    assert.deepEqual(flashed(items[0].li), [false, false, true]);
+    queued[1]();
+    assert.deepEqual(flashed(items[0].li), [false, false, false]);
   });
 });
 

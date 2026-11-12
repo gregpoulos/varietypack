@@ -4,16 +4,12 @@
 // tool process's startup, which only a --minify build should pay.
 let cleanCss;
 
-// Strip HTML comments and trim incidental whitespace. This pass is
-// string-unaware, so it must run ONLY on segments outside <script>/<style>: a
-// /* … */ or // sequence inside a JS/JSON string literal (e.g. PUZZLE_DATA,
-// where author text can contain anything) or a CSS string value (e.g.
-// content: "…") would otherwise be deleted, silently corrupting data or
-// breaking the document. terser and clean-css handle their own blocks safely.
+// Collapse blank-line runs and trim trailing whitespace. This pass is string-unaware, and
+// outside <script>/<style> there are no JS or CSS comments to strip: /* … */ and // are
+// page text there (a puzzle title can contain either), so it must never remove them.
+// terser and clean-css handle comments inside their own blocks.
 function simplePass(text) {
   return text
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^[^\S\n]*\/\/[^\n]*\n/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[^\S\n]+$/gm, '');
 }
@@ -41,7 +37,7 @@ function minifyStyle(css) {
 }
 
 // Minify the HTML bundle: terser-minify each <script> body, clean-css-minify each
-// <style> body, and run the comment/whitespace pass on everything outside those
+// <style> body, and run the whitespace pass on everything outside those
 // blocks. Splitting on the block boundary keeps simplePass away from JS and CSS
 // string contents (see its note). The backreference \2 matches each closing tag
 // to its opening tag name.

@@ -6,30 +6,16 @@ const { buildFromObject } = require('../../../shared/build/buildFromObject');
 const { validateEmbedOrigin } = require('../../../shared/build/validation');
 const { muddlePuzzle, MUDDLED_DUMP_OPTIONS } = require('../../../shared/build/muddleUtils');
 
-const HOOKS = {
-  'snake-charmer':  require('../../../snake-charmer/src/builder').HOOKS,
-  'spiral':         require('../../../spiral/src/builder').HOOKS,
-  'marching-bands': require('../../../marching-bands/src/builder').HOOKS,
-  'crushword':      require('../../../crushword/src/builder').HOOKS,
-};
-const KINDS = Object.keys(HOOKS);
+const { KINDS, hooksFor, kindError } = require('../../../shared/build/tools');
 
 const { SHAPES, SHAPE_NAMES, autoShape } = require('../../../snake-charmer/src/layout');
 
 /**
- * Shapes whose geometry exists for a ring of N cells (spec §6 layer 3, used ahead of
- * time).
+ * Shapes whose geometry exists for a ring of N cells (some fail only when the layout
+ * runs, after validation passes, so the studio probes them ahead of time).
  */
 function feasibleShapes(N) {
   return SHAPE_NAMES.filter(name => { try { SHAPES[name].computeRing(N); return true; } catch { return false; } });
-}
-
-// Same messages as shared/cli/toolRegistry.js's kind check.
-function kindError(puzzle) {
-  const kind = puzzle && puzzle.kind;
-  if (typeof kind !== 'string') return 'missing or invalid "kind" field';
-  if (!Object.hasOwn(HOOKS, kind)) return `unknown kind "${kind}"`;
-  return null;
 }
 
 function parseYaml(text) {
@@ -45,19 +31,19 @@ function dumpYaml(obj) { return yaml.dump(obj, MUDDLED_DUMP_OPTIONS); }
 function validate(puzzle) {
   const err = kindError(puzzle);
   if (err) return { errors: [err], warnings: [] };
-  return HOOKS[puzzle.kind].validateFn(puzzle);
+  return hooksFor(puzzle.kind).validateFn(puzzle);
 }
 
 function build(puzzle, options = {}) {
   const err = kindError(puzzle);
   if (err) throw new Error(err);
-  return buildFromObject(puzzle, options, HOOKS[puzzle.kind]);
+  return buildFromObject(puzzle, options, hooksFor(puzzle.kind));
 }
 
 function muddle(puzzle) {
   const err = kindError(puzzle);
   if (err) return { errors: [err], warnings: [], muddled: null, text: null };
-  const r = muddlePuzzle(puzzle, HOOKS[puzzle.kind]);
+  const r = muddlePuzzle(puzzle, hooksFor(puzzle.kind));
   return { ...r, text: r.muddled ? dumpYaml(r.muddled) : null };
 }
 

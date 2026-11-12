@@ -6,6 +6,7 @@
 // names are Playwright `devices` descriptors.
 
 const path = require('path');
+const { buildPuzzleFile } = require('../test/helpers');
 
 // The smallest current iPhone (WebKit) and a large Android (Chromium) — the width
 // extremes a layout has to survive, one per mobile engine Playwright can emulate.
@@ -36,7 +37,7 @@ const FIXTURES = [
 function buildFixtures(tmpDir) {
   return FIXTURES.map(f => {
     const htmlPath = path.join(tmpDir, f.key.replace('/', '--') + '.html');
-    require(`../${f.tool}/cli`).buildPuzzle(f.yamlPath, htmlPath);
+    buildPuzzleFile(f.yamlPath, htmlPath);
     return { ...f, htmlPath };
   });
 }

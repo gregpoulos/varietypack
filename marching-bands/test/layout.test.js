@@ -174,3 +174,50 @@ test('arrowTarget: an even grid has no block to jump', () => {
   assert.equal(arrowTarget(6, 0, 1, 4), 7);
   assert.equal(arrowTarget(7, 1, 0, 4), 11);
 });
+
+// ── leadingStep / chevronPath ────────────────────────────────────────────────
+
+const { leadingStep, chevronPath } = require('../src/layout.mjs');
+
+test('leadingStep: a row runs right, and its last cell has no step', () => {
+  const row = rowCells(1, 5);
+  assert.deepEqual(leadingStep('row', row, row[1], 5), { dr: 0, dc: 1 });
+  assert.equal(leadingStep('row', row, row.at(-1), 5), null);
+});
+
+test('leadingStep: a band turns clockwise, a corner cell already leaving by the new side', () => {
+  const band = bandCells(0, 5);                 // 1..5, 10 15 20 25, 24..21, 16 11 6
+  assert.deepEqual(leadingStep('band', band, 3, 5), { dr: 0, dc: 1 });   // top edge
+  assert.deepEqual(leadingStep('band', band, 5, 5), { dr: 1, dc: 0 });   // top-right corner
+  assert.deepEqual(leadingStep('band', band, 25, 5), { dr: 0, dc: -1 }); // bottom-right corner
+  assert.deepEqual(leadingStep('band', band, 21, 5), { dr: -1, dc: 0 }); // bottom-left corner
+  assert.equal(leadingStep('band', band, band.at(-1), 5), null);
+});
+
+test('leadingStep: a band of one cell has no step', () => {
+  const band = bandCells(2, 5);                 // the black center square's band
+  assert.equal(leadingStep('band', band, band[0], 5), null);
+});
+
+// Every cell's chevron sits on its leading edge: both arms on the edge, spanning it, and
+// the tip beyond the edge at its middle, pointing the way the step goes.
+test('chevronPath: arms span the leading edge and the tip leaves the cell', () => {
+  const S = 34;
+  const nums = d => d.match(/-?\d+(\.\d+)?/g).map(Number);
+  // Cell 1 (row 0, col 0) heading right: the right edge is x = S.
+  let [x1, y1, tx, ty, x2, y2] = nums(chevronPath(1, { dr: 0, dc: 1 }, 5, S));
+  assert.deepEqual([x1, x2], [S, S]);
+  assert.deepEqual([Math.min(y1, y2), Math.max(y1, y2)], [0, S]);
+  assert.equal(ty, S / 2);
+  assert.ok(tx > S);
+  // Cell 5 (row 0, col 4) heading down: the bottom edge is y = S.
+  [x1, y1, tx, ty, x2, y2] = nums(chevronPath(5, { dr: 1, dc: 0 }, 5, S));
+  assert.deepEqual([y1, y2], [S, S]);
+  assert.deepEqual([Math.min(x1, x2), Math.max(x1, x2)], [4 * S, 5 * S]);
+  assert.equal(tx, 4 * S + S / 2);
+  assert.ok(ty > S);
+});
+
+test('chevronPath: no step gives no path', () => {
+  assert.equal(chevronPath(1, null, 5, 34), '');
+});

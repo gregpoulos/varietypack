@@ -1,8 +1,6 @@
 /* Shared print resets live in shared/themes/print-base.css (concatenated just
    before this file). Only spiral-specific print rules belong here. */
 @media print {
-  #direction-chevron { display: none; }
-
   .puzzle-main   { padding: 8px 16px; }
   .puzzle-header { margin-bottom: 8px; }
   .byline        { font-size: 0.8rem; }

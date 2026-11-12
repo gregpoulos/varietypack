@@ -4,7 +4,8 @@
 const fs = require('fs');
 const path = require('path');
 const esbuild = require('esbuild');
-const { engineJs, TOOLS } = require('../shared/build/engineBundle');
+const { engineJs } = require('../shared/build/engineBundle');
+const { KINDS } = require('../shared/build/tools');
 
 const ROOT = path.resolve(__dirname, '..');
 const VIRTUAL_ROOT = '/varietypack';
@@ -30,7 +31,7 @@ function assetFiles() {
     ...fs.readdirSync(shared).filter(f => /\.css$/.test(f)).map(f => path.join(shared, f)),
     ...walk(path.join(shared, 'themes'), p => /\.(css|woff2)$/.test(p)),
   ];
-  for (const tool of TOOLS) {
+  for (const tool of KINDS) {
     files.push(...walk(path.join(ROOT, tool, 'src', 'template'), p => /\.(html|css)$/.test(p)));
   }
   return files;
@@ -61,7 +62,7 @@ function plugin() {
       build.onResolve({ filter: /^\.\/engineBundle$/ }, a => (
         a.importer.startsWith(ROOT) ? { path: 'vp-engines', namespace: 'vp-engines' } : undefined));
       build.onLoad({ filter: /.*/, namespace: 'vp-engines' }, () => {
-        const scripts = Object.fromEntries(TOOLS.map(t => [t, engineJs(t)]));
+        const scripts = Object.fromEntries(KINDS.map(t => [t, engineJs(t)]));
         return {
           contents: `const scripts = ${JSON.stringify(scripts)};\n` +
             'module.exports = { engineJs: (tool) => scripts[tool] };',

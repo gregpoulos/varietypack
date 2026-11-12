@@ -3,8 +3,10 @@
 const path = require('path');
 const fs   = require('fs');
 const yaml = require('js-yaml');
-const { TOOLS, loadKnownPuzzle } = require('./toolRegistry');
-const { muddlePuzzle, MUDDLED_DUMP_OPTIONS } = require('../build/muddleUtils');
+const { loadKnownPuzzle } = require('./cliTools');
+const { hooksFor } = require('../build/tools');
+const { muddlePuzzle, ALREADY_MUDDLED, MUDDLED_DUMP_OPTIONS } = require('../build/muddleUtils');
+const { isSameFile }        = require('./puzzleFiles');
 const parseCliArgs          = require('./parseCliArgs');
 const { formatOptionsHelp, writeHelpIfRequested } = require('./globalHelp');
 
@@ -14,7 +16,7 @@ const OPTIONS = {
   force: { type: 'boolean', short: 'f', description: 'Overwrite output if it already exists' },
 };
 
-const HELP = `Produce a muddled YAML — a distributable version with answers replaced by hashes.
+const HELP = `Produce a muddled YAML — a distributable version with each answer replaced by its cell count, plus one board hash for the whole puzzle.
 
 Usage: varietypack muddle <file.yaml> [options]
 
@@ -57,16 +59,15 @@ function muddleCommand(args, { stdout = process.stdout, stderr = process.stderr 
   const inputPath = path.resolve(positionals[0]);
   const force     = values.force ?? false;
 
-  const { error, puzzle, kind } = loadKnownPuzzle(inputPath);
-  if (error) {
-    stderr.write(`${path.basename(inputPath)}: error\n  ${error}\n`);
+  // A file that won't load, or is already muddled, has nothing in it for the author to
+  // fix, so it gets one line and no "Fix errors" advice.
+  const { error = null, puzzle, kind } = loadKnownPuzzle(inputPath);
+  if (error || puzzle.boardHash !== undefined) {
+    stderr.write(`${path.basename(inputPath)}: error\n  ${error ?? ALREADY_MUDDLED}\n`);
     return 1;
   }
 
-  const { errors, warnings, muddled } = muddlePuzzle(puzzle, {
-    validateFn: TOOLS[kind].getValidator(),
-    prepareFn:  TOOLS[kind].getPreparer(),
-  });
+  const { errors, warnings, muddled } = muddlePuzzle(puzzle, hooksFor(kind));
 
   if (warnings.length > 0) {
     for (const w of warnings) stderr.write(`  ${w}\n`);
@@ -83,11 +84,17 @@ function muddleCommand(args, { stdout = process.stdout, stderr = process.stderr 
     ? path.resolve(values.output)
     : muddleOutputPath(inputPath);
 
+  // --force overwrites an old output, never the puzzle being muddled (see buildOneFile).
+  if (isSameFile(inputPath, outPath)) {
+    stderr.write(`Error: output path is the input file: ${outPath}\n`);
+    return 1;
+  }
   if (!force && fs.existsSync(outPath)) {
     stderr.write(`Output already exists: ${outPath}. Use -f to overwrite.\n`);
     return 1;
   }
 
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, yaml.dump(muddled, MUDDLED_DUMP_OPTIONS));
   stdout.write(`${path.basename(inputPath)} → ${path.basename(outPath)}\n`);
   return 0;

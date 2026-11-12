@@ -4,10 +4,11 @@ const { test } = require('node:test');
 const assert   = require('node:assert/strict');
 const vm       = require('vm');
 const esbuild  = require('esbuild');
-const { engineJs, TOOLS } = require('../build/engineBundle');
+const { engineJs } = require('../build/engineBundle');
+const { KINDS } = require('../build/tools');
 
 test('engineJs: every tool has a script that parses', () => {
-  for (const tool of TOOLS) {
+  for (const tool of KINDS) {
     const js = engineJs(tool);
     assert.ok(js.includes('PUZZLE_DATA'), `${tool}: the engine reads the puzzle data`);
     assert.doesNotThrow(() => new vm.Script(js), tool);
@@ -39,7 +40,7 @@ test('engineJs: bundles each tool once per process', () => {
 // injectTemplate inserts the script as it is, so a closing </script or an opening <!--
 // anywhere in it would end or confuse the page's script element.
 test('engineJs: no script contains </script or <!--', () => {
-  for (const tool of TOOLS) {
+  for (const tool of KINDS) {
     assert.doesNotMatch(engineJs(tool), /<\/script|<!--/i, tool);
   }
 });
@@ -48,7 +49,7 @@ test('engineJs: no script contains </script or <!--', () => {
 // so without it the page script would run sloppy (an assignment to an undeclared name
 // would create a global instead of throwing).
 test('engineJs: every script opens with the strict-mode directive', () => {
-  for (const tool of TOOLS) {
+  for (const tool of KINDS) {
     assert.match(engineJs(tool), /^"use strict";/, tool);
   }
 });

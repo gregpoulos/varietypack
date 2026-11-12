@@ -13,7 +13,7 @@ function countEntries(node) {
 export function MuddledPanel({ doc, check, onTheme, onExport }) {
   const m = doc.muddled;
   const title = check?.title ?? m.title ?? 'Untitled';
-  const byline = [m.author, m.date].filter(Boolean).join(' · ');
+  const byline = [m.author, m.date].filter(v => v !== undefined).join(' · ');
   const problems = check ? [...(check.parseError ? [check.parseError] : []), ...check.errors] : [];
   return (
     <section id="muddled-panel" aria-label="Muddled file">

@@ -7,7 +7,7 @@ const DEFAULT_THEME = 'broadsheet';
 
 // The Test-solve view: the real built page in a sandboxed frame. The frame has no
 // allow-same-origin, so the engines' storage throws (and they carry on without saving)
-// and the preview can't reach the studio's drafts; see spec §7.
+// and the preview can't reach the studio's drafts.
 export function Preview({ state, dispatch }) {
   const { doc, check } = state;
   const muddled = doc.mode === 'muddled';

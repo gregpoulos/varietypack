@@ -1,5 +1,12 @@
 {
   "name": "varietypack",
+  "version": "0.1.0",
+  "description": "Turns YAML definitions of variety word puzzles into self-contained, printable HTML pages.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gregpoulos/varietypack.git"
+  },
   "private": true,
   "bin": {
     "varietypack": "./cli.js"
@@ -11,6 +18,8 @@
     "test": "node --test test/*.test.js */test/*.test.js",
     "lint": "eslint .",
     "test:e2e": "playwright test",
+    "test:e2e:quick": "playwright test --project=chromium",
+    "test:e2e:tool": "node e2e/run-tool.js",
     "capture:mobile": "node e2e/capture-mobile.js",
     "build:studio": "node studio/build.js"
   },

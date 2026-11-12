@@ -17,6 +17,7 @@ function makeLatch(opts = {}) {
     getBoardHash: opts.getBoardHash ?? (() => 'abc123'),
     getSolution:  opts.getSolution  ?? (() => 'solution'),
     getElapsedMs: opts.getElapsedMs ?? (() => 1234),
+    getHelp:      opts.getHelp      ?? (() => ({ checks: 0, reveals: 0 })),
     onComplete:   opts.onComplete,
     embedOrigin:  opts.embedOrigin,
     _postMessage: (msg, targetOrigin) => { msgs.push(msg); targets.push(targetOrigin); },
@@ -129,6 +130,7 @@ test('CustomEvent options: bubbles and composed are true', () => {
     puzzleRoot,
     kind: 'spiral', title: 'T', date: '2026',
     getBoardHash: () => 'h', getSolution: () => 's', getElapsedMs: () => 0,
+    getHelp: () => ({ checks: 0, reveals: 0 }),
     _postMessage: () => {},
   });
   try {
@@ -209,3 +211,30 @@ test('latch: without embedOrigin, posts once to "*" without the solution', () =>
   assert.ok(!('solution' in msgs[0]));
 });
 
+
+test('CustomEvent detail and the posted message carry the help counts', () => {
+  const { latch, events, msgs } = makeLatch({ getHelp: () => ({ checks: 3, reveals: 2 }) });
+  latch.check(true);
+  assert.strictEqual(events[0].detail.checks, 3);
+  assert.strictEqual(events[0].detail.reveals, 2);
+  assert.strictEqual(msgs[0].checks, 3);
+  assert.strictEqual(msgs[0].reveals, 2);
+});
+
+test('the help counts go to the embed host too, beside the solution', () => {
+  const { latch, msgs } = makeLatch({
+    embedOrigin: 'https://host.example', getHelp: () => ({ checks: 1, reveals: 0 }),
+  });
+  latch.check(true);
+  assert.strictEqual(msgs[0].checks, 1);
+  assert.strictEqual(msgs[0].reveals, 0);
+  assert.ok('solution' in msgs[0]);
+});
+
+test('the help counts are read when the latch fires, not when it is built', () => {
+  let counts = { checks: 0, reveals: 0 };
+  const { latch, events } = makeLatch({ getHelp: () => counts });
+  counts = { checks: 5, reveals: 1 };
+  latch.check(true);
+  assert.strictEqual(events[0].detail.checks, 5);
+});

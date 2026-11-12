@@ -16,7 +16,7 @@
   /* base.css's layout (grid on top, flex column; two clue columns via
      .clue-columns) is already print-appropriate, but @media print shares the
      cascade with screen styles — a narrow-viewport breakpoint could otherwise
-     leak into print. Re-declare both explicitly per root CLAUDE.md ->
+     leak into print. Re-declare both explicitly per docs/ARCHITECTURE.md ->
      "Explicit display in print rules". */
   .puzzle-body   { display: flex; flex-direction: column; }
   .clue-columns  { display: grid; grid-template-columns: 1fr 1fr; max-width: none; }

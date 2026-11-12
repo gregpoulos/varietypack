@@ -7,7 +7,7 @@ const { buildFromObject } = require('../build/buildFromObject');
 // buildFromObject is tool-agnostic scaffolding (validate → hashed computation → prepareFn
 // → buildHtmlFn). These tests exercise it directly with minimal stub hooks instead of
 // through a real tool's builder, so the behavior is covered once rather than once per
-// tool — see root CLAUDE.md's builder `hashed` pattern note.
+// tool — see docs/ARCHITECTURE.md's `hashed` pattern.
 
 const alwaysOk = () => ({ errors: [], warnings: [] });
 

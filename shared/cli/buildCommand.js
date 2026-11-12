@@ -2,11 +2,11 @@
 
 const path = require('path');
 const fs = require('fs');
-const yaml = require('js-yaml');
-const { TOOLS, isKnownKind, listYamlFiles } = require('./toolRegistry');
+const { extraOptionsFor, loadKnownPuzzle, listYamlFiles } = require('./cliTools');
+const { KINDS } = require('../build/tools');
 const { GLOBAL_OPTIONS, GLOBAL_OPTIONS_HELP, formatOptionsHelp, writeHelpIfRequested } = require('./globalHelp');
-const { runToolBuild } = require('./toolCli');
-const { htmlName } = require('./puzzleFiles');
+const { buildOneFile } = require('./buildOneFile');
+const { htmlName, defaultOutputPath } = require('./puzzleFiles');
 const parseCliArgs = require('./parseCliArgs');
 
 const buildIndex = require('./buildIndex');
@@ -14,6 +14,14 @@ const buildIndex = require('./buildIndex');
 const BUILD_INDEX_OPTION = {
   'build-index': { type: 'boolean', description: 'Write index.html linking all built puzzles (default: off)' },
 };
+
+// One heading and option list per tool that has options of its own.
+function toolOptionsHelp() {
+  return KINDS
+    .filter(kind => Object.keys(extraOptionsFor(kind)).length > 0)
+    .map(kind => `${kind} options:\n${formatOptionsHelp(extraOptionsFor(kind))}`)
+    .join('\n\n');
+}
 
 const HELP = `Build one or more puzzle files.
 
@@ -27,44 +35,16 @@ ${GLOBAL_OPTIONS_HELP}
 Directory options:
 ${formatOptionsHelp(BUILD_INDEX_OPTION)}
 
-Tool-specific options (e.g. --shape for snake-charmer) are documented in each
-tool's docs/SPEC.md. Given a directory, each applies only to puzzles of its kind.
+${toolOptionsHelp()}
+
+Given a directory, each tool's options apply only to puzzles of its kind.
 
 When given a directory, builds all YAML puzzle files found in it.
 `;
 
-function readYamlMeta(filePath, stderr) {
-  const name = path.basename(filePath);
-  let content;
-  try {
-    content = fs.readFileSync(filePath, 'utf8');
-  } catch (err) {
-    if (err.code === 'ENOENT') {
-      stderr.write(`File not found: "${filePath}"\n`);
-      return null;
-    }
-    throw err;
-  }
-  let doc;
-  try {
-    doc = yaml.load(content);
-  } catch (err) {
-    stderr.write(`Could not parse "${name}" as YAML: ${err.message}\n`);
-    return null;
-  }
-  if (typeof doc?.kind !== 'string') {
-    stderr.write(`No "kind" field found in "${name}".\n`);
-    return null;
-  }
-  return {
-    kind: doc.kind,
-    title: typeof doc.title === 'string' ? doc.title : path.basename(filePath, path.extname(filePath)),
-  };
-}
-
 // The parsed values that `kind`'s CLI takes, so --shape reaches only the Snake Charmers.
 function valuesFor(kind, values) {
-  const options = { ...GLOBAL_OPTIONS, ...TOOLS[kind].getCli().extraOptions };
+  const options = { ...GLOBAL_OPTIONS, ...extraOptionsFor(kind) };
   return Object.fromEntries(Object.entries(values).filter(([name]) => Object.hasOwn(options, name)));
 }
 
@@ -72,7 +52,7 @@ function valuesFor(kind, values) {
 // anywhere among them. Throws on a bad flag or a second path. `watch` parses with it
 // too, since it hands its arguments to build.
 function parseBuildArgs(args) {
-  const allToolOptions = Object.assign({}, ...Object.values(TOOLS).map(tool => tool.getCli().extraOptions));
+  const allToolOptions = Object.assign({}, ...KINDS.map(extraOptionsFor));
   return parseCliArgs(args, { ...GLOBAL_OPTIONS, ...BUILD_INDEX_OPTION, ...allToolOptions }, { maxPositionals: 1 });
 }
 
@@ -121,24 +101,50 @@ function buildCommand(args, { stdout = process.stdout, stderr = process.stderr }
   }
   if (outputDir) fs.mkdirSync(outputDir, { recursive: true });
 
+  // A file that can't build (unreadable, not a puzzle, or an unknown kind) is reported
+  // here and left out of the shared-page check, so it can't block a valid file sharing
+  // its base name. Each file is parsed once, here; the build below reuses the result.
+  let anyFailed = false;
+  const buildable = [];
+  for (const job of jobs) {
+    const { error, puzzle, kind } = loadKnownPuzzle(job.file);
+    if (error) {
+      stderr.write(`"${path.basename(job.file)}": ${error}\n`);
+      anyFailed = true;
+    } else {
+      const title = typeof puzzle.title === 'string' ? puzzle.title : path.basename(job.file, path.extname(job.file));
+      buildable.push({ ...job, kind, puzzle, title });
+    }
+  }
+
+  // Files that would build to the same page: none of them builds, so --force (or a
+  // watch rebuild) can't have one silently overwrite another. Pages are grouped with
+  // case folded: they don't exist yet to compare as files, and on a case-insensitive disk
+  // a.html and A.html are one file. That also refuses the pair on a case-sensitive disk.
+  const byOutput = new Map();
+  for (const job of buildable) {
+    const out = path.resolve(job.output ?? defaultOutputPath(path.resolve(job.file))).toLowerCase();
+    byOutput.set(out, [...(byOutput.get(out) ?? []), job]);
+  }
+  const skipped = new Set();
+  for (const group of byOutput.values()) {
+    if (group.length < 2) continue;
+    const names = group.map(job => `"${path.basename(job.file)}"`);
+    const list = `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+    const which = group.length === 2 ? 'both' : 'all';
+    stderr.write(`Error: ${list} would ${which} build to ${htmlName(group[0].file)}; rename one.\n`);
+    for (const job of group) skipped.add(job);
+    anyFailed = true;
+  }
+
   // A flag the puzzle's tool can't take is an error only for a named file;
   // across a directory, each puzzle just gets the flags for its kind.
   const strict = !isDir;
 
-  let anyFailed = false;
   const puzzles = [];
-  for (const { file, output } of jobs) {
-    const meta = readYamlMeta(file, stderr);
-    if (!meta) {
-      anyFailed = true;
-      continue;
-    }
-    const { kind, title } = meta;
-    if (!isKnownKind(kind)) {
-      stderr.write(`"${path.basename(file)}": unknown kind "${kind}".\n`);
-      anyFailed = true;
-      continue;
-    }
+  for (const job of buildable) {
+    if (skipped.has(job)) continue;
+    const { file, output, kind, puzzle, title } = job;
     const toolValues = valuesFor(kind, values);
     const unused = strict && Object.keys(values).find(name => !Object.hasOwn(toolValues, name));
     if (unused) {
@@ -146,7 +152,7 @@ function buildCommand(args, { stdout = process.stdout, stderr = process.stderr }
       anyFailed = true;
       continue;
     }
-    const status = runToolBuild(TOOLS[kind].getCli(), { input: file, values: { ...toolValues, output } }, { stdout, stderr });
+    const status = buildOneFile({ input: file, loaded: { puzzle, kind }, values: { ...toolValues, output } }, { stdout, stderr });
     if (status !== 0) {
       anyFailed = true;
     } else {

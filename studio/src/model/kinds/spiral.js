@@ -1,7 +1,8 @@
 'use strict';
-// The Spiral kind module: the reference implementation of the kind-module contract
-// (.superpowers/plans/2026-10-05-studio/phase-2-spiral-editor.md, "The kind-module
-// contract"). Pure and CommonJS.
+// The Spiral kind module: the reference implementation of the kind-module contract.
+// Every kind module exports `kind`, `sizeFields`, `isModel`, `newModel`, `fromYaml`,
+// `toYaml`, `completeness` and `commands`; anything else it exports serves its own
+// editor. Pure and CommonJS.
 //
 // Model:
 //   { kind: 'spiral', header, cells: string[],          // inward order: index 0 is cell 1 (outermost)
@@ -115,7 +116,7 @@ function fromYaml(puzzle) {
   const outReading = outLists.flat();      // reading order: reading position k is cell T-1-k
   const warnings = [];
 
-  // Inward letters win a conflict (spec §4.3). Outward reads each cell backward, so a
+  // Inward letters win a conflict. Outward reads each cell backward, so a
   // rebus it spells backward is no conflict.
   for (let i = 0; i < T; i++) {
     const theirs = outReading[T - 1 - i];
@@ -186,7 +187,7 @@ function toYaml(model) {
   return { kind, ...headerToYaml(model.header), inward: entriesFor('inward'), outward: entriesFor('outward') };
 }
 
-// ── completeness (spec §6 layer 1) ──────────────────────────────────────────
+// ── completeness ──────────────────────────────────────────
 
 const capital = (s) => s[0].toUpperCase() + s.slice(1);
 

@@ -6,7 +6,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 
-const { TOOLS } = require('../shared/cli/toolRegistry');
+const { KINDS } = require('../shared/build/tools');
 const { main } = require('../cli');
 
 const CLI = path.resolve(__dirname, '..', 'cli.js');
@@ -21,8 +21,7 @@ const PER_KIND_FIXTURE = {
   'crushword':      path.resolve(__dirname, '..', 'crushword/test/fixtures/cw-9.yaml'),
 };
 
-// In-process invocation of the dispatcher's main(), which runs each tool's CLI
-// in-process too.
+// In-process invocation of the dispatcher's main().
 function run(...args) {
   let out = '';
   let err = '';
@@ -34,7 +33,7 @@ function run(...args) {
 }
 
 // cli.js run as a real program, for what only a process shows (see the
-// entry-point tests below).
+// entry-point test below).
 function runSubprocess(...args) {
   return spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
 }
@@ -60,17 +59,22 @@ test('build: --help writes build usage and exits 0', () => {
   assert.match(r.stdout, /Build one or more puzzle files/);
 });
 
+test('build: --help lists each tool\'s own options under its name', () => {
+  const r = run('build', '--help');
+  assert.match(r.stdout, /snake-charmer options:\n\s+--shape/);
+});
+
 test('unknown subcommand exits 1 with error', () => {
   const r = run('bogus-subcommand');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /Unknown subcommand/i);
 });
 
-// ── entry points run as real programs ─────────────────────────────────────────
+// ── entry point runs as a real program ────────────────────────────────────────
 //
 // Everything else here calls main() in-process, which never reaches the
-// `require.main === module` guard each cli.js uses to exit with its code.
-// These run each entry point as `node <file>`, the way a user does.
+// `require.main === module` guard cli.js uses to exit with its code.
+// This runs it as `node cli.js`, the way a user does.
 
 test('cli.js runs as a program and builds', () => {
   const out = path.join(tmpDir(), 'out.html');
@@ -78,18 +82,6 @@ test('cli.js runs as a program and builds', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.ok(fs.existsSync(out));
 });
-
-for (const kind of Object.keys(TOOLS)) {
-  test(`${kind}/cli.js runs as a program, builds, and exits with its code`, () => {
-    const cli = path.join(TOOLS[kind].dir, 'cli.js');
-    const out = path.join(tmpDir(), 'out.html');
-    const ok = spawnSync(process.execPath, [cli, PER_KIND_FIXTURE[kind], '-o', out], { encoding: 'utf8' });
-    assert.equal(ok.status, 0, ok.stderr);
-    assert.ok(fs.existsSync(out));
-    const bad = spawnSync(process.execPath, [cli, PER_KIND_FIXTURE[kind], '--bogus'], { encoding: 'utf8' });
-    assert.equal(bad.status, 1);
-  });
-}
 
 test('build: --embed-origin reaches PUZZLE_DATA', () => {
   const out = path.join(tmpDir(), 'out.html');
@@ -100,7 +92,7 @@ test('build: --embed-origin reaches PUZZLE_DATA', () => {
 
 // ── build: single-file auto-detection, table-driven across all kinds ──────────
 
-for (const kind of Object.keys(TOOLS)) {
+for (const kind of KINDS) {
   test(`build: auto-detects ${kind} from kind field and builds via dispatcher`, () => {
     const out = path.join(tmpDir(), 'out.html');
     const r = run('build', PER_KIND_FIXTURE[kind], '-o', out);
@@ -112,7 +104,7 @@ for (const kind of Object.keys(TOOLS)) {
 test('build: yaml file not found exits 1', () => {
   const r = run('build', 'nonexistent.yaml');
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /not found/i);
+  assert.match(r.stderr, /^"nonexistent\.yaml": cannot read file/);
 });
 
 test('build: yaml with no kind field exits 1', () => {
@@ -125,7 +117,7 @@ test('build: yaml with no kind field exits 1', () => {
 });
 
 // `toString`/`constructor` are inherited by every plain object, so a bare
-// `TOOLS[kind]` lookup would treat them as known kinds.
+// `TOOL_HOOKS[kind]` lookup would treat them as known kinds.
 for (const kind of ['widget', 'toString', 'constructor']) {
   test(`build: yaml with unknown kind "${kind}" exits 1`, () => {
     const dir = tmpDir();
@@ -174,12 +166,60 @@ test('build: directory mode skips malformed YAML and still builds the valid file
   fs.copyFileSync(SC_FIXTURE, path.join(dir, 'good.yaml'));
   const r = run('build', dir);
   assert.equal(r.status, 1, r.stderr);
-  assert.match(r.stderr, /could not parse/i);
+  assert.match(r.stderr, /^"bad\.yaml": YAML parse error/);
   assert.ok(fs.existsSync(path.join(dir, 'good.html')), 'valid puzzle should still build');
 });
 
+// a.yaml and a.yml both build to a.html. Neither is built, so -f (or watch) can't have
+// the second silently overwrite the first; the rest of the directory still builds.
+test('build: directory mode refuses files that share an output, builds the rest, exits 1', () => {
+  const dir = tmpDir();
+  fs.copyFileSync(SC_FIXTURE, path.join(dir, 'a.yaml'));
+  fs.copyFileSync(SP_FIXTURE, path.join(dir, 'a.yml'));
+  fs.copyFileSync(SC_FIXTURE, path.join(dir, 'other.yaml'));
+  const r = run('build', dir, '-f');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Error: "a\.yaml" and "a\.yml" would both build to a\.html; rename one\./);
+  assert.ok(!fs.existsSync(path.join(dir, 'a.html')), 'neither colliding file is built');
+  assert.ok(fs.existsSync(path.join(dir, 'other.html')), 'the rest still builds');
+});
+
+test('build: a file that cannot build does not block a valid file sharing its base name', () => {
+  const dir = tmpDir();
+  fs.copyFileSync(SC_FIXTURE, path.join(dir, 'a.yaml'));
+  fs.writeFileSync(path.join(dir, 'a.yml'), 'just: notes\n');
+  const r = run('build', dir, '-f');
+  assert.equal(r.status, 1, 'the junk file is still reported');
+  assert.doesNotMatch(r.stderr, /would both build/);
+  assert.ok(fs.existsSync(path.join(dir, 'a.html')), 'the valid puzzle builds');
+});
+
+test('build: the shared-output check also applies with -o <dir>', () => {
+  const inDir = tmpDir();
+  const outDir = path.join(tmpDir(), 'out');
+  fs.copyFileSync(SC_FIXTURE, path.join(inDir, 'a.yaml'));
+  fs.copyFileSync(SP_FIXTURE, path.join(inDir, 'a.yml'));
+  fs.copyFileSync(SC_FIXTURE, path.join(inDir, 'other.yaml'));
+  const r = run('build', inDir, '-o', outDir, '-f');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /"a\.yaml" and "a\.yml" would both build to a\.html/);
+  assert.ok(!fs.existsSync(path.join(outDir, 'a.html')));
+  assert.ok(fs.existsSync(path.join(outDir, 'other.html')));
+});
+
+// a.yaml and A.yml build to a.html and A.html: one file on a case-insensitive disk.
+test('build: files whose pages differ only by case share an output', () => {
+  const dir = tmpDir();
+  fs.copyFileSync(SC_FIXTURE, path.join(dir, 'a.yaml'));
+  fs.copyFileSync(SP_FIXTURE, path.join(dir, 'A.yml'));
+  const r = run('build', dir, '-f');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Error: "A\.yml" and "a\.yaml" would both build to A\.html; rename one\./);
+  assert.deepEqual(fs.readdirSync(dir).filter(f => /\.html$/i.test(f)), []);
+});
+
 // ── overwrite protection ──────────────────────────────────────────────────────
-// The check itself is runToolBuild's, covered in shared/test/toolCli.test.js, and a
+// The check itself is buildOneFile's, covered in shared/test/buildOneFile.test.js, and a
 // directory reaches the same call; this pins that --force survives valuesFor's per-tool
 // filtering.
 

@@ -1,10 +1,10 @@
 'use strict';
-// The Snake Charmer kind module (the contract is at the top of the Phase 2 plan).
+// The Snake Charmer kind module (the contract is at the top of `spiral.js`).
 //
 // The snake is ONE ring of N cells traversed twice, with a SINGLE list of entry starts
 // over the two laps (positions 0..2N-1, starts[0] === 0): every Snake Charmer puzzle in
 // the repo has an entry that crosses the lap boundary, so this is never two lists that
-// each sum to N (spec §4.1). Ring cell of position p is p % N; the same cell on the other
+// each sum to N. Ring cell of position p is p % N; the same cell on the other
 // lap is twin(p) = (p + N) % 2N.
 //
 // Model:
@@ -179,7 +179,7 @@ function toYaml(model) {
   };
 }
 
-// ── completeness (spec §6 layer 1) ──────────────────────────────────────────
+// ── completeness ──────────────────────────────────────────
 
 function completeness(model) {
   const out = [];

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { setupRebusButton } = require('../engine-chrome.mjs');
 
 // The button is DOM-coupled but touches no document/window globals, so it takes a plain
-// mock on the setupClearButton precedent. `mousedown` reports whether the handler
+// mock on the setupArmedButton precedent. `mousedown` reports whether the handler
 // canceled the event — that cancellation is the whole focus-preservation mechanism.
 function makeBtn() {
   const listeners = [];

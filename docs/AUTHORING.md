@@ -15,8 +15,8 @@ Every puzzle YAML, regardless of tool, starts with these fields:
 |---|---|---|---|
 | `kind` | yes | string | Identifies the tool (`"snake-charmer"`, `"spiral"`, `"marching-bands"`, or `"crushword"`); must match exactly |
 | `title` | yes | string | Displayed in the puzzle header and browser tab |
-| `author` | no | string | Displayed in the puzzle header |
-| `date` | no | string | Displayed in the puzzle header |
+| `author` | no | string | Displayed in the puzzle header; not empty when present |
+| `date` | no | string or number | Displayed in the puzzle header; not empty when present. A calendar date (`date: 2026-11-10`) needs no quotes. A bare number is shown as YAML reads it (`10.20` shows as 10.2), so quote one that must appear as typed |
 | `instructions` | no | string | Puzzle instructions; supports multiple paragraphs separated by blank lines. Most tools show it between the header and the grid — Snake Charmer places it at the top of the clue column instead, since its layout has no full-width band. Accepts the same markdown subset as `clue` (below). |
 | `theme` | no | string | Visual theme: `broadsheet` or `skeleton`. The `--theme` flag overrides it. Default `broadsheet`. See "Themes and fonts" |
 
@@ -200,9 +200,16 @@ multi-letter cells instead.
 with ‹ › to step through the clues, and a built-in keyboard (the device's own keyboard
 stays closed). **Clues** swaps the grid for the clue list; tapping a clue there jumps to
 it. The keyboard's bottom row holds the Rebus key (Crushword: Prev and Next cell) and a key to switch
-direction. Check cell is in the life-ring help menu beside the options menu (absent in a
-muddled puzzle), and the options menu has a "Wrap long rows of cells" setting on the Clues
-screen (except in Marching Bands, whose clue list has no cell rows).
+direction. The options menu has a "Wrap long rows of cells" setting on the Clues screen
+(except in Marching Bands, whose clue list has no cell rows).
+
+**On every device,** the life-ring help menu beside the options menu holds Check cell and
+Reveal cell, Check clue and Reveal clue for the active clue (the active row or band in
+Marching Bands, which never singles out one entry), and Check puzzle and Reveal puzzle
+(which asks for a second click first). It is absent in a muddled puzzle, which
+carries no answers to check against. Reveal fills in the answer. A solver who uses them is
+not stopped from finishing: the completion event reports how many times they checked and
+revealed.
 
 **Each tool adds its own rule for how a rebus cell's *cells* (not letters)
 must agree across the two entries that share it** — see that tool's own
@@ -241,7 +248,7 @@ automatically.
 Each tool's own `docs/SPEC.md` → "Hashed mode" documents exactly which
 cells feed that tool's board hash and in what order. Algorithmic detail
 (the hash preimage construction, delimiter choice) lives in
-`docs/CROSS_TOOL_SPEC.md` and root `CLAUDE.md`, not here.
+`docs/CROSS_TOOL_SPEC.md` and `docs/ARCHITECTURE.md`, not here.
 
 ---
 
@@ -287,7 +294,7 @@ themeTokens:
 
 Token names are the `--theme-*` custom properties declared in `shared/themes/theme-base.css`, written without the `--theme-` prefix. An unknown name is an error. Values are plain CSS values of at most 200 characters; anything that could end the declaration, open a comment or string that outlives it, or load something (`;`, `{`, `}`, `[`, `]`, `<`, `>`, `@`, `\`, `/*`, `url(`, unbalanced quotes or parentheses) is rejected. The studio edits the same map under Puzzle settings → Theme overrides.
 
-See root `CLAUDE.md` → "Shared library pattern" for how to add a new theme
+See `docs/ARCHITECTURE.md` → "Themes and print" for how to add a new theme
 (a project-level, not puzzle-authoring, task).
 
 ---
@@ -296,13 +303,7 @@ See root `CLAUDE.md` → "Shared library pattern" for how to add a new theme
 
 If you'd rather not use a command line, the studio (`npm run build:studio`, then open `studio/build/index.html`) edits, previews and exports puzzles in the browser with the same validators and build; see `README.md` → "Studio".
 
-Every tool's CLI takes the same shape:
-
-```
-<tool> <input.yaml> [options]
-```
-
-or, more commonly, go through the repo-wide dispatcher:
+Every tool builds through the same command:
 
 ```
 varietypack build <input.yaml> [options]
@@ -310,6 +311,6 @@ varietypack build <input.yaml> [options]
 
 Shared options, accepted by every tool, are documented in the root
 `README.md` → "Global options" (`--muddle`, `--theme`, `--font`,
-`--minify`, `-o`/`--output`, `-f`/`--force`, `-h`/`--help`). A few tools also accept
+`--minify`, `--embed-origin`, `-o`/`--output`, `-f`/`--force`, `-h`/`--help`). A few tools also accept
 their own extra flags (e.g. Snake Charmer's `--shape`) — see that tool's
-`docs/SPEC.md` and `CLAUDE.md`, or run `<tool> --help`.
+`docs/SPEC.md`, or run `varietypack build --help`.

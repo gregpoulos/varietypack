@@ -4,7 +4,7 @@ import { parseSize } from '../model/doc.js';
 import { EDITORS } from './editors/index.js';
 import { kindName } from './kinds.js';
 
-// The New puzzle size prompt (spec §5.2): new puzzles start from a chosen size, driven by
+// The New puzzle size prompt: new puzzles start from a chosen size, driven by
 // the kind's sizeFields. A kind's SizePreview, when it has one, shows the consequences of
 // the numbers as they're typed and can add choices (`extra`) to the size.
 export function NewSizeForm({ kind, onCreate, onCancel }) {

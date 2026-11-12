@@ -155,7 +155,7 @@ for (const fx of FIXTURES) {
       expect(await undersized(page, '#menu-panel button, #menu-panel label')).toEqual([]);
     });
 
-    if (CHROME_FIXTURES.includes(fx)) test(`the help menu's item is at least ${MIN_TAP}px square`, async ({ page }) => {
+    if (CHROME_FIXTURES.includes(fx)) test(`every row of the help menu is at least ${MIN_TAP}px square`, async ({ page }) => {
       await load(page, fx);
       await page.locator('#help-btn').tap({ timeout: 5_000 });
       await expect(page.locator('#help-panel')).toBeVisible();

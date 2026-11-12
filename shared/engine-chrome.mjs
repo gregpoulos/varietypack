@@ -28,12 +28,18 @@ function htmlEl(tag, attrs = {}, ...children) {
   return el;
 }
 
-// Browser-only: a clue's `.clue-text` span. `clue` is pre-rendered markdown HTML
-// (shared/build/renderMarkdown.js), so it alone goes in through innerHTML; an engine
-// never does that with any other YAML string (root CLAUDE.md).
+// Browser-only: sets `el`'s content to `clue`, pre-rendered markdown HTML
+// (shared/build/renderMarkdown.js). The one way a clue's HTML reaches the page: it alone
+// goes in through innerHTML, and an engine never does that with any other YAML string
+// (docs/ARCHITECTURE.md).
+function setClueHtml(el, clue) {
+  el.innerHTML = clue;
+}
+
+// Browser-only: a clue's `.clue-text` span (setClueHtml).
 function clueTextEl(clue) {
   const el = htmlEl('span', { class: 'clue-text' });
-  el.innerHTML = clue;
+  setClueHtml(el, clue);
   return el;
 }
 
@@ -52,8 +58,8 @@ function renderByline(data) {
   const byline = document.querySelector('.byline');
   if (!byline) return;
   const parts = [];
-  if (data.author) parts.push('by ' + data.author);
-  if (data.date) parts.push(String(data.date));
+  if (data.author !== undefined) parts.push('by ' + data.author);
+  if (data.date !== undefined) parts.push(String(data.date));
   byline.textContent = parts.join(' · ');
   byline.hidden = parts.length === 0;
 }
@@ -69,32 +75,38 @@ function renderInstructions(data) {
   el.hidden = false;
 }
 
-// Two-click arm/disarm Clear button. First click swaps the label to "Are you sure?" and
-// adds `.armed` for 3s; a second click within that window calls onConfirmed(), which each
-// engine supplies to perform the full in-memory board reset. `refocus` (optional)
-// restores puzzle focus after the arming click so the document keydown BUTTON guard
-// doesn't block the next keystroke.
-function setupClearButton(clearBtn, onConfirmed, refocus) {
+// Two-click arm/disarm button, for an action too costly to run on one click: Clear
+// puzzle and Reveal puzzle. First click swaps the label to "Are you sure?" and adds
+// `.armed` for 3s; a second click within that window calls onConfirmed(), which each
+// engine supplies to perform the action (for Clear, the full in-memory board reset).
+// `refocus` (optional) restores puzzle focus after the arming click so the document
+// keydown BUTTON guard doesn't block the next keystroke. The label it returns to is the
+// one the button reads at setup. Returns { disarm }, which the menu holding the button
+// calls when it closes: closing is how a solver cancels, and an arm that outlived it
+// would let a single click on reopening run the action.
+function setupArmedButton(btn, onConfirmed, refocus) {
+  const restLabel = btn.textContent;
   let armed = false;
   let timer = null;
   function disarm() {
+    clearTimeout(timer);
     armed = false;
-    clearBtn.textContent = 'Clear Puzzle';
-    clearBtn.classList.remove('armed');
+    btn.textContent = restLabel;
+    btn.classList.remove('armed');
   }
-  clearBtn.addEventListener('click', () => {
+  btn.addEventListener('click', () => {
     if (!armed) {
       armed = true;
-      clearBtn.textContent = 'Are you sure?';
-      clearBtn.classList.add('armed');
+      btn.textContent = 'Are you sure?';
+      btn.classList.add('armed');
       timer = setTimeout(disarm, 3000);
       if (refocus) refocus();
     } else {
-      clearTimeout(timer);
       disarm();
       onConfirmed();
     }
   });
+  return { disarm };
 }
 
 // Touch affordance for rebus entry — the pointer equivalent of the Enter key, which is
@@ -103,8 +115,8 @@ function setupClearButton(clearBtn, onConfirmed, refocus) {
 //
 // Never disabled, never hidden, identical in hashed and non-hashed builds. That is the
 // spoiler rule from docs/CROSS_TOOL_SPEC.md → Enter — rebus entry: nothing in the UI may
-// vary as a function of a cell's capacity. #check-btn sits next to this one in #controls
-// and *is* toggled per-cell — do not copy it here.
+// vary as a function of a cell's capacity. #check-btn, in the help menu, *is* toggled
+// per-cell — do not copy it here.
 //
 // A solved board needs no guard here: composer.toggle refuses composition once the board
 // is solved, whichever way it is reached.
@@ -173,7 +185,7 @@ function scrollByKey(key) {
 // the active entry on the first row and the entry crossing the active cell on the second,
 // or hides that row when `crossing` is null. Each is { dir, num, clue }: `dir` is the
 // direction label, for a tool whose rows carry one; `clue` is pre-rendered markdown HTML,
-// set with innerHTML as in clueTextEl. The bar's height is fixed (shared/base.css), so
+// set through setClueHtml. The bar's height is fixed (shared/base.css), so
 // hiding the row moves nothing. `el` is the bar and `text` the first row's clue text,
 // which the phone layout takes (setupPhoneLayout's `clueBar`).
 function setupClueBar() {
@@ -186,7 +198,7 @@ function setupClueBar() {
   function fill(r, { dir, num, clue }) {
     if (r.dir) r.dir.textContent = dir;
     r.num.textContent = num + '.';
-    r.text.innerHTML = clue;
+    setClueHtml(r.text, clue);
   }
   return {
     el: document.getElementById('active-clue-bar'),
@@ -236,7 +248,7 @@ function storageKey(prefix, data) {
 // active-state styling. Clones the cell element into `flashLayer` — an overlay <g> the
 // engines paint above the cells but below the letters — relabels the clone
 // `.flash-wrong-overlay` (whose base.css animation fades it out), then removes it once
-// the animation ends. FLASH_WRONG_MS must match that animation's duration in
+// the animation ends. FLASH_WRONG_MS must match --flash-wrong-duration in
 // shared/base.css.
 const FLASH_WRONG_MS = 600;
 function flashWrong(cellEl, flashLayer) {
@@ -437,20 +449,19 @@ function setupKeysOverlay(shortcuts, refocus) {
 }
 
 // Builds and wires the options menu: a fixed top-right hamburger trigger (#menu-btn) and
-// a non-modal dropdown (#menu-panel) holding the Check Cell visibility toggle and the
-// Clear button: the shared home for rarely-used puzzle-wide options. Unlike
+// a non-modal dropdown (#menu-panel) holding the Clear button, and on the phone the
+// display settings: the shared home for rarely-used puzzle-wide options. Unlike
 // setupKeysOverlay's <dialog>, the panel is a plain div — it never makes the page inert,
 // so the grid stays clickable behind it.
 //
 // Clicks inside the panel never close it on their own. That is what lets #clear-btn's
-// existing two-click arm/confirm sequence (setupClearButton) play out with the panel
+// existing two-click arm/confirm sequence (setupArmedButton) play out with the panel
 // visibly open through the 3s "Are you sure?" window, instead of vanishing after the
 // first (arming) click. Closing — by re-clicking the trigger, clicking outside, or Escape
 // — calls `refocus`, matching every other control that can steal focus from the hidden
 // input (see docs/CROSS_TOOL_SPEC.md → Focus management).
 //
-// Returns { clearBtn, close, checkBtnToggle, checkBtnToggleLabel } for setupControls to
-// wire.
+// Returns { clearBtn, close, onClosed } for setupControls to wire.
 function setupOptionsMenu(refocus) {
   const btn = htmlEl('button', {
     id: 'menu-btn', type: 'button', 'aria-label': 'Menu',
@@ -458,31 +469,60 @@ function setupOptionsMenu(refocus) {
   }, '☰');
   document.body.appendChild(btn);
 
-  // The Check Cell toggle is only meaningful in non-hashed puzzles — the caller hides
-  // checkBtnToggleLabel entirely (not just the checkbox) when hashed, since there's no
-  // Check Cell button there to control. It sits above Clear Puzzle: a plain display
-  // setting before the destructive action.
-  const { label: checkBtnToggleLabel, input: checkBtnToggle } =
-    menuToggle('check-btn-toggle', 'Show Check Cell button');
-  const clearBtn = htmlEl('button', { id: 'clear-btn', type: 'button' }, 'Clear Puzzle');
-  const panel = htmlEl('div', { id: 'menu-panel', role: 'menu', hidden: '' },
-    checkBtnToggleLabel, clearBtn);
+  const clearBtn = htmlEl('button', { id: 'clear-btn', type: 'button' }, 'Clear puzzle');
+  const panel = htmlEl('div', { id: 'menu-panel', role: 'menu', hidden: '' }, clearBtn);
   document.body.appendChild(panel);
 
-  const { close } = setupPopupMenu(btn, panel, refocus);
-  return { clearBtn, close, checkBtnToggle, checkBtnToggleLabel };
+  const { close, onClosed } = setupPopupMenu(btn, panel, refocus);
+  return { clearBtn, close, onClosed };
+}
+
+// The help menu: a life-ring button (#help-btn) beside ☰ and the dropdown it opens
+// (#help-panel), holding the check and reveal actions. They are help, not typing, so they
+// are not keys on the phone's drawn keyboard, where a stray tap beside Next cell could
+// check a cell. A click on a row closes the panel, except a row in `selfClosing`: an
+// armed row (setupArmedButton) must keep the panel open on its arming click for its "Are
+// you sure?" to be seen, so it closes the panel itself once confirmed (`close` is
+// returned for that), as the options menu does for Clear. Both elements go to <body>; the
+// phone layout moves them into its top bar. Returns { btn, panel, close, onClosed }.
+function setupHelpMenu(refocus, rows, selfClosing = []) {
+  const ring = svgEl('svg', { viewBox: '0 0 24 24', width: 24, height: 24, 'aria-hidden': 'true' });
+  const stroke = { fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round' };
+  ring.append(svgEl('circle', { cx: 12, cy: 12, r: 9, ...stroke }), svgEl('circle', { cx: 12, cy: 12, r: 4, ...stroke }));
+  // The four bands across the ring, on the diagonals from inner to outer circle.
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    ring.append(svgEl('line', {
+      x1: 12 + sx * 2.9, y1: 12 + sy * 2.9, x2: 12 + sx * 6.4, y2: 12 + sy * 6.4, ...stroke,
+    }));
+  }
+  const btn = htmlEl('button', {
+    id: 'help-btn', type: 'button', 'aria-label': 'Help',
+    'aria-haspopup': 'true', 'aria-expanded': 'false',
+  }, ring);
+  const panel = htmlEl('div', { id: 'help-panel', role: 'menu', hidden: '' }, ...rows);
+  document.body.append(btn, panel);
+  document.body.classList.add('has-help-btn'); // the clue bar's gutter reads it (theme CSS)
+
+  const { close, onClosed } = setupPopupMenu(btn, panel, refocus);
+  for (const row of rows) {
+    if (!selfClosing.includes(row)) row.addEventListener('click', close);
+  }
+  return { btn, panel, close, onClosed };
 }
 
 // A non-modal dropdown: `btn` opens and closes `panel`, and a click outside both, Escape
 // or any key the puzzle takes closes it. Two such menus close each other, since a click
-// on one's trigger is outside the other. Returns { close }.
+// on one's trigger is outside the other. Returns { close, onClosed }: `onClosed(fn)`
+// registers a callback for each time the panel closes, however it closes.
 function setupPopupMenu(btn, panel, refocus) {
+  const closedHooks = [];
   function isOpen() { return !panel.hidden; }
 
   function close() {
     if (!isOpen()) return;
     panel.hidden = true;
     btn.setAttribute('aria-expanded', 'false');
+    for (const fn of closedHooks) fn();
     refocus();
   }
 
@@ -495,6 +535,11 @@ function setupPopupMenu(btn, panel, refocus) {
   }
 
   btn.addEventListener('click', () => (isOpen() ? close() : open()));
+
+  // A press on the panel never takes focus from the puzzle: one that lands on no control
+  // (a disabled row, the padding) would otherwise leave focus on <body>. The click still
+  // fires, so a row works as before.
+  panel.addEventListener('mousedown', e => e.preventDefault());
 
   // A click on the trigger is excluded here because its own listener above already
   // handled it (bubbling reaches this one after), and a click inside the panel (e.g.
@@ -514,7 +559,7 @@ function setupPopupMenu(btn, panel, refocus) {
     close();
   });
 
-  return { close };
+  return { close, onClosed: fn => closedHooks.push(fn) };
 }
 
 // An options-menu row: a checkbox `id` inside a `.menu-toggle` label `id`-label. Returns
@@ -544,50 +589,80 @@ function boolPref(prefKey, fallback, storage) {
   return { load, save };
 }
 
-// The Check Cell button's visibility (boolPref) — namespaced under the puzzle's own key
-// (see storageKey) but never touched by clearState()/resetBoard(): it's a display
-// preference, not board state, so Clear Puzzle must not reset it. Absent (first load)
-// defaults to visible.
-function setupCheckBtnPref(key) {
-  return boolPref(key + ':showCheckBtn', true);
-}
-
-// Wires #check-btn and the options menu around it, identically in every engine:
-//   - #check-btn is hidden in hashed builds (the plain-text answer never ships there, so
-//     there is nothing to check against) and calls `onCheck` otherwise.
-//   - Clear arms/confirms through setupClearButton; once actually confirmed (not just
+// Builds the options menu and, in a plain build, the help menu, and wires both
+// identically in every engine:
+//   - Clear arms/confirms through setupArmedButton; once actually confirmed (not just
 //     armed) it runs `onClear` and closes the menu on the solver's behalf.
-//   - The "Show Check Cell button" row is hidden in hashed builds; otherwise it applies
-//     the persisted preference and keeps it in sync. The preference hides #check-btn
-//     with the .check-btn-off class, not `hidden`, so the button keeps its place in the
-//     row (why in base.css).
-// `key` is the same storageKey(...) result the engine passes to setupStorage.
-// `canCheck(n)` says whether cell n may be checked; it defaults to checker.canCheck, and
-// only Crushword, whose every typed cell is composing until committed, passes its own.
-// Returns { syncCheckBtn(n) } for syncUI: it enables #check-btn only while canCheck
-// accepts cell n (and does nothing in a hashed build, where the button is hidden).
+//   - A plain build gets six rows in #help-panel, in this order: #check-btn ("Check
+//     cell"), #reveal-btn ("Reveal cell"), #check-clue-btn and #reveal-clue-btn,
+//     #check-puzzle-btn ("Check puzzle") and #reveal-puzzle-btn ("Reveal puzzle"). Each
+//     runs `helpActions.checkSet` or `revealSet` (makeHelpActions) over the row's cells:
+//     the active cell, the active clue's, or every cell. Reveal puzzle arms on the first
+//     click, as Clear does, since it discards the solver's effort. A hashed build has
+//     none of it (the plain-text answer never ships there, so there is nothing to check
+//     or reveal against): no help menu, `helpMenu` is null.
+// `activeCell()` returns the active cell's id. `clueCells()` lists the cells of the
+// active clue: the set the clue rows act on, each disabled while none of them applies.
+// `clueNoun()` is the word in their labels, "clue" unless the tool never names a single
+// entry (Marching Bands: "row" or "band"); the labels are re-read on every syncHelp. The
+// puzzle rows act on `checker.cellIds`. A row is enabled while its cells can be checked
+// or revealed; `canCheck(n)` defaults to the checker's, and only Crushword, whose every
+// typed cell is composing until committed, passes its own. Reveal always asks the
+// checker.
+// Returns { syncHelp(), helpMenu }: syncHelp is for syncUI and enables the help rows only
+// while they apply (it does nothing in a hashed build); `helpMenu` is { btn, panel } for
+// setupPhoneLayout to move into its top bar, or null.
 function setupControls({
-  checkBtn, checker, hashed, onCheck, onClear, refocus, key, canCheck = n => checker.canCheck(n),
+  checker, hashed, helpActions, activeCell, clueCells, clueNoun = () => 'clue',
+  canCheck = n => checker.canCheck(n), onClear, refocus,
 }) {
-  const { clearBtn, close, checkBtnToggle, checkBtnToggleLabel } = setupOptionsMenu(refocus);
-  setupClearButton(clearBtn, () => { onClear(); close(); }, refocus);
+  const { clearBtn, close, onClosed } = setupOptionsMenu(refocus);
+  const clear = setupArmedButton(clearBtn, () => { onClear(); close(); }, refocus);
+  onClosed(clear.disarm);
 
-  if (hashed) {
-    checkBtn.hidden = true;
-    checkBtnToggleLabel.hidden = true;
-    return { syncCheckBtn() {} };
+  if (hashed) return { syncHelp() {}, helpMenu: null };
+
+  // One row per button: the cells it acts on, and the label (the clue rows' noun varies).
+  const canReveal = n => checker.canReveal(n);
+  const rows = [
+    { id: 'check-btn',         label: () => 'Check cell',            cells: () => [activeCell()],
+      act: ids => helpActions.checkSet(ids),  can: canCheck },
+    { id: 'reveal-btn',        label: () => 'Reveal cell',           cells: () => [activeCell()],
+      act: ids => helpActions.revealSet(ids), can: canReveal },
+    { id: 'check-clue-btn',    label: () => 'Check ' + clueNoun(),   cells: clueCells,
+      act: ids => helpActions.checkSet(ids),  can: canCheck },
+    { id: 'reveal-clue-btn',   label: () => 'Reveal ' + clueNoun(),  cells: clueCells,
+      act: ids => helpActions.revealSet(ids), can: canReveal },
+    { id: 'check-puzzle-btn',  label: () => 'Check puzzle',          cells: () => checker.cellIds,
+      act: ids => helpActions.checkSet(ids),  can: canCheck },
+    { id: 'reveal-puzzle-btn', label: () => 'Reveal puzzle',         cells: () => checker.cellIds,
+      act: ids => helpActions.revealSet(ids), can: canReveal },
+  ];
+  const revealPuzzle = rows.find(row => row.id === 'reveal-puzzle-btn');
+  for (const row of rows) {
+    row.btn = htmlEl('button', { id: row.id, type: 'button', disabled: '' }, row.label());
+    // Every row acts on its first click but Reveal puzzle, which setupArmedButton wires.
+    if (row !== revealPuzzle) row.btn.addEventListener('click', () => row.act(row.cells()));
   }
-  checkBtn.addEventListener('click', onCheck);
-  const checkBtnPref = setupCheckBtnPref(key);
-  const show = visible => checkBtn.classList.toggle('check-btn-off', !visible);
-  checkBtnToggle.checked = checkBtnPref.load();
-  show(checkBtnToggle.checked);
-  checkBtnToggle.addEventListener('change', () => {
-    show(checkBtnToggle.checked);
-    checkBtnPref.save(checkBtnToggle.checked);
-    refocus(); // a click on the label focuses the checkbox (CROSS_TOOL_SPEC → Focus management)
-  });
-  return { syncCheckBtn(n) { checkBtn.disabled = !canCheck(n); } };
+  const revealPuzzleBtn = revealPuzzle.btn;
+  // Reveal puzzle closes the panel itself, once confirmed: the arming click must not.
+  const revealArm = setupArmedButton(
+    revealPuzzleBtn, () => { revealPuzzle.act(revealPuzzle.cells()); helpMenu.close(); }, refocus);
+  const helpMenu = setupHelpMenu(refocus, rows.map(row => row.btn), [revealPuzzleBtn]);
+  helpMenu.onClosed(revealArm.disarm);
+
+  // Assigning textContent replaces the text node even when the string is unchanged, and
+  // this runs on every syncUI.
+  const setLabel = (btn, text) => { if (btn.textContent !== text) btn.textContent = text; };
+  return {
+    syncHelp() {
+      for (const row of rows) {
+        setLabel(row.btn, row.label());
+        row.btn.disabled = !row.cells().some(row.can);
+      }
+    },
+    helpMenu,
+  };
 }
 
 // Posts the page height to an embedding parent whenever it changes
@@ -615,9 +690,9 @@ function setupEmbedResize({ win = window, root = document.documentElement, RO = 
 }
 
 export {
-  svgEl, htmlEl, clueTextEl, onClueClick, renderByline, renderInstructions, setupClearButton, setupRebusButton,
+  svgEl, htmlEl, setClueHtml, clueTextEl, onClueClick, renderByline, renderInstructions, setupArmedButton, setupRebusButton,
   setupPopupMenu,
   scrollByKey, setupClueBar, scrollIntoViewBelow, storageKey, setupStorage, flashWrong, FLASH_WRONG_MS,
   setupKeydown, setupCellClicks, setupCongratsDialog, setupKeysOverlay, setupOptionsMenu,
-  menuToggle, boolPref, setupControls, setupEmbedResize, PHONE_CLASS,
+  menuToggle, boolPref, setupControls, setupHelpMenu, setupEmbedResize, PHONE_CLASS,
 };

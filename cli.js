@@ -13,7 +13,7 @@ Subcommands:
   build     Build one or more puzzle files
   watch     Watch a directory and rebuild on changes
   validate  Check puzzle files for errors without building
-  muddle    Strip answers from a puzzle file, replacing them with hashes
+  muddle    Strip answers from a puzzle file, leaving each entry's cell count and one board hash
 
 Run 'varietypack <subcommand> --help' for subcommand-specific help.
 `;
