@@ -40,5 +40,8 @@
     "globals": "^17.13.0",
     "path-browserify": "^1.0.1",
     "preact": "^11.0.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
   }
 }
