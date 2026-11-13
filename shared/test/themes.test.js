@@ -110,7 +110,7 @@ test('composeThemeCss: skeleton without a font mode defaults to embed', () => {
 test('composeThemeCss: skeleton theme with link mode opens with the @import', () => {
   const css = composeThemeCss(COMPOSE_FIXTURE, 'skeleton', 'link');
   assert.ok(css.startsWith('@import'), 'the @import must come before every other rule');
-  assert.ok(css.includes('fonts.googleapis.com'), 'should include Google Fonts CDN URL');
+  assert.match(css, /https:\/\/fonts\.googleapis\.com\//, 'should include Google Fonts CDN URL');
 });
 
 test('buildFontCss: returns empty string for system-font theme regardless of fontMode', () => {

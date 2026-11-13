@@ -657,19 +657,24 @@ test.describe('marching-bands clue navigator', () => {
   // The clues of row `r` (1-indexed), as the page's data has them.
   const rowClues = (page, r) =>
     page.evaluate(i => window.PUZZLE_DATA.rows[i].entries.map(e => e.clue), r - 1);
-  const textOf = html => html.replace(/<[^>]*>/g, '');
+  // The clues as the navigator shows them: their HTML, read back as text by the browser.
+  const rowClueTexts = (page, r) => page.evaluate(i => window.PUZZLE_DATA.rows[i].entries.map(e => {
+    const el = document.createElement('div');
+    el.innerHTML = e.clue;
+    return el.textContent;
+  }), r - 1);
 
   test('shows the first clue of the active row, and › and ‹ cycle through them', async ({ page }) => {
     await load(page, 'marching-bands');
-    const clues = await rowClues(page, 1);
+    const clues = await rowClueTexts(page, 1);
     const { label, count, text } = nav(page);
     await expect(label).toHaveText('Row 1');
     await expect(count).toHaveText(`clue 1 of ${clues.length}`);
-    await expect(text).toHaveText(textOf(clues[0]));
+    await expect(text).toHaveText(clues[0]);
     for (let i = 1; i < clues.length; i++) {
       await page.locator('#clue-next').tap();
       await expect(count).toHaveText(`clue ${i + 1} of ${clues.length}`);
-      await expect(text).toHaveText(textOf(clues[i]));
+      await expect(text).toHaveText(clues[i]);
     }
     await page.locator('#clue-next').tap();
     await expect(count).toHaveText(`clue 1 of ${clues.length}`);

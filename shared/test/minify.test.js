@@ -78,7 +78,7 @@ test('minifyHtml: minifies <script> block content', () => {
   `;
   const input = `<html><script>${js}</script></html>`;
   const out = minifyHtml(input);
-  const scriptMatch = out.match(/<script>([\s\S]*?)<\/script>/);
+  const scriptMatch = out.match(/<script>([\s\S]*?)<\/script>/i);
   assert.ok(scriptMatch, 'script block present');
   const minifiedJs = scriptMatch[1];
   assert.ok(minifiedJs.length < js.length, 'script content is shorter after minification');
@@ -110,7 +110,7 @@ test('minifyHtml: leaves script block unchanged when terser cannot parse it', ()
   const badJs = 'this is not }{[ valid javascript @@@@';
   const input = `<html><script>${badJs}</script></html>`;
   const out = minifyHtml(input);
-  const scriptMatch = out.match(/<script>([\s\S]*?)<\/script>/);
+  const scriptMatch = out.match(/<script>([\s\S]*?)<\/script>/i);
   assert.ok(scriptMatch, 'script block still present');
   assert.ok(scriptMatch[1].includes('not }{[ valid'));
 });

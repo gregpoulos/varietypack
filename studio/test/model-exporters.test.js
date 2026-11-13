@@ -59,7 +59,7 @@ test('buildExport on a muddled file: hashed page builds, muddled file carries th
   const doc = setMuddledTheme(mudDoc(), 'skeleton', 2);
   const page = buildExport('hashed', doc, { font: 'link' });
   assert.ok(page.text.includes('"hashed": true'));
-  assert.ok(page.text.includes('fonts.googleapis.com'));
+  assert.match(page.text, /https:\/\/fonts\.googleapis\.com\//);
   const out = yaml.load(buildExport('muddled', doc, { font: 'embed' }).text);
   assert.equal(out.theme, 'skeleton');
   assert.equal(out.boardHash, yaml.load(mudText).boardHash);
@@ -78,7 +78,7 @@ test('buildExport font: embed carries @font-face, link carries the CDN import', 
   const text = read('examples/spiral.yaml') + '\ntheme: skeleton\n';
   assert.match(buildExport('html', sourceDoc(text), { font: 'embed' }).text, /@font-face/);
   const link = buildExport('html', sourceDoc(text), { font: 'link' }).text;
-  assert.ok(link.includes('fonts.googleapis.com'));
+  assert.match(link, /https:\/\/fonts\.googleapis\.com\//);
   assert.ok(!link.includes('@font-face'));
 });
 
