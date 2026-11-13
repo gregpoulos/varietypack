@@ -157,6 +157,11 @@ drawn keyboard that a touch-first device gets (see CROSS_TOOL_SPEC → "Phone
 layout and drawn keyboard"). Each engine calls into them from its own `init()`,
 keeping per-tool SVG rendering, navigation and `syncUI` in the engine.
 
+`svg-zoom.mjs`, `svg-zoom-geometry.mjs` and `svg-zoom-gestures.mjs` are the phone
+grid's pinch, pan and double-tap zoom. They are generic: they know nothing about
+puzzles, cells or clues, and `engine-phone.mjs` is what attaches them to a grid and
+feeds them the cursor.
+
 **Build-path modules** (`shared/build/` plus each tool's `validator.js`,
 `prepare.js`, `layout.js` and `builder.js`). These run in two places: Node, for
 the CLI, and the studio page, via esbuild ("the studio bundle"; "the page

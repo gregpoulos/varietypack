@@ -147,6 +147,7 @@ function init() {
     });
     // Phone list view: every row's letters, the cursor, and the active clue in view.
     if (phone) phone.fillList.sync(snakePos(activeRingPos, activeLoop), cluesList.children[activeEntryIdx]);
+    if (phone) phone.follow(activeContextCells(), activeRingPos, getCellLetter(activeRingPos));
 
     // Clue bar: show the active clue and its crossing entry. An entry longer than the
     // ring is both loops' entry at its first cells, so there the second row would only

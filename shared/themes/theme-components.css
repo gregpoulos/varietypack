@@ -425,6 +425,24 @@ html.phone .clue-item .list-cell.list-cursor.composing {
   box-shadow:   none;
 }
 
+/* Landscape phones (the query and its reason are defined in base.css). .solve-top has no
+   box there, so the strip's rule is drawn by the view's ::before, which spans it; the
+   bar loses its own top rule, and the stage's right edge, the stage/keyboard divide,
+   stands in for the keyboard's (a plain list takes the whole width, so has none). */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  html.phone #solve-view::before { border-bottom: 2px solid var(--theme-color-header-rule); }
+  html.phone #solve-bar { border-top: none; }
+  html.phone #solve-stage { border-right: 1px solid var(--theme-color-bar-border); }
+  html.phone.kb-left #solve-stage { border-right: none; border-left: 1px solid var(--theme-color-bar-border); }
+  html.phone #solve-view:has(> #drawn-kb[hidden]) #solve-stage { border: none; }
+  /* The full clue hangs below the strip, so its edge and shadow face down. */
+  html.phone #clue-full {
+    border-top: none;
+    border-bottom: 1px solid var(--theme-color-bar-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+}
+
 /* ── Per-tool selectors (body class hook: .tool-<name>) ─────────────────────
    Each tool's <body> carries a class like .tool-snake-charmer so these rules
    scope to the right tool without a separate per-tool CSS file. Plain sizing and

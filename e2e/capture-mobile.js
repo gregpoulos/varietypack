@@ -3,7 +3,8 @@
 
 // On-demand phone screenshots for reviewing layouts during mobile work — not a test,
 // asserts nothing, commits nothing. Renders each puzzle on every PHONES profile
-// (e2e/mobile.js) and prints the path of each PNG.
+// (e2e/mobile.js), in portrait (loaded, full page, a cell tapped) and then landscape, and
+// prints the path of each PNG.
 //
 //   npm run capture:mobile                          # the mobile.spec.js fixtures
 //   npm run capture:mobile -- <yaml-or-dir>... [-o <dir>]
@@ -58,6 +59,10 @@ async function capture(puzzles, outDir) {
       const cells = page.locator('.cell');
       await cells.nth(Math.floor((await cells.count()) / 2)).tap();
       await shot('tapped');
+      // The landscape arrangement, with the same cell still active. Nothing is restored:
+      // the page closes next.
+      await page.setViewportSize(playwright.devices[device + ' landscape'].viewport);
+      await shot('landscape');
       await page.close();
     }
     await browser.close();

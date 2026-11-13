@@ -195,6 +195,7 @@ function init() {
     });
     // Phone list view: every row's letters, the cursor, and the active clue in view.
     if (phone) phone.fillList.sync(activeCell, activeItem);
+    if (phone) phone.follow(activeContextCells(), activeCell, getCellLetter(activeCell));
 
     // Clue bar: show the active clue and its crossing entry.
     clueBar.show(

@@ -554,7 +554,7 @@ html.phone #drawn-kb {
   -webkit-touch-callout: none;
 }
 html.phone .kb-layer { display: flex; flex-direction: column; gap: 6px; }
-html.phone .kb-row { display: flex; gap: 4px; height: 44px; }
+html.phone .kb-row { display: flex; gap: 4px; height: var(--key-h, 44px); }
 html.phone .kb-layer > .kb-row:nth-child(2) { padding: 0 5%; }
 html.phone #drawn-kb button {
   flex: 1 1 0;
@@ -574,6 +574,112 @@ html.phone #drawn-kb .kb-wide { flex-grow: 2; font-weight: bold; }
 html.phone #drawn-kb .kb-arrow { width: 1.1rem; height: 1.1rem; fill: currentColor; }
 /* Holds ABC and ⌫ at the digit layer's edges, where the letter layer has them. */
 html.phone .kb-spacer { flex: 7 1 0; }
+
+/* Landscape phones: a strip across the top (title, buttons) over the stage at the left
+   and, at the right, the drawn keyboard with the clue bar above it. CSS alone:
+   setupPhoneLayout builds the same DOM in both orientations, so rotating switches live.
+
+   max-height: phones in landscape are shorter than 500px; taller touch screens keep the
+   stacked layout, which has room for it (and which nobody has been able to test side by
+   side). Keep shared/engine-phone.mjs's LANDSCAPE_PHONE in step.
+
+   .solve-top is display: contents because the title and the buttons, its children, must
+   be items of the one grid that also holds the stage, the clue bar and the keyboard.
+
+   Columns: the first is the stage; the rest add up to --kb-w, the right column, and end
+   in the three button columns (auto, so a hashed page's missing help button leaves no
+   hole). The title spans the strip up to the buttons. Rows: the strip, the clue bar
+   (whatever the keyboard leaves of the column), the keyboard.
+
+   --kb-w: 55% keeps the keys as wide as portrait's on the narrowest phone; past 400px
+   wider keys gain nothing, and the grid (a wide Crushword grid above all) can use the
+   width. */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  html.phone #solve-view {
+    --strip-h: 54px;
+    --kb-w: min(55%, 400px);
+    display: grid;
+    grid-template-columns: calc(100% - var(--kb-w)) minmax(0, 1fr) auto auto auto;
+    grid-template-rows: var(--strip-h) minmax(0, 1fr) auto;
+  }
+  /* Key height: 44px, the tap minimum, unless the screen is too short to leave the clue
+     bar its own 44px above four rows of keys; then the rows shrink, to 32px at the
+     least. What is taken off the height: the keyboard's padding and gaps (6 + 10 + 3 * 6)
+     and its safe area. */
+  html.phone #solve-view {
+    --key-h: clamp(32px, calc((100svh - var(--strip-h) - 44px - 34px - env(safe-area-inset-bottom)) / 4), 44px);
+  }
+  /* The strip's rule (theme-components.css), spanning the buttons too. */
+  html.phone #solve-view::before { content: ''; grid-area: 1 / 1 / 2 / -1; }
+  html.phone .solve-top { display: contents; }
+  html.phone .solve-head-slot { grid-area: 1 / 1 / 2 / 3; margin-left: 12px; }
+  /* The bottom margin, the rule's width, centers the buttons above the strip's rule. */
+  html.phone #clues-btn { grid-area: 1 / 3; align-self: center; margin: 0 4px 2px; }
+  html.phone #help-btn { grid-area: 1 / 4; align-self: center; margin-bottom: 2px; }
+  html.phone #menu-btn { grid-area: 1 / 5; align-self: center; margin: 0 4px 2px 0; }
+  html.phone #solve-stage { grid-area: 2 / 1 / 4 / 2; min-width: 0; }
+  /* Static, so #clue-full is placed against the view, not the bar. The bar takes the
+     column's height the keyboard leaves, so a long clue gets room. */
+  html.phone #solve-bar { grid-area: 2 / 2 / 3 / -1; height: auto; min-width: 0; position: static; }
+  /* The clue shows as many lines as the bar has height for. line-clamp takes only a
+     whole number, so the height is queried in steps, one line (about 20px) apiece, from
+     the two lines portrait has. The container is the bar's child, not the bar:
+     containment would make the bar the containing block of #clue-full. */
+  html.phone #active-clue-bar,
+  html.phone #clue-navigator { container-type: size; }
+  @container (min-height: 60px) {
+    html.phone .nav-text,
+    html.phone #active-clue-primary .active-clue-text { -webkit-line-clamp: 3; line-clamp: 3; }
+  }
+  @container (min-height: 80px) {
+    html.phone .nav-text,
+    html.phone #active-clue-primary .active-clue-text { -webkit-line-clamp: 4; line-clamp: 4; }
+  }
+  @container (min-height: 100px) {
+    html.phone .nav-text,
+    html.phone #active-clue-primary .active-clue-text { -webkit-line-clamp: 5; line-clamp: 5; }
+  }
+  /* A little more under the keys than portrait has, as the keyboard sits at the screen's
+     foot here. */
+  html.phone #drawn-kb {
+    grid-area: 3 / 2 / 4 / -1;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+  /* One line: the byline doesn't fit the strip with it. */
+  html.phone .solve-title { -webkit-line-clamp: 1; line-clamp: 1; }
+  /* With .solve-top boxless the panels' containing block is the view, hence the
+     explicit top. The help panel is taller than the shortest phones, so it scrolls
+     inside itself. */
+  html.phone #menu-panel,
+  html.phone #help-panel {
+    top: var(--strip-h);
+    max-height: calc(100svh - var(--strip-h));
+    overflow-y: auto;
+  }
+  /* A clue still cut off in the bar opens in full from the strip down, at the
+     keyboard's width, over the bar and the top of the keys. */
+  html.phone #clue-full {
+    top: var(--strip-h);
+    bottom: auto;
+    left: auto;
+    right: 0;
+    width: var(--kb-w);
+    min-height: 0;
+    max-height: calc(100svh - var(--strip-h));
+  }
+  /* Keyboard on the left (the options menu's row, shared/engine-phone.mjs): the right
+     column swaps with the stage, under the same strip. */
+  html.phone.kb-left #solve-view {
+    grid-template-columns: var(--kb-w) minmax(0, 1fr) auto auto auto;
+  }
+  html.phone.kb-left #solve-stage { grid-area: 2 / 2 / 4 / -1; }
+  html.phone.kb-left #solve-bar { grid-area: 2 / 1 / 3 / 2; }
+  html.phone.kb-left #drawn-kb { grid-area: 3 / 1 / 4 / 2; }
+  html.phone.kb-left #clue-full { left: 0; right: auto; }
+  /* A plain list (Marching Bands) hides the keyboard on the Clues screen, so the list
+     takes the whole width. */
+  html.phone #solve-view:has(> #drawn-kb[hidden]) #solve-stage { grid-column: 1 / -1; }
+}
 
 .puzzle-main { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
 
@@ -1209,6 +1315,24 @@ html.phone .clue-item .list-cell.list-cursor.composing {
   border-width: 2px;
   border-style: dashed;
   box-shadow:   none;
+}
+
+/* Landscape phones (the query and its reason are defined in base.css). .solve-top has no
+   box there, so the strip's rule is drawn by the view's ::before, which spans it; the
+   bar loses its own top rule, and the stage's right edge, the stage/keyboard divide,
+   stands in for the keyboard's (a plain list takes the whole width, so has none). */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  html.phone #solve-view::before { border-bottom: 2px solid var(--theme-color-header-rule); }
+  html.phone #solve-bar { border-top: none; }
+  html.phone #solve-stage { border-right: 1px solid var(--theme-color-bar-border); }
+  html.phone.kb-left #solve-stage { border-right: none; border-left: 1px solid var(--theme-color-bar-border); }
+  html.phone #solve-view:has(> #drawn-kb[hidden]) #solve-stage { border: none; }
+  /* The full clue hangs below the strip, so its edge and shadow face down. */
+  html.phone #clue-full {
+    border-top: none;
+    border-bottom: 1px solid var(--theme-color-bar-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
 }
 
 /* ── Per-tool selectors (body class hook: .tool-<name>) ─────────────────────
@@ -2954,8 +3078,366 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     return ro;
   }
 
+  // shared/svg-zoom-gestures.mjs
+  var DEFAULTS = { tapSlop: 10, doubleTapMs: 300, doubleTapSlop: 15 };
+  function createGestureTracker(options = {}) {
+    const { tapSlop, doubleTapMs, doubleTapSlop } = { ...DEFAULTS, ...options };
+    const pointers = /* @__PURE__ */ new Map();
+    let gesture = false;
+    let double = false;
+    let lastTap = null;
+    let prevDist = 0;
+    let prevMid = { x: 0, y: 0 };
+    function pair() {
+      const [a, b] = [...pointers.values()];
+      return {
+        dist: Math.hypot(b.x - a.x, b.y - a.y),
+        mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      };
+    }
+    function endSequence() {
+      gesture = false;
+      double = false;
+      lastTap = null;
+    }
+    function down(id, x, y, t) {
+      if (pointers.has(id) || pointers.size >= 2) return [];
+      const p = { x0: x, y0: y, x, y, panning: false };
+      if (pointers.size === 0) {
+        gesture = false;
+        double = Boolean(
+          lastTap && t - lastTap.t <= doubleTapMs && Math.hypot(x - lastTap.x, y - lastTap.y) <= doubleTapSlop
+        );
+        lastTap = null;
+        pointers.set(id, p);
+        return [];
+      }
+      gesture = true;
+      double = false;
+      p.panning = true;
+      for (const other of pointers.values()) other.panning = true;
+      pointers.set(id, p);
+      ({ dist: prevDist, mid: prevMid } = pair());
+      return [];
+    }
+    function move(id, x, y) {
+      const p = pointers.get(id);
+      if (!p) return [];
+      if (pointers.size === 2) {
+        p.x = x;
+        p.y = y;
+        const { dist, mid } = pair();
+        const action2 = {
+          type: "pinch",
+          from: prevMid,
+          to: mid,
+          scale: prevDist > 0 ? dist / prevDist : 1
+        };
+        prevDist = dist;
+        prevMid = mid;
+        return [action2];
+      }
+      if (!p.panning) {
+        if (Math.hypot(x - p.x0, y - p.y0) <= tapSlop) return [];
+        p.panning = true;
+        gesture = true;
+      }
+      const action = { type: "pan", dx: x - p.x, dy: y - p.y };
+      p.x = x;
+      p.y = y;
+      return [action];
+    }
+    function up(id, x, y, t) {
+      if (!pointers.has(id)) return [];
+      const wasPair = pointers.size === 2;
+      pointers.delete(id);
+      if (wasPair) {
+        return [];
+      }
+      if (gesture) {
+        endSequence();
+        return [{ type: "gestureEnd" }];
+      }
+      if (double) {
+        endSequence();
+        return [{ type: "doubleTap", x, y }];
+      }
+      lastTap = { x, y, t };
+      return [{ type: "tap", x, y }];
+    }
+    function cancel(id) {
+      if (!pointers.has(id)) return [];
+      pointers.delete(id);
+      if (pointers.size > 0) return [];
+      const wasGesture = gesture;
+      endSequence();
+      return wasGesture ? [{ type: "gestureEnd" }] : [];
+    }
+    function forget() {
+      lastTap = null;
+    }
+    return { down, move, up, cancel, forget };
+  }
+
+  // shared/svg-zoom-geometry.mjs
+  function initialView(frame) {
+    const { base } = frame;
+    return { zoom: 1, cx: base.x + base.width / 2, cy: base.y + base.height / 2 };
+  }
+  function fitScale(frame) {
+    return Math.min(frame.pane.width / frame.base.width, frame.pane.height / frame.base.height);
+  }
+  function visibleSize(view, frame) {
+    const k = fitScale(frame) * view.zoom;
+    return { width: frame.pane.width / k, height: frame.pane.height / k };
+  }
+  function clampAxis(center, visible, start, extent) {
+    if (visible >= extent) return start + extent / 2;
+    return Math.min(Math.max(center, start + visible / 2), start + extent - visible / 2);
+  }
+  function clampView(view, frame) {
+    const zoom = Math.min(Math.max(view.zoom, 1), frame.maxZoom);
+    const size = visibleSize({ zoom }, frame);
+    const { base } = frame;
+    return {
+      zoom,
+      cx: clampAxis(view.cx, size.width, base.x, base.width),
+      cy: clampAxis(view.cy, size.height, base.y, base.height)
+    };
+  }
+  function viewBoxOf(view, frame) {
+    const size = visibleSize(view, frame);
+    return {
+      x: view.cx - size.width / 2,
+      y: view.cy - size.height / 2,
+      width: size.width,
+      height: size.height
+    };
+  }
+  function zoomAround(view, frame, { from, to, zoom }) {
+    const next = Math.min(Math.max(zoom, 1), frame.maxZoom);
+    const fit = fitScale(frame);
+    const kOld = fit * view.zoom;
+    const kNew = fit * next;
+    const box = viewBoxOf(view, frame);
+    const px = box.x + from.x / kOld;
+    const py = box.y + from.y / kOld;
+    return clampView({
+      zoom: next,
+      cx: px - to.x / kNew + frame.pane.width / (2 * kNew),
+      cy: py - to.y / kNew + frame.pane.height / (2 * kNew)
+    }, frame);
+  }
+  function panBy(view, frame, dx, dy) {
+    const k = fitScale(frame) * view.zoom;
+    return clampView({ zoom: view.zoom, cx: view.cx - dx / k, cy: view.cy - dy / k }, frame);
+  }
+  function revealAxis(center, visible, start, extent, margin) {
+    const m = Math.max(0, Math.min(margin, (visible - extent) / 2));
+    const lo = center - visible / 2;
+    const hi = center + visible / 2;
+    if (start - m < lo) return start - m - lo;
+    if (start + extent + m > hi) return start + extent + m - hi;
+    return 0;
+  }
+  function reveal(view, frame, rects, margin) {
+    const size = visibleSize(view, frame);
+    const pick = (extentOf) => rects.find((rect) => extentOf(rect) <= extentOf(size)) || rects[rects.length - 1];
+    const rx = pick((b) => b.width);
+    const ry = pick((b) => b.height);
+    return clampView({
+      zoom: view.zoom,
+      cx: view.cx + revealAxis(view.cx, size.width, rx.x, rx.width, margin),
+      cy: view.cy + revealAxis(view.cy, size.height, ry.y, ry.height, margin)
+    }, frame);
+  }
+
+  // shared/svg-zoom.mjs
+  var STRAY_CLICK_MS = 400;
+  var DOUBLE_TAP_MS = 300;
+  var DOUBLE_TAP_PX = 15;
+  var TAP_SLOP_PX = 10;
+  function attachSvgZoom(svg, { pane, maxZoom = 5, doubleTapZoom = 2.5, win = window }) {
+    const original = svg.getAttribute("viewBox");
+    const baseVal = svg.viewBox.baseVal;
+    const inert = { reveal() {
+    }, refresh() {
+    }, reset() {
+    }, zoomed: () => false, destroy() {
+    } };
+    if (!original || !baseVal || baseVal.width <= 0 || baseVal.height <= 0) return inert;
+    const frame = {
+      base: { x: baseVal.x, y: baseVal.y, width: baseVal.width, height: baseVal.height },
+      pane: { width: 0, height: 0 },
+      maxZoom
+    };
+    let view = initialView(frame);
+    let measured = false;
+    let printing = false;
+    const ownOverflow = svg.style.overflow;
+    function apply() {
+      if (!measured) return;
+      if (printing || view.zoom === 1) {
+        svg.setAttribute("viewBox", original);
+        svg.style.overflow = ownOverflow;
+        return;
+      }
+      const b = viewBoxOf(view, frame);
+      svg.setAttribute("viewBox", `${b.x} ${b.y} ${b.width} ${b.height}`);
+      svg.style.overflow = "hidden";
+    }
+    function setView(next) {
+      view = next;
+      apply();
+    }
+    function measure() {
+      const r = svg.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return false;
+      frame.pane = { width: r.width, height: r.height };
+      measured = true;
+      return true;
+    }
+    function refresh() {
+      if (!measure()) return;
+      setView(clampView(view, frame));
+    }
+    function reset() {
+      setView(initialView(frame));
+    }
+    function zoomed() {
+      return view.zoom > 1;
+    }
+    function reveal2(rects, margin) {
+      if (!measured) return;
+      setView(reveal(view, frame, rects, margin));
+    }
+    const tracker = createGestureTracker({
+      tapSlop: TAP_SLOP_PX,
+      doubleTapMs: DOUBLE_TAP_MS,
+      doubleTapSlop: DOUBLE_TAP_PX
+    });
+    let strayUntil = 0;
+    let eatNextUntil = 0;
+    const touching = /* @__PURE__ */ new Set();
+    let origin = null;
+    let swept = false;
+    function onClick(e) {
+      if (!pane.contains(e.target)) return;
+      const eat = () => {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      };
+      if (e.timeStamp <= strayUntil) return eat();
+      if (e.timeStamp <= eatNextUntil) {
+        eatNextUntil = 0;
+        return eat();
+      }
+    }
+    function local(e) {
+      return { x: e.clientX - origin.left, y: e.clientY - origin.top };
+    }
+    function run(actions, t) {
+      for (const a of actions) {
+        if (a.type === "pan") {
+          const before = view;
+          setView(panBy(view, frame, a.dx, a.dy));
+          if (view.cx !== before.cx || view.cy !== before.cy) swept = true;
+        } else if (a.type === "pinch") {
+          setView(zoomAround(view, frame, { from: a.from, to: a.to, zoom: view.zoom * a.scale }));
+          swept = true;
+        } else if (a.type === "doubleTap") {
+          eatNextUntil = t + STRAY_CLICK_MS;
+          if (zoomed()) reset();
+          else setView(zoomAround(view, frame, { from: a, to: a, zoom: doubleTapZoom }));
+        } else if (a.type === "gestureEnd") {
+          if (swept) strayUntil = t + STRAY_CLICK_MS;
+          swept = false;
+        }
+      }
+    }
+    function onDown(e) {
+      if (!measured && !measure()) return;
+      eatNextUntil = 0;
+      if (touching.size > 0) swept = true;
+      else origin = svg.getBoundingClientRect();
+      touching.add(e.pointerId);
+      const p = local(e);
+      run(tracker.down(e.pointerId, p.x, p.y, e.timeStamp), e.timeStamp);
+    }
+    function onMove(e) {
+      if (!touching.has(e.pointerId)) return;
+      const p = local(e);
+      run(tracker.move(e.pointerId, p.x, p.y, e.timeStamp), e.timeStamp);
+    }
+    function onUp(e) {
+      if (!touching.delete(e.pointerId)) return;
+      const p = local(e);
+      run(tracker.up(e.pointerId, p.x, p.y, e.timeStamp), e.timeStamp);
+    }
+    function onCancel(e) {
+      if (!touching.delete(e.pointerId)) return;
+      run(tracker.cancel(e.pointerId), e.timeStamp);
+    }
+    function onOutsideDown(e) {
+      if (!pane.contains(e.target)) tracker.forget();
+    }
+    function stopGesture(e) {
+      e.preventDefault();
+    }
+    const saved = { pane: pane.style.touchAction, svgTouch: svg.style.touchAction };
+    pane.style.touchAction = "none";
+    svg.style.touchAction = "none";
+    const passive = { passive: true };
+    pane.addEventListener("pointerdown", onDown, passive);
+    pane.addEventListener("pointermove", onMove, passive);
+    win.addEventListener("pointerup", onUp, true);
+    win.addEventListener("pointercancel", onCancel, true);
+    pane.addEventListener("gesturestart", stopGesture, { passive: false });
+    pane.addEventListener("gesturechange", stopGesture, { passive: false });
+    win.addEventListener("click", onClick, true);
+    win.addEventListener("pointerdown", onOutsideDown, true);
+    let observer = null;
+    if (win.ResizeObserver) {
+      observer = new win.ResizeObserver(refresh);
+      observer.observe(svg);
+    } else {
+      win.addEventListener("resize", refresh);
+    }
+    const setPrinting = (on) => () => {
+      printing = on;
+      apply();
+    };
+    const beforePrint = setPrinting(true);
+    const afterPrint = setPrinting(false);
+    win.addEventListener("beforeprint", beforePrint);
+    win.addEventListener("afterprint", afterPrint);
+    refresh();
+    function destroy() {
+      svg.setAttribute("viewBox", original);
+      pane.style.touchAction = saved.pane;
+      svg.style.touchAction = saved.svgTouch;
+      svg.style.overflow = ownOverflow;
+      pane.removeEventListener("pointerdown", onDown);
+      pane.removeEventListener("pointermove", onMove);
+      win.removeEventListener("pointerup", onUp, true);
+      win.removeEventListener("pointercancel", onCancel, true);
+      pane.removeEventListener("gesturestart", stopGesture);
+      pane.removeEventListener("gesturechange", stopGesture);
+      win.removeEventListener("click", onClick, true);
+      win.removeEventListener("pointerdown", onOutsideDown, true);
+      if (observer) observer.disconnect();
+      else win.removeEventListener("resize", refresh);
+      win.removeEventListener("beforeprint", beforePrint);
+      win.removeEventListener("afterprint", afterPrint);
+    }
+    return { reveal: reveal2, refresh, reset, zoomed, destroy };
+  }
+
   // shared/engine-phone.mjs
   var TOUCH_FIRST = "(hover: none) and (pointer: coarse)";
+  var LANDSCAPE_PHONE = "(orientation: landscape) and (max-height: 500px)";
+  var MAX_ZOOM = 5;
+  var DOUBLE_TAP_ZOOM = 2.5;
   function isTouchFirst(win = window) {
     return win.matchMedia(TOUCH_FIRST).matches;
   }
@@ -3126,6 +3608,13 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     const showingClue = setupClueExpand(barRow, clueBar.text, win);
     const solveView = htmlEl("div", { id: "solve-view" }, top, stage, barRow, keyboard);
     doc.querySelector(".puzzle-main").append(solveView);
+    const svgNode = grid.matches("svg") ? grid : grid.querySelector("svg");
+    const zoom = attachSvgZoom(svgNode, {
+      pane: gridPane,
+      maxZoom: MAX_ZOOM,
+      doubleTapZoom: DOUBLE_TAP_ZOOM,
+      win
+    });
     const introText = firstVisit && instructionsCopy("intro-text");
     if (introText) {
       const intro = htmlEl(
@@ -3158,9 +3647,40 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     }
     function hideList() {
       setListOpen(false);
+      zoom.refresh();
+      if (pendingFollow) actOnFollow(...pendingFollow);
+      pendingFollow = null;
       onGridShown();
     }
     cluesBtn.addEventListener("click", () => isListOpen() ? hideList() : showList());
+    let lastFollowKey = null;
+    let pendingFollow = null;
+    const unionOf = (boxes) => {
+      const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y));
+      return {
+        x,
+        y,
+        width: Math.max(...boxes.map((b) => b.x + b.width)) - x,
+        height: Math.max(...boxes.map((b) => b.y + b.height)) - y
+      };
+    };
+    function actOnFollow(entryCells, cursorCell, cursorContent) {
+      const key = `${cursorCell}|${cursorContent}|${entryCells.join(",")}`;
+      if (key === lastFollowKey) return;
+      lastFollowKey = key;
+      if (!zoom.zoomed()) return;
+      const box = (n) => svgNode.querySelector("#cell-" + n).getBBox();
+      const cursor = box(cursorCell);
+      zoom.reveal([
+        unionOf(entryCells.map(box)),
+        unionOf([box(entryCells[0]), cursor]),
+        cursor
+      ], Math.min(cursor.width, cursor.height));
+    }
+    function follow(entryCells, cursorCell, cursorContent) {
+      if (isListOpen()) pendingFollow = [entryCells, cursorCell, cursorContent];
+      else actOnFollow(entryCells, cursorCell, cursorContent);
+    }
     let fill = null;
     if (fillList) {
       fill = setupFillList(fillList.items, { ...fillList, scroller: listPane });
@@ -3169,7 +3689,15 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       ).label;
       wrapLabel.hidden = !isListOpen();
     }
-    return { listPane, hideList, fillList: fill, showingClue };
+    const keyboardSideLabel = setupKeyboardSidePref(
+      { root: doc.documentElement, panel: doc.getElementById("menu-panel"), refocus }
+    ).label;
+    const landscape = win.matchMedia(LANDSCAPE_PHONE);
+    keyboardSideLabel.hidden = !landscape.matches;
+    landscape.addEventListener("change", (e) => {
+      keyboardSideLabel.hidden = !e.matches;
+    });
+    return { listPane, hideList, fillList: fill, showingClue, follow };
   }
   function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = () => false, onCellTap }) {
     const letterEls = items.map(({ li, cells }, i) => {
@@ -3248,12 +3776,10 @@ html.phone .clue-item .list-cell.list-cursor.composing {
     }
     return { sync, flash };
   }
-  var LIST_WRAP_KEY = "vp:pref:listWrap";
-  function setupListWrapPref({ storage, root = document.documentElement, panel, refocus }) {
-    const pref = boolPref(LIST_WRAP_KEY, true, storage);
-    const { label, input } = menuToggle("list-wrap-toggle", "Wrap long rows of cells");
+  function setupMenuPref({ key, fallback, id, text, apply, storage, panel, refocus }) {
+    const pref = boolPref(key, fallback, storage);
+    const { label, input } = menuToggle(id, text);
     panel.insertBefore(label, panel.querySelector("#clear-btn"));
-    const apply = (on) => root.classList.toggle("list-nowrap", !on);
     input.checked = pref.load();
     apply(input.checked);
     input.addEventListener("change", () => {
@@ -3265,6 +3791,32 @@ html.phone .clue-item .list-cell.list-cursor.composing {
       if (!input.matches(":focus-visible")) refocus();
     });
     return { pref, label };
+  }
+  var LIST_WRAP_KEY = "vp:pref:listWrap";
+  function setupListWrapPref({ storage, root = document.documentElement, panel, refocus }) {
+    return setupMenuPref({
+      key: LIST_WRAP_KEY,
+      fallback: true,
+      id: "list-wrap-toggle",
+      text: "Wrap long rows of cells",
+      apply: (on) => root.classList.toggle("list-nowrap", !on),
+      storage,
+      panel,
+      refocus
+    });
+  }
+  var KEYBOARD_LEFT_KEY = "vp:pref:keyboardLeft";
+  function setupKeyboardSidePref({ storage, root = document.documentElement, panel, refocus }) {
+    return setupMenuPref({
+      key: KEYBOARD_LEFT_KEY,
+      fallback: false,
+      id: "keyboard-left-toggle",
+      text: "Keyboard on the left",
+      apply: (on) => root.classList.toggle("kb-left", on),
+      storage,
+      panel,
+      refocus
+    });
   }
 
   // marching-bands/src/layout.mjs
@@ -3466,6 +4018,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
         navIdx = 0;
       }
       if (phone) clueNav.render();
+      if (phone) phone.follow(activeContextCells(), activeCell, getCellLetter(activeCell));
       controls.syncHelp();
       const activeGroup = activeMode.groups[activeMode.index()];
       if (activeGroup !== lastScrolled) {

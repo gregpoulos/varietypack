@@ -15,7 +15,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
-const { FIXTURES, buildFixtures, dismissIntro, scrollFlush } = require('./mobile');
+const { FIXTURES, buildFixtures, dismissIntro, scrollFlush, obstructed } = require('./mobile');
 
 const MIN_TAP = 44; // px — Apple HIG minimum touch target
 const EPS = 1;      // px of slack for sub-pixel layout rounding in viewport bounds
@@ -80,27 +80,6 @@ function undersized(page, selector, { heightOnly = false } = {}) {
       })
       .filter(({ w, h }) => h < min || (!heightOnly && w < min)),
   { selector, min: MIN_TAP, heightOnly });
-}
-
-// Visible buttons and grid cells whose center is on screen but not the topmost element
-// there — i.e. a tap at that point would land on something else. Off-screen centers are
-// skipped, so this is blind to a control pushed off the edge by horizontal overflow
-// (Chromium widens the layout viewport to fit it) — that case is the no-hscroll check's
-// to catch.
-function obstructed(page) {
-  return page.evaluate(() => {
-    const de = document.documentElement;
-    return [...document.querySelectorAll('button, .cell')]
-      .filter(el => el.checkVisibility())
-      .flatMap(el => {
-        const r = el.getBoundingClientRect();
-        const x = r.left + r.width / 2, y = r.top + r.height / 2;
-        if (x < 0 || y < 0 || x >= de.clientWidth || y >= de.clientHeight) return [];
-        const hit = document.elementFromPoint(x, y);
-        if (hit === el || el.contains(hit)) return [];
-        return [{ el: el.id || el.textContent.trim().slice(0, 20), coveredBy: hit && (hit.id || hit.tagName) }];
-      });
-  });
 }
 
 for (const fx of FIXTURES) {

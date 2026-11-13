@@ -8,10 +8,22 @@
 import {
   FLASH_WRONG_MS, PHONE_CLASS, boolPref, htmlEl, menuToggle, onClueClick, svgEl,
 } from './engine-chrome.mjs';
+import { attachSvgZoom } from './svg-zoom.mjs';
 
 // Detection is by the main input method, not by width, so tablets get the phone layout
 // and a narrow desktop window doesn't.
 const TOUCH_FIRST = '(hover: none) and (pointer: coarse)';
+
+// The screens that get the side-by-side layout: the query of the landscape block in
+// base.css, minus its `screen`, which a script has no use for. Keep the two in step, and
+// the third copy in shared/themes/theme-components.css (a spot to consolidate, say into
+// one custom property on html.phone, if the threshold is ever reworked).
+const LANDSCAPE_PHONE = '(orientation: landscape) and (max-height: 500px)';
+
+// The grid's zoom limit, and where a double-tap on the unzoomed grid goes, both as
+// multiples of the zoom that fits the whole grid. Starting values, tuned on a phone.
+const MAX_ZOOM = 5;
+const DOUBLE_TAP_ZOOM = 2.5;
 
 function isTouchFirst(win = window) {
   return win.matchMedia(TOUCH_FIRST).matches;
@@ -140,8 +152,16 @@ function setupClueExpand(barRow, clueText, win) {
 //                drawn keyboard hides while the list is open.
 //   onGridShown: called when the list closes and the grid shows again
 //   bottomRow:   the keyboard's bottom row (buildKeyboard)
-// Returns { listPane, hideList, fillList, showingClue }, `fillList` being
+// Returns { listPane, hideList, fillList, showingClue, follow }, `fillList` being
 // setupFillList's { sync, flash } or null, and showingClue setupClueExpand's.
+// follow(entryCells, cursorCell, cursorContent) is for syncUI: it keeps the cursor in
+// view while the grid is zoomed, panning (never zooming) the least that shows the active
+// entry, or failing that its start and the cursor, or the cursor. `entryCells` are the
+// active entry's cells in entry order, as the numbers in the cells' `cell-{n}` ids;
+// `cursorContent` is what the cursor's cell holds, so an edit that doesn't move the
+// cursor counts as a change. A call that changes none of the three does nothing, which
+// leaves a pan the solver made by hand in place. While the Clues screen shows, the call
+// waits for the grid to return.
 function setupPhoneLayout({
   hiddenInput, refocus, grid, lists, clueBar, helpMenu, firstVisit, ownSteps = false, fillList = null,
   onGridShown = () => {}, bottomRow, win = window,
@@ -235,6 +255,14 @@ function setupPhoneLayout({
 
   const solveView = htmlEl('div', { id: 'solve-view' }, top, stage, barRow, keyboard);
   doc.querySelector('.puzzle-main').append(solveView);
+  // Pinch, drag and double-tap zoom the grid (shared/svg-zoom.mjs). Crushword's `grid` is
+  // the SVG itself, the others' a wrapper. A double-tap's first tap acts as a single tap
+  // does (a tap on the cursor's cell switches direction at once); the second only zooms.
+  const svgNode = grid.matches('svg') ? grid : grid.querySelector('svg');
+  const zoom = attachSvgZoom(svgNode, {
+    pane: gridPane, maxZoom: MAX_ZOOM, doubleTapZoom: DOUBLE_TAP_ZOOM,
+    win,
+  });
   // On a first visit, the instructions over the whole view until a tap anywhere on them.
   const introText = firstVisit && instructionsCopy('intro-text');
   if (introText) {
@@ -272,9 +300,48 @@ function setupPhoneLayout({
   }
   function hideList() {
     setListOpen(false);
+    // The grid measured 0x0 while the list showed: re-apply its view now it's back, then
+    // catch up with any cursor move made meanwhile.
+    zoom.refresh();
+    if (pendingFollow) actOnFollow(...pendingFollow);
+    pendingFollow = null;
     onGridShown();
   }
   cluesBtn.addEventListener('click', () => (isListOpen() ? hideList() : showList()));
+
+  // Cursor following (see the `follow` return value). While the list shows, the grid
+  // measures 0x0, so a call waits in pendingFollow for hideList.
+  let lastFollowKey = null;
+  let pendingFollow = null;
+  // The smallest box that holds every one of `boxes`.
+  const unionOf = boxes => {
+    const x = Math.min(...boxes.map(b => b.x)), y = Math.min(...boxes.map(b => b.y));
+    return {
+      x, y,
+      width: Math.max(...boxes.map(b => b.x + b.width)) - x,
+      height: Math.max(...boxes.map(b => b.y + b.height)) - y,
+    };
+  };
+  // Pans to the cursor if the call differs from the last one acted on.
+  function actOnFollow(entryCells, cursorCell, cursorContent) {
+    // Acts once per change, so a syncUI that changed nothing leaves a hand pan alone.
+    const key = `${cursorCell}|${cursorContent}|${entryCells.join(',')}`;
+    if (key === lastFollowKey) return;
+    lastFollowKey = key;
+    if (!zoom.zoomed()) return;
+    const box = n => svgNode.querySelector('#cell-' + n).getBBox();
+    const cursor = box(cursorCell);
+    // Preferred first: the whole entry; then its start with the cursor; then the cursor.
+    zoom.reveal([
+      unionOf(entryCells.map(box)),
+      unionOf([box(entryCells[0]), cursor]),
+      cursor,
+    ], Math.min(cursor.width, cursor.height));
+  }
+  function follow(entryCells, cursorCell, cursorContent) {
+    if (isListOpen()) pendingFollow = [entryCells, cursorCell, cursorContent];
+    else actOnFollow(entryCells, cursorCell, cursorContent);
+  }
 
   // The fill-in list's cell rows, and its menu row.
   let fill = null;
@@ -285,7 +352,14 @@ function setupPhoneLayout({
     wrapLabel.hidden = !isListOpen();
   }
 
-  return { listPane, hideList, fillList: fill, showingClue };
+  // The keyboard-side row, offered only where the side-by-side layout applies.
+  const keyboardSideLabel = setupKeyboardSidePref(
+    { root: doc.documentElement, panel: doc.getElementById('menu-panel'), refocus }).label;
+  const landscape = win.matchMedia(LANDSCAPE_PHONE);
+  keyboardSideLabel.hidden = !landscape.matches;
+  landscape.addEventListener('change', e => { keyboardSideLabel.hidden = !e.matches; });
+
+  return { listPane, hideList, fillList: fill, showingClue, follow };
 }
 
 // The fill-in list view (Crushword, Spiral, Snake Charmer): under each clue, a row of its
@@ -406,21 +480,17 @@ function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = ()
   return { sync, flash };
 }
 
-// The options menu's "Wrap long rows of cells" checkbox: a clue's row of cells on the
-// Clues screen wraps onto more lines when it is too long for one, or, unchecked, shrinks
-// to stay on one (`list-nowrap` on <html>). A solver's preference for every puzzle, so
-// its key names no puzzle. `panel` is #menu-panel; the row goes above Clear puzzle, a
-// plain display setting before the destructive action. It changes nothing but the Clues
-// screen, so the caller shows its label only there (`label.hidden`). `refocus` runs on
-// each change, and on a pointer-driven focus: a tap on the label focuses the checkbox in
-// Chromium, mousedown or not.
+// A solver's display preference as an options-menu checkbox: one boolean in localStorage
+// under `key` (`fallback` when absent), applied through `apply(checked)` on load and on
+// each change. A preference for every puzzle, so no key names a puzzle. The row goes
+// above Clear puzzle in `panel` (#menu-panel), a plain display setting before the
+// destructive action. `refocus` runs on each change, and on a pointer-driven focus: a
+// tap on the label focuses the checkbox in Chromium, mousedown or not.
 // Returns { pref, label }, `pref` being the preference's { load, save }.
-const LIST_WRAP_KEY = 'vp:pref:listWrap';
-function setupListWrapPref({ storage, root = document.documentElement, panel, refocus }) {
-  const pref = boolPref(LIST_WRAP_KEY, true, storage);
-  const { label, input } = menuToggle('list-wrap-toggle', 'Wrap long rows of cells');
+function setupMenuPref({ key, fallback, id, text, apply, storage, panel, refocus }) {
+  const pref = boolPref(key, fallback, storage);
+  const { label, input } = menuToggle(id, text);
   panel.insertBefore(label, panel.querySelector('#clear-btn'));
-  const apply = on => root.classList.toggle('list-nowrap', !on);
   input.checked = pref.load();
   apply(input.checked);
   input.addEventListener('change', () => {
@@ -435,4 +505,30 @@ function setupListWrapPref({ storage, root = document.documentElement, panel, re
   return { pref, label };
 }
 
-export { isTouchFirst, scrollWithin, setupFillList, setupListWrapPref, setupPhoneLayout, stepIndex };
+// The "Wrap long rows of cells" row: a clue's row of cells on the Clues screen wraps onto
+// more lines when it is too long for one, or, unchecked, shrinks to stay on one
+// (`list-nowrap` on <html>). It changes nothing but the Clues screen, so the caller
+// shows its label only there (`label.hidden`).
+const LIST_WRAP_KEY = 'vp:pref:listWrap';
+function setupListWrapPref({ storage, root = document.documentElement, panel, refocus }) {
+  return setupMenuPref({
+    key: LIST_WRAP_KEY, fallback: true, id: 'list-wrap-toggle', text: 'Wrap long rows of cells',
+    apply: on => root.classList.toggle('list-nowrap', !on), storage, panel, refocus,
+  });
+}
+
+// The "Keyboard on the left" row, for left-handed solvers: `kb-left` on <html> mirrors
+// the landscape layout (base.css). It changes nothing in portrait, so the caller shows
+// its label only in landscape (`label.hidden`; see LANDSCAPE_PHONE).
+const KEYBOARD_LEFT_KEY = 'vp:pref:keyboardLeft';
+function setupKeyboardSidePref({ storage, root = document.documentElement, panel, refocus }) {
+  return setupMenuPref({
+    key: KEYBOARD_LEFT_KEY, fallback: false, id: 'keyboard-left-toggle', text: 'Keyboard on the left',
+    apply: on => root.classList.toggle('kb-left', on), storage, panel, refocus,
+  });
+}
+
+export {
+  isTouchFirst, scrollWithin, setupFillList, setupKeyboardSidePref, setupListWrapPref,
+  setupPhoneLayout, stepIndex,
+};

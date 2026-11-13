@@ -548,7 +548,7 @@ html.phone #drawn-kb {
   -webkit-touch-callout: none;
 }
 html.phone .kb-layer { display: flex; flex-direction: column; gap: 6px; }
-html.phone .kb-row { display: flex; gap: 4px; height: 44px; }
+html.phone .kb-row { display: flex; gap: 4px; height: var(--key-h, 44px); }
 html.phone .kb-layer > .kb-row:nth-child(2) { padding: 0 5%; }
 html.phone #drawn-kb button {
   flex: 1 1 0;
@@ -568,3 +568,109 @@ html.phone #drawn-kb .kb-wide { flex-grow: 2; font-weight: bold; }
 html.phone #drawn-kb .kb-arrow { width: 1.1rem; height: 1.1rem; fill: currentColor; }
 /* Holds ABC and ⌫ at the digit layer's edges, where the letter layer has them. */
 html.phone .kb-spacer { flex: 7 1 0; }
+
+/* Landscape phones: a strip across the top (title, buttons) over the stage at the left
+   and, at the right, the drawn keyboard with the clue bar above it. CSS alone:
+   setupPhoneLayout builds the same DOM in both orientations, so rotating switches live.
+
+   max-height: phones in landscape are shorter than 500px; taller touch screens keep the
+   stacked layout, which has room for it (and which nobody has been able to test side by
+   side). Keep shared/engine-phone.mjs's LANDSCAPE_PHONE in step.
+
+   .solve-top is display: contents because the title and the buttons, its children, must
+   be items of the one grid that also holds the stage, the clue bar and the keyboard.
+
+   Columns: the first is the stage; the rest add up to --kb-w, the right column, and end
+   in the three button columns (auto, so a hashed page's missing help button leaves no
+   hole). The title spans the strip up to the buttons. Rows: the strip, the clue bar
+   (whatever the keyboard leaves of the column), the keyboard.
+
+   --kb-w: 55% keeps the keys as wide as portrait's on the narrowest phone; past 400px
+   wider keys gain nothing, and the grid (a wide Crushword grid above all) can use the
+   width. */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  html.phone #solve-view {
+    --strip-h: 54px;
+    --kb-w: min(55%, 400px);
+    display: grid;
+    grid-template-columns: calc(100% - var(--kb-w)) minmax(0, 1fr) auto auto auto;
+    grid-template-rows: var(--strip-h) minmax(0, 1fr) auto;
+  }
+  /* Key height: 44px, the tap minimum, unless the screen is too short to leave the clue
+     bar its own 44px above four rows of keys; then the rows shrink, to 32px at the
+     least. What is taken off the height: the keyboard's padding and gaps (6 + 10 + 3 * 6)
+     and its safe area. */
+  html.phone #solve-view {
+    --key-h: clamp(32px, calc((100svh - var(--strip-h) - 44px - 34px - env(safe-area-inset-bottom)) / 4), 44px);
+  }
+  /* The strip's rule (theme-components.css), spanning the buttons too. */
+  html.phone #solve-view::before { content: ''; grid-area: 1 / 1 / 2 / -1; }
+  html.phone .solve-top { display: contents; }
+  html.phone .solve-head-slot { grid-area: 1 / 1 / 2 / 3; margin-left: 12px; }
+  /* The bottom margin, the rule's width, centers the buttons above the strip's rule. */
+  html.phone #clues-btn { grid-area: 1 / 3; align-self: center; margin: 0 4px 2px; }
+  html.phone #help-btn { grid-area: 1 / 4; align-self: center; margin-bottom: 2px; }
+  html.phone #menu-btn { grid-area: 1 / 5; align-self: center; margin: 0 4px 2px 0; }
+  html.phone #solve-stage { grid-area: 2 / 1 / 4 / 2; min-width: 0; }
+  /* Static, so #clue-full is placed against the view, not the bar. The bar takes the
+     column's height the keyboard leaves, so a long clue gets room. */
+  html.phone #solve-bar { grid-area: 2 / 2 / 3 / -1; height: auto; min-width: 0; position: static; }
+  /* The clue shows as many lines as the bar has height for. line-clamp takes only a
+     whole number, so the height is queried in steps, one line (about 20px) apiece, from
+     the two lines portrait has. The container is the bar's child, not the bar:
+     containment would make the bar the containing block of #clue-full. */
+  html.phone #active-clue-bar,
+  html.phone #clue-navigator { container-type: size; }
+  @container (min-height: 60px) {
+    html.phone .nav-text,
+    html.phone #active-clue-primary .active-clue-text { -webkit-line-clamp: 3; line-clamp: 3; }
+  }
+  @container (min-height: 80px) {
+    html.phone .nav-text,
+    html.phone #active-clue-primary .active-clue-text { -webkit-line-clamp: 4; line-clamp: 4; }
+  }
+  @container (min-height: 100px) {
+    html.phone .nav-text,
+    html.phone #active-clue-primary .active-clue-text { -webkit-line-clamp: 5; line-clamp: 5; }
+  }
+  /* A little more under the keys than portrait has, as the keyboard sits at the screen's
+     foot here. */
+  html.phone #drawn-kb {
+    grid-area: 3 / 2 / 4 / -1;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+  /* One line: the byline doesn't fit the strip with it. */
+  html.phone .solve-title { -webkit-line-clamp: 1; line-clamp: 1; }
+  /* With .solve-top boxless the panels' containing block is the view, hence the
+     explicit top. The help panel is taller than the shortest phones, so it scrolls
+     inside itself. */
+  html.phone #menu-panel,
+  html.phone #help-panel {
+    top: var(--strip-h);
+    max-height: calc(100svh - var(--strip-h));
+    overflow-y: auto;
+  }
+  /* A clue still cut off in the bar opens in full from the strip down, at the
+     keyboard's width, over the bar and the top of the keys. */
+  html.phone #clue-full {
+    top: var(--strip-h);
+    bottom: auto;
+    left: auto;
+    right: 0;
+    width: var(--kb-w);
+    min-height: 0;
+    max-height: calc(100svh - var(--strip-h));
+  }
+  /* Keyboard on the left (the options menu's row, shared/engine-phone.mjs): the right
+     column swaps with the stage, under the same strip. */
+  html.phone.kb-left #solve-view {
+    grid-template-columns: var(--kb-w) minmax(0, 1fr) auto auto auto;
+  }
+  html.phone.kb-left #solve-stage { grid-area: 2 / 2 / 4 / -1; }
+  html.phone.kb-left #solve-bar { grid-area: 2 / 1 / 3 / 2; }
+  html.phone.kb-left #drawn-kb { grid-area: 3 / 1 / 4 / 2; }
+  html.phone.kb-left #clue-full { left: 0; right: auto; }
+  /* A plain list (Marching Bands) hides the keyboard on the Clues screen, so the list
+     takes the whole width. */
+  html.phone #solve-view:has(> #drawn-kb[hidden]) #solve-stage { grid-column: 1 / -1; }
+}

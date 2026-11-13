@@ -16,15 +16,11 @@ const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
 const yaml = require('js-yaml');
-const { FIXTURES, dismissIntro, scrollFlush } = require('./mobile');
+const {
+  TOOL_FIXTURES, LONG_CLUE, MUDDLED_CW, BAR_TEXT, buildClueVariant, dismissIntro, scrollFlush,
+} = require('./mobile');
 const { solveCrushwordBoard, solveRingBoard } = require('./helpers');
 const { startServer } = require('./studio-server');
-
-// One fixture per tool. Spiral's is test-78: its outward entries break at other cells
-// than its inward ones, as a real Spiral's do, where test-122's line up.
-const TOOL_FIXTURES = ['snake-charmer/circle-84', 'spiral/test-78', 'marching-bands/mb-17', 'crushword/cw-9']
-  .map(key => FIXTURES.find(f => f.key === key));
-const MUDDLED_CW = path.join(__dirname, '..', 'crushword', 'test', 'fixtures', 'cw-9.muddled.yaml');
 
 // Where each tool shows the active direction, mode or loop: the toggle's active segment
 // (inside the hidden desktop controls, so read as text, not checked for visibility), or
@@ -35,11 +31,6 @@ const SWITCH_STATE = {
   'marching-bands': '#mode-toggle .toggle-opt.active',
   'crushword':      '#active-clue-primary .active-clue-dir',
 };
-
-// The bar's clue text: Marching Bands' navigator shows its own.
-const BAR_TEXT = tool => (tool === 'marching-bands' ? '.nav-text' : '#active-clue-primary .active-clue-text');
-const LONG_CLUE = 'Restored watermill that once ground grain for virtually the whole surrounding ' +
-  'village, now a museum of rural life with a working wheel and a tea room by the race';
 
 const INSTRUCTIONS = 'Every answer reads in both directions.';
 
@@ -55,18 +46,8 @@ test.beforeAll(() => {
   // short enough for one. Numbered, so moving to another clue changes the text.
   for (const f of TOOL_FIXTURES) {
     for (const [variant, text] of [['long', LONG_CLUE], ['short', 'Short']]) {
-      let n = 0;
-      const withClues = v => {
-        if (Array.isArray(v)) return v.map(withClues);
-        if (v === null || typeof v !== 'object') return v;
-        return Object.fromEntries(Object.entries(v).map(([k, x]) =>
-          [k, k === 'clue' ? `${text} (${++n})` : withClues(x)]));
-      };
       const name = `${f.tool}-${variant}`;
-      const yamlPath = path.join(tmpDir, name + '.yaml');
-      fs.writeFileSync(yamlPath, yaml.dump(withClues(yaml.load(fs.readFileSync(f.yamlPath, 'utf8')))));
-      htmlPaths[name] = path.join(tmpDir, name + '.html');
-      buildPuzzleFile(yamlPath, htmlPaths[name]);
+      htmlPaths[name] = buildClueVariant(f, text, name, tmpDir);
     }
   }
   // Crushword with every clue the same long text, so only the entry tells two apart.
@@ -845,6 +826,15 @@ test.describe('crushword', () => {
     expect(await activeCellId(page)).toBe('cell-' + cell);
     await expect(dir).toHaveText('Across');
     expect(await focusedId(page)).toBe('hidden-input');
+  });
+
+  // Left, down, up, right: vim's h j k l, which is the order a solver who types it
+  // reaches for (the order is a choice; no convention governs a single row of arrows).
+  test('the arrows run left, down, up, right', async ({ page }) => {
+    await load(page, 'crushword');
+    const keys = await page.locator('#drawn-kb .kb-bottom [data-key^="Arrow"]')
+      .evaluateAll(bs => bs.map(b => b.dataset.key));
+    expect(keys).toEqual(['ArrowLeft', 'ArrowDown', 'ArrowUp', 'ArrowRight']);
   });
 
   // Drawn, not typed: the triangle characters come in different sizes from font to font.

@@ -259,6 +259,7 @@ function init() {
     if (crossing) DIRS[otherDir].clueItems[crossing.num].classList.add('secondary-entry');
     // Phone list view: every row's letters, the cursor, and the active clue in view.
     if (phone) phone.fillList.sync(activeCell, activeItem, cursorPos);
+    if (phone) phone.follow(activeContextCells(), activeCell, getCellLetter(activeCell));
     // Clue bar: show the active clue and its crossing entry.
     clueBar.show(
       { dir: DIRS[direction].label, num: activeInfo.num, clue: data[direction][activeInfo.num].clue },
@@ -596,8 +597,8 @@ function init() {
     bottomRow: [
       { label: 'Prev\ncell', key: 'Enter', shift: true, ariaLabel: 'Previous cell' },
       { key: 'ArrowLeft', arrow: 'left', ariaLabel: 'Left' },
-      { key: 'ArrowUp', arrow: 'up', ariaLabel: 'Up' },
       { key: 'ArrowDown', arrow: 'down', ariaLabel: 'Down' },
+      { key: 'ArrowUp', arrow: 'up', ariaLabel: 'Up' },
       { key: 'ArrowRight', arrow: 'right', ariaLabel: 'Right' },
       { label: 'Next\ncell', key: 'Enter', ariaLabel: 'Next cell' },
     ],

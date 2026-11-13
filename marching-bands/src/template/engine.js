@@ -192,6 +192,7 @@ function init() {
     const group = `${mode}:${activeMode.index()}`;
     if (group !== navGroup) { navGroup = group; navIdx = 0; }
     if (phone) clueNav.render();
+    if (phone) phone.follow(activeContextCells(), activeCell, getCellLetter(activeCell));
 
     // Help rows: each enabled only while it applies to the active cell, clue or board.
     controls.syncHelp();

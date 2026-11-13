@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  isTouchFirst, setupFillList, setupListWrapPref, setupPhoneLayout, scrollWithin, stepIndex,
+  isTouchFirst, setupFillList, setupKeyboardSidePref, setupListWrapPref, setupPhoneLayout, scrollWithin, stepIndex,
 } = require('../engine-phone.mjs');
 
 // A window whose matchMedia answers `matches` for the touch-first query only.
@@ -319,4 +319,45 @@ test('setupListWrapPref: unchecking it keeps rows to one line and persists acros
   next.input.fire('change');
   assert.equal(has(next.root, 'list-nowrap'), false);
   assert.equal(next.pref.load(), true);
+});
+
+function keyboardSideHarness(storage) {
+  return withDocument(() => {
+    const root = mockEl('html');
+    const panel = mockEl('div');
+    const clearBtn = mockEl('button');
+    clearBtn.setAttribute('id', 'clear-btn');
+    panel.append(clearBtn);
+    const refocused = { count: 0 };
+    const { pref, label } = setupKeyboardSidePref(
+      { storage, root, panel, refocus: () => { refocused.count++; } });
+    const input = label.children.find(c => c.tagName === 'INPUT');
+    return { root, panel, label, input, pref, clearBtn, refocused };
+  });
+}
+
+test('setupKeyboardSidePref: adds its checkbox above Clear, unchecked with the keyboard on the right', () => {
+  const { root, panel, label, input, pref, clearBtn } = keyboardSideHarness(memStorage());
+  assert.deepEqual(panel.children, [label, clearBtn]);
+  assert.ok(label.children.includes(' Keyboard on the left'));
+  assert.equal(pref.load(), false);
+  assert.equal(input.checked, false);
+  assert.equal(has(root, 'kb-left'), false);
+});
+
+test('setupKeyboardSidePref: checking it moves the keyboard left and persists across pages', () => {
+  const storage = memStorage();
+  const first = keyboardSideHarness(storage);
+  first.input.checked = true;
+  first.input.fire('change');
+  assert.equal(has(first.root, 'kb-left'), true);
+  assert.equal(storage.store.get('vp:pref:keyboardLeft'), 'true');
+  assert.equal(first.refocused.count, 1);
+  const next = keyboardSideHarness(storage);
+  assert.equal(next.input.checked, true);
+  assert.equal(has(next.root, 'kb-left'), true);
+  next.input.checked = false;
+  next.input.fire('change');
+  assert.equal(has(next.root, 'kb-left'), false);
+  assert.equal(next.pref.load(), false);
 });

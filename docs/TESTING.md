@@ -65,14 +65,17 @@ focus or soft-keyboard behavior: WebKit is not redundant (see
 WebKit.
 
 **Phone layouts.** The `mobile-webkit` and `mobile-chromium` projects run only
-`e2e/mobile.spec.js` and `e2e/phone.spec.js` (the phone solving view's behavior,
-which only a touch-first device gets). They check layout properties under real
-phone descriptors, and known breakage is recorded as `test.fail()` entries in
+`e2e/mobile.spec.js`, `e2e/phone.spec.js` (the phone solving view's behavior,
+which only a touch-first device gets), `e2e/landscape-phone.spec.js` (the
+landscape arrangement, by resizing the viewport inside the phone projects) and
+`e2e/zoom-phone.spec.js` (grid zoom and pan; its pinch and drag are synthetic pointer
+events, and emulated WebKit is advisory for gestures). They
+check layout properties under real phone descriptors, and known breakage is recorded as `test.fail()` entries in
 the `KNOWN_FAILURES` table in `e2e/mobile.spec.js`; delete an entry when
 Playwright reports it "expected to fail, but passed". To look at phone layouts
 while working, run `npm run capture:mobile [-- <yaml-or-dir>...]` and open the
-PNGs it prints. Neither reaches a real soft keyboard or IME (see CROSS_TOOL_SPEC
-→ "Known limitation (touch)"), and Playwright's WebKit is not iOS Safari.
+PNGs it prints (it also takes a landscape shot of each page). Neither reaches a
+real soft keyboard or IME (see CROSS_TOOL_SPEC → "Known limitation (touch)"), and Playwright's WebKit is not iOS Safari.
 
 **Real-device checks.** Build the pages into a scratch directory and serve it on
 the LAN with `python3 -m http.server 8765 --bind <LAN IP> --directory <dir>`.
