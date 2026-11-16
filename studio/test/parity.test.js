@@ -33,6 +33,7 @@ const VARIANTS = [
   { name: 'skeleton embed', options: { theme: 'skeleton', font: 'embed' } },
   { name: 'skeleton link',  options: { theme: 'skeleton', font: 'link' } },
   { name: 'skeleton default font', options: { theme: 'skeleton' } },
+  { name: 'swiss',          options: { theme: 'swiss' } },
 ];
 
 function browserContext(code) {

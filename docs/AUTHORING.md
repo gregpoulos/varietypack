@@ -18,7 +18,7 @@ Every puzzle YAML, regardless of tool, starts with these fields:
 | `author` | no | string | Displayed in the puzzle header; not empty when present |
 | `date` | no | string or number | Displayed in the puzzle header; not empty when present. A calendar date (`date: 2026-11-10`) needs no quotes. A bare number is shown as YAML reads it (`10.20` shows as 10.2), so quote one that must appear as typed |
 | `instructions` | no | string | Puzzle instructions; supports multiple paragraphs separated by blank lines. Most tools show it between the header and the grid — Snake Charmer places it at the top of the clue column instead, since its layout has no full-width band. Accepts the same markdown subset as `clue` (below). |
-| `theme` | no | string | Visual theme: `broadsheet` or `skeleton`. The `--theme` flag overrides it. Default `broadsheet`. See "Themes and fonts" |
+| `theme` | no | string | Visual theme: `broadsheet`, `skeleton` or `swiss`. The `--theme` flag overrides it. Default `broadsheet`. See "Themes and fonts" |
 
 Beyond these, each tool adds its own puzzle-content fields (e.g. `entries`,
 `inward`/`outward`, `rows`/`bands`, `grid`/`across`/`down`) — see that
@@ -256,15 +256,19 @@ cells feed that tool's board hash and in what order. Algorithmic detail
 
 Select a visual theme with the YAML's `theme:` field or the `--theme <name>`
 flag, which overrides it (default `broadsheet`). Themes
-control colors, fonts, and decorative styling — never layout — and are
-shared across all four tools:
+control colors, fonts, and decorative styling (including the masthead's alignment
+and corner radii) — never layout — and are shared across all four tools:
 
 - **`broadsheet`** (default) — warm newsprint aesthetic: off-white
   background, Georgia serif, ink-on-paper feel. Uses only system fonts.
 - **`skeleton`** — dark mode: near-black background, vivid purple accents,
   and a custom display typeface that can be delivered two ways (below).
+- **`swiss`** — International Typographic Style: black on white with one flat
+  orange accent, a flush-left lowercase title and square corners. Uses only
+  system fonts (Helvetica where the device has it, else Arial or its default
+  sans-serif).
 
-Some themes dim a clue once all its cells are filled (`broadsheet` does) — a visual
+Some themes dim a clue once all its cells are filled (`broadsheet` and `swiss` do) — a visual
 progress cue only; it says nothing about whether the entry is right.
 
 **Custom fonts.** A theme that uses a non-system font (currently
@@ -278,7 +282,7 @@ progress cue only; it says nothing about whether the entry is right.
 
 Without the flag, a custom-font theme uses `embed` (or `link` when it has no
 local font files). The flag is silently ignored for system-font themes like
-`broadsheet`.
+`broadsheet` and `swiss`.
 
 ### Theme overrides
 

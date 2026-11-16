@@ -10,16 +10,16 @@ const { THEME_REGISTRY } = require('../build/themeRegistry');
 
 const COMPOSE_FIXTURE = path.join(__dirname, 'fixtures', 'compose');
 
-// `color: inherit` is unique to print-base.css across the whole bundle, so it
-// is a reliable position marker for the shared print layer.
-const PRINT_BASE_MARKER = 'opacity: 1 !important';
+// This phrase is unique to print-base.css across the whole bundle, so it is a
+// reliable position marker for the shared print resets.
+const PRINT_BASE_MARKER = 'Shared print resets';
 
 // theme-base.css carries this sentinel comment so we can assert it loaded and
 // ordered correctly without depending on a specific neutral value (tokens
 // override the values, but never the comment).
 const THEME_BASE_MARKER = 'theme-base: neutral defaults';
 
-test('composeThemeCss: broadsheet bundle stacks base, tool base, theme-base, tokens, components, print base, tool print in cascade order', () => {
+test('composeThemeCss: broadsheet bundle stacks base, tool base, theme-base, tokens, components, phone, print base, tool print as cascade layers', () => {
   const css = composeThemeCss(COMPOSE_FIXTURE, 'broadsheet');
   assert.ok(css.includes('box-sizing'),          'shared base missing');
   assert.ok(css.includes('.tool-base'),          'tool base missing');
@@ -35,6 +35,21 @@ test('composeThemeCss: broadsheet bundle stacks base, tool base, theme-base, tok
   assert.ok(css.indexOf('#f9f7f1')            < css.indexOf('.cell.active-entry'));
   assert.ok(css.indexOf('.cell.active-entry') < css.indexOf(PRINT_BASE_MARKER));
   assert.ok(css.indexOf(PRINT_BASE_MARKER)    < css.indexOf('.tool-print'));
+  // Layers: declared weakest first, and each file inside its own
+  assert.ok(css.includes('@layer base, tool, theme, phone, print;'), 'layer order statement missing');
+  const inLayer = (name, marker) => {
+    const open = css.indexOf(`@layer ${name} {`);
+    const next = css.indexOf('@layer ', open + 1);
+    const at = css.indexOf(marker);
+    return open >= 0 && at > open && (next < 0 || at < next);
+  };
+  assert.ok(inLayer('base', 'box-sizing'));
+  assert.ok(inLayer('tool', '.tool-base'));
+  assert.ok(inLayer('theme', THEME_BASE_MARKER));
+  assert.ok(inLayer('theme', '.cell.active-entry'));
+  assert.ok(inLayer('phone', '#grid-pane'));
+  assert.ok(inLayer('print', PRINT_BASE_MARKER));
+  assert.ok(inLayer('print', '.tool-print'));
   // Skeleton's palette must not bleed into broadsheet
   assert.ok(!css.includes('#1a1520'),            'skeleton token value must be absent');
 });
@@ -46,6 +61,20 @@ test('composeThemeCss: skeleton bundle uses skeleton tokens + shared neutral lay
   assert.ok(css.includes('.cell.active-entry'), 'theme-components missing');
   assert.ok(css.includes(PRINT_BASE_MARKER),    'shared print base missing');
   assert.ok(!css.includes('#f9f7f1'),           'broadsheet token value must be absent');
+});
+
+test('composeThemeCss: swiss bundle uses swiss tokens, system fonts only, and no other palette', () => {
+  const css = composeThemeCss(COMPOSE_FIXTURE, 'swiss');
+  assert.ok(css.includes(THEME_BASE_MARKER),            'theme-base missing');
+  assert.ok(css.includes('#f9c55f'),                    'swiss highlight missing');
+  assert.ok(/--theme-header-align:\s*left;/.test(css),  'swiss masthead alignment missing');
+  assert.ok(css.includes('.cell.active-entry'),         'theme-components missing');
+  assert.ok(!css.includes('#f9f7f1'),                   'broadsheet palette must not bleed');
+  assert.ok(!css.includes('#1a1520'),                   'skeleton palette must not bleed');
+  assert.ok(!css.includes('@font-face') && !css.includes('@import'), 'swiss loads no font');
+  // --font is ignored for a system-font theme, as for broadsheet.
+  assert.equal(composeThemeCss(COMPOSE_FIXTURE, 'swiss', 'embed'), css);
+  assert.equal(composeThemeCss(COMPOSE_FIXTURE, 'swiss', 'link'), css);
 });
 
 test('composeThemeCss: a registered token-only theme drops in with no per-tool CSS and no JS branch', () => {
@@ -91,7 +120,7 @@ for (const name of ['toString', 'constructor', '__proto__']) {
 
 // Rejected for every theme, system-font ones included: a typo should not depend
 // on which theme happens to be selected to be noticed.
-for (const theme of ['broadsheet', 'skeleton']) {
+for (const theme of ['broadsheet', 'skeleton', 'swiss']) {
   test(`composeThemeCss: throws a clear error for an unknown font mode [${theme}]`, () => {
     assert.throws(
       () => composeThemeCss(COMPOSE_FIXTURE, theme, 'bogus'),

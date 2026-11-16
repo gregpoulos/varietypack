@@ -30,7 +30,7 @@
 #puzzle-svg { display: block; overflow: visible; max-width: 100%; height: auto; }
 
 .cell-num    { font-size: 8px; }
-.cell-letter { font-size: 14px; font-weight: bold; dominant-baseline: central; }
+.cell-letter { font-size: 14px; dominant-baseline: central; }
 
 .clue-columns {
   display: grid;

@@ -81,7 +81,7 @@ test('validateCommonHeader: accepts a registered theme', () => {
 
 test('validateCommonHeader: rejects an unregistered theme, listing the allowed ones', () => {
   const { errors } = runHeader({ kind: 'spiral', title: 'T', theme: 'neon' });
-  assert.ok(errors.some(e => /"theme" must be one of: broadsheet, skeleton, got: "neon"/.test(e)), errors.join('|'));
+  assert.ok(errors.some(e => /"theme" must be one of: broadsheet, skeleton, swiss, got: "neon"/.test(e)), errors.join('|'));
 });
 
 test('validateEmbedOrigin: accepts origins', () => {

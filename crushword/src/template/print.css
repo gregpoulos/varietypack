@@ -1,5 +1,5 @@
-/* Shared print resets live in shared/themes/print-base.css (concatenated just
-   before this file). Only crushword-specific print rules belong here. Unlike
+/* Shared print resets live in shared/themes/print-base.css (just before this file,
+   in the same cascade layer). Only crushword-specific print rules belong here. Unlike
    Marching Bands, Crushword uses .clue-item (not .clue-group) for its clue
    highlights, so print-base.css's generic .clue-item.* resets already cover
    it — no clue-item override is needed here (see docs/CROSS_TOOL_SPEC.md ->
@@ -22,7 +22,7 @@
   .clue-columns  { display: grid; grid-template-columns: 1fr 1fr; max-width: none; }
   .clue-section  { break-inside: avoid; }
 
-  .cell-block { fill: #222 !important; }
+  .cell-block { fill: #222; }
 
-  .cell-caret { display: none !important; }
+  .cell-caret { display: none; }
 }

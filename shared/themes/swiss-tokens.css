@@ -1,0 +1,72 @@
+/* Swiss theme — International Typographic Style: a system grotesque, black on white,
+   and one accent (orange) used flat. Everything that is not the accent is black, white
+   or a neutral gray. Overrides theme-base. */
+:root {
+  --theme-font-body:    'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --theme-font-display: var(--theme-font-body);
+  --theme-font-button:  var(--theme-font-body);
+  --theme-font-cell:    var(--theme-font-body);
+
+  --theme-color-header-rule: #111111;
+  --theme-header-align:      left;
+  --theme-title-size:        3.2rem;
+  --theme-title-tracking:    -0.02em;
+  --theme-title-transform:   lowercase;
+
+  --theme-color-muted: #444444;
+  /* Text-colored, told apart by its underline: a blue link would be a second hue. */
+  --theme-color-link:  #111111;
+
+  --theme-color-bar-border:  #111111;
+  --theme-color-soft-border: #111111;
+
+  --theme-control-radius:     0;
+  --theme-icon-button-radius: 0;
+
+  --theme-color-btn-bg:    #111111;
+  --theme-button-tracking: 0;
+
+  --theme-color-btn2-bg:     #ffffff;
+  --theme-color-btn2-border: #111111;
+  --theme-color-btn2-hover:  #eeeeee;
+
+  --theme-color-clear-fg:       #777777;
+  --theme-color-clear-hover-fg: #111111;
+
+  --theme-color-cell-stroke: #111111;
+
+  /* The accent: the active entry, and a deeper shade for the active cell and clue. */
+  --theme-color-highlight:     #f9c55f;
+  --theme-color-active:        #ee8a00;
+  --theme-color-active-stroke: #111111;
+
+  --theme-color-band-even:       #ececec;
+  --theme-color-clue-hover:      #eeeeee;
+  --theme-color-secondary-entry: #e2e2e2;
+  --theme-clue-radius:           0;
+
+  --theme-color-secondary-active:        #bdbdbd;
+  --theme-color-secondary-active-stroke: #111111;
+
+  /* A checked cell inverts to white on black. */
+  --theme-color-correct-bg:     #111111;
+  --theme-color-correct-stroke: #666666;
+  --theme-color-correct-text:   #ffffff;
+
+  --theme-clue-filled-opacity: 0.4;
+
+  --theme-color-circle:      #8a8a8a;
+  --theme-color-curl:        #111111;
+  --theme-color-cell-center: #111111;
+
+  --theme-color-overlay:         rgba(255, 255, 255, 0.75);
+  --theme-color-congrats-bg:     #111111;
+  --theme-color-congrats-border: #111111;
+  --theme-card-radius:           0;
+
+  /* Black on white, so the box does not read as the accent. */
+  --theme-color-wrong-bg:     #ffffff;
+  --theme-color-wrong-border: #111111;
+
+  --theme-color-danger: #c8102e;
+}

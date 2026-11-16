@@ -8,6 +8,8 @@ function makeBtn() {
   const listeners = [];
   const classes = new Set();
   return {
+    focusVisible: false,
+    matches(sel) { return sel === ':focus-visible' && this.focusVisible; },
     textContent: 'Clear puzzle',
     classList: {
       add(c)      { classes.add(c); },
@@ -112,4 +114,22 @@ test('setupArmedButton returns a disarm that restores the label and cancels the 
   btn.click();
   assert.strictEqual(confirmed, 0);
   assert.strictEqual(btn.textContent, 'Are you sure?');
+});
+
+test('arming with keyboard-held focus does not refocus', () => {
+  const btn = makeBtn();
+  let refocused = 0;
+  btn.focusVisible = true;
+  setupArmedButton(btn, () => {}, () => refocused++);
+  btn.click();
+  assert.strictEqual(refocused, 0);
+});
+
+test('arming with pointer focus still refocuses', () => {
+  const btn = makeBtn();
+  let refocused = 0;
+  btn.focusVisible = false;
+  setupArmedButton(btn, () => {}, () => refocused++);
+  btn.click();
+  assert.strictEqual(refocused, 1);
 });

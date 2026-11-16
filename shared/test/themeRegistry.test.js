@@ -14,3 +14,18 @@ test('THEME_TOKENS is exactly the set of tokens theme-base.css declares', () => 
   const declared = new Set([...root.matchAll(/--theme-([a-z0-9-]+)\s*:/g)].map(m => m[1]));
   assert.deepEqual([...declared].sort(), [...THEME_TOKENS].sort());
 });
+
+// A token no rule reads is a name authors can set in `themeTokens:` to no effect.
+test('every token is read by theme-components.css or by another token in theme-base.css', () => {
+  const themes = path.join(__dirname, '..', 'themes');
+  const css = fs.readFileSync(path.join(themes, 'theme-components.css'), 'utf8')
+    + fs.readFileSync(path.join(themes, 'theme-base.css'), 'utf8');
+  const unread = THEME_TOKENS.filter(name => !css.includes(`var(--theme-${name})`) && !css.includes(`var(--theme-${name},`));
+  assert.deepEqual(unread, []);
+});
+
+test('THEME_TOKENS includes the masthead, title-size and corner-radius tokens', () => {
+  for (const name of ['header-align', 'title-size', 'control-radius', 'icon-button-radius']) {
+    assert.ok(THEME_TOKENS.includes(name), name);
+  }
+});

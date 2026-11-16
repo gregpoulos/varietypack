@@ -6,7 +6,7 @@
 // tested via mocks (shared/test/engine-phone.test.js).
 
 import {
-  FLASH_WRONG_MS, PHONE_CLASS, boolPref, htmlEl, menuToggle, onClueClick, svgEl,
+  FLASH_WRONG_MS, MENU_BTN_ID, PHONE_CLASS, boolPref, htmlEl, isKeyboardFocus, menuToggle, onClueClick, svgEl,
 } from './engine-chrome.mjs';
 import { attachSvgZoom } from './svg-zoom.mjs';
 
@@ -15,9 +15,9 @@ import { attachSvgZoom } from './svg-zoom.mjs';
 const TOUCH_FIRST = '(hover: none) and (pointer: coarse)';
 
 // The screens that get the side-by-side layout: the query of the landscape block in
-// base.css, minus its `screen`, which a script has no use for. Keep the two in step, and
-// the third copy in shared/themes/theme-components.css (a spot to consolidate, say into
-// one custom property on html.phone, if the threshold is ever reworked).
+// phone.css, minus its `screen`, which a script has no use for. The same query is
+// in shared/themes/theme-components.css; shared/test/cssContracts.test.js fails if the
+// three drift.
 const LANDSCAPE_PHONE = '(orientation: landscape) and (max-height: 500px)';
 
 // The grid's zoom limit, and where a double-tap on the unzoomed grid goes, both as
@@ -58,7 +58,7 @@ function arrowIcon(dir) {
 
 // The drawn keyboard: a letter layer and a digit layer, built once and swapped with
 // `hidden`, above the tool's bottom row. Every layer has the same number of rows, and
-// each row a fixed height (base.css), so switching layers never resizes the grid. The
+// each row a fixed height (phone.css), so switching layers never resizes the grid. The
 // bottom row is built once too: it holds moved buttons with their own listeners.
 //   bottomRow, each item one of:
 //     { label, key, wide?, ariaLabel? }   a synthetic key (setupPhoneLayout says why)
@@ -141,7 +141,7 @@ function setupClueExpand(barRow, clueText, win) {
 //   lists:       the tool's clue-list elements in reading order (moved as is, so their
 //                desktop and print layouts need no wrapper)
 //   clueBar:     { el, text } for the bar row: the bar, and the element in it holding
-//                the clue, clamped to two lines (base.css)
+//                the clue, clamped to two lines (phone.css)
 //   helpMenu:    { btn, panel } of the help menu setupControls built, or null (a hashed
 //                page has none); moved into the top bar beside ☰
 //   firstVisit:  nothing saved to restore, so the instructions show over the view
@@ -175,30 +175,31 @@ function setupPhoneLayout({
   hiddenInput.setAttribute('inputmode', 'none');
 
   // The header and instructions print, below the title wherever the template put them,
-  // but on screen the top bar and the Clues screen show copies of them (base.css).
+  // but on screen the top bar and the Clues screen show copies of them (phone.css).
   const instructions = doc.getElementById('instructions');
   doc.querySelector('.puzzle-header').after(instructions);
   const instructionsCopy = cls => {
     if (instructions.hidden) return null;
     const copy = instructions.cloneNode(true);
     copy.removeAttribute('id');
-    copy.className = cls;
+    copy.classList.add(cls);
     return copy;
   };
 
   // Top bar: the title over the byline, the Clues/Grid switch, the help menu, and the
-  // options menu moved in from <body>.
+  // options menu moved in from <body>. Each panel follows its button, as in <body>, so
+  // Tab leaves a menu onto the next button.
   const byline = doc.querySelector('.byline');
   const head = htmlEl('div', { class: 'solve-head' },
     htmlEl('span', { class: 'solve-title' }, doc.querySelector('.title').textContent));
   if (byline && !byline.hidden) head.append(htmlEl('span', { class: 'solve-byline' }, byline.textContent));
   const cluesBtn = htmlEl('button', { id: 'clues-btn', type: 'button' }, 'Clues');
   // The done-wrong banner, shown when the board is full but wrong, lies over the title
-  // (base.css): there it hides no cell and no clue, which the solver now needs to check.
+  // (phone.css): there it hides no cell and no clue, which the solver now needs to check.
   const headSlot = htmlEl('div', { class: 'solve-head-slot' }, head, doc.getElementById('done-wrong'));
   const top = htmlEl('div', { class: 'solve-top' },
-    headSlot, cluesBtn, ...(helpMenu ? [helpMenu.btn] : []), doc.getElementById('menu-btn'),
-    ...(helpMenu ? [helpMenu.panel] : []), doc.getElementById('menu-panel'));
+    headSlot, cluesBtn, ...(helpMenu ? [helpMenu.btn, helpMenu.panel] : []),
+    doc.getElementById(MENU_BTN_ID), doc.getElementById('menu-panel'));
 
   // Stage: the grid pane, or the list pane in its place. The grid goes in a div because
   // Crushword's is the <svg> itself, which has no `hidden` property.
@@ -388,7 +389,7 @@ function setupPhoneLayout({
 // instead would also keep it from the options menu's close-on-outside-click.
 function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = () => false, onCellTap }) {
   // One row per item. A cell's letter sits in an inner span, whose font scales with
-  // the cell (base.css) and with the length of a rebus cell's content (--len).
+  // the cell (phone.css) and with the length of a rebus cell's content (--len).
   const letterEls = items.map(({ li, cells }, i) => {
     const letters = cells.map(() => htmlEl('span', { class: 'list-letter' }));
     const cellEls = letters.map((letter, j) => {
@@ -484,8 +485,9 @@ function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = ()
 // under `key` (`fallback` when absent), applied through `apply(checked)` on load and on
 // each change. A preference for every puzzle, so no key names a puzzle. The row goes
 // above Clear puzzle in `panel` (#menu-panel), a plain display setting before the
-// destructive action. `refocus` runs on each change, and on a pointer-driven focus: a
-// tap on the label focuses the checkbox in Chromium, mousedown or not.
+// destructive action. `refocus` runs on a pointer's change, and on a pointer-driven
+// focus: a tap on the label focuses the checkbox in Chromium, mousedown or not. A
+// keyboard user's focus (`:focus-visible`) stays on the checkbox.
 // Returns { pref, label }, `pref` being the preference's { load, save }.
 function setupMenuPref({ key, fallback, id, text, apply, storage, panel, refocus }) {
   const pref = boolPref(key, fallback, storage);
@@ -496,12 +498,12 @@ function setupMenuPref({ key, fallback, id, text, apply, storage, panel, refocus
   input.addEventListener('change', () => {
     apply(input.checked);
     pref.save(input.checked);
-    refocus();
+    if (!isKeyboardFocus(input)) refocus();
   });
   // A browser may focus the checkbox only after `change` has run (WebKit on Linux does),
   // so refocusing there is not enough. A tap's focus is not :focus-visible; a keyboard
   // user's is, and keeps it.
-  input.addEventListener('focus', () => { if (!input.matches(':focus-visible')) refocus(); });
+  input.addEventListener('focus', () => { if (!isKeyboardFocus(input)) refocus(); });
   return { pref, label };
 }
 
@@ -518,7 +520,7 @@ function setupListWrapPref({ storage, root = document.documentElement, panel, re
 }
 
 // The "Keyboard on the left" row, for left-handed solvers: `kb-left` on <html> mirrors
-// the landscape layout (base.css). It changes nothing in portrait, so the caller shows
+// the landscape layout (phone.css). It changes nothing in portrait, so the caller shows
 // its label only in landscape (`label.hidden`; see LANDSCAPE_PHONE).
 const KEYBOARD_LEFT_KEY = 'vp:pref:keyboardLeft';
 function setupKeyboardSidePref({ storage, root = document.documentElement, panel, refocus }) {

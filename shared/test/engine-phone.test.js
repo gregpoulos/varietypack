@@ -106,6 +106,8 @@ function mockEl(tag) {
       toggle(c, on = !classes.has(c)) { if (on) classes.add(c); else classes.delete(c); return on; },
     },
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+    focusVisible: false, // what `:focus-visible` answers: a pointer's focus by default
+    matches(sel) { return sel === ':focus-visible' && this.focusVisible; },
     fire(type, e = {}) { for (const fn of listeners[type] || []) fn(e); },
     getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
   };
@@ -301,6 +303,15 @@ test('setupListWrapPref: adds its checkbox above Clear, checked and wrapping whe
   assert.equal(pref.load(), true);
   assert.equal(input.checked, true);
   assert.equal(has(root, 'list-nowrap'), false);
+});
+
+test('setupListWrapPref: a keyboard-held toggle keeps its focus on the checkbox', () => {
+  const h = listWrapHarness(memStorage());
+  h.input.focusVisible = true;
+  h.input.checked = false;
+  h.input.fire('change');
+  assert.equal(has(h.root, 'list-nowrap'), true);
+  assert.equal(h.refocused.count, 0);
 });
 
 test('setupListWrapPref: unchecking it keeps rows to one line and persists across pages', () => {

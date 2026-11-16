@@ -190,7 +190,6 @@ function init() {
     saveKey, makeSavePayload({ cells, helpRecord, timer, composer }));
 
   // ── Build SVG ─────────────────────────────────────────────────────────────
-  document.querySelector('.puzzle-main').classList.add(`layout-${data.shape}`);
 
   const svg = document.getElementById('ring-svg');
   svg.setAttribute('width', svgWidth);
@@ -314,6 +313,7 @@ function init() {
       ['Space',     'Clear and advance'],
       ['Enter',     'Multi-letter cell'],
       ['.',         'Toggle loop'],
+      ['Esc',       'Go to the menus'],
     ],
     refocus
   );

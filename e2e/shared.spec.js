@@ -242,6 +242,10 @@ for (const tool of RING_TOOLS) {
     expect(timeText).toMatch(/^Solved in \d+:\d{2}$/);
     await expect(page.locator('#congrats-copy-btn')).toBeVisible();
     await expect(page.locator('#congrats-play-btn')).toBeVisible();
+    // A button with no font rule of its own still takes the theme's (the page's, in
+    // this theme) and not the browser's.
+    const font = sel => page.locator(sel).evaluate(el => getComputedStyle(el).fontFamily);
+    expect(await font('#congrats-play-btn')).toBe(await font('body'));
   });
 }
 
@@ -1121,6 +1125,41 @@ for (const tool of FILLED_TOOLS) {
     await expect(page.locator('.clue-item.filled').first()).toBeVisible();
     await expect(page.locator('.clue-item.filled .clue-text').first()).toHaveCSS('opacity', '1');
   });
+
+  // The masthead-alignment, title-size and corner-radius tokens reach their rules, and
+  // print-base.css's title size still wins over a theme's.
+  test(`[${tool.name}] swiss sets the masthead flush left and squares the buttons; print keeps its own title size`, async ({ page }) => {
+    const out = path.join(tool.tmpDir, 'swiss.html');
+    buildPuzzleFile(path.join(tool.fixDir, tool.plainFixture), out, { theme: 'swiss' });
+    await page.goto('file://' + out);
+    await ready(tool, page);
+
+    await expect(page.locator('.puzzle-header')).toHaveCSS('text-align', 'left');
+    await expect(page.locator('#menu-btn')).toHaveCSS('border-top-left-radius', '0px');
+    await expect(page.locator('#help-btn')).toHaveCSS('border-top-left-radius', '0px');
+    const titleSize = () => page.locator('h1.title').evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+    const rem = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+    expect(await titleSize()).toBeCloseTo(3.2 * rem, 1);
+
+    await page.emulateMedia({ media: 'print' });
+    expect(await titleSize()).toBeCloseTo(1.4 * rem, 1);
+  });
+
+  test(`[${tool.name}] broadsheet keeps the centered masthead and round icon buttons`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    await expect(page.locator('.puzzle-header')).toHaveCSS('text-align', 'center');
+    await expect(page.locator('#menu-btn')).toHaveCSS('border-top-left-radius', '50%');
+    await expect(page.locator('#keys-btn')).toHaveCSS('border-top-left-radius', '50%');
+    // A toggle's options are buttons, but square inside its rounded frame (Crushword has
+    // no toggle).
+    const toggle = page.locator('.puzzle-toggle');
+    if (await toggle.count()) {
+      await expect(toggle.first()).toHaveCSS('border-top-left-radius', '4px');
+      await expect(toggle.first().locator('.toggle-opt').first()).toHaveCSS('border-top-left-radius', '0px');
+    }
+  });
 }
 
 // Marching Bands' clues own no known cells (docs/CROSS_TOOL_SPEC.md → "Active-clue
@@ -1423,6 +1462,7 @@ for (const tool of ALL_TOOLS) {
 
     await page.locator('#help-btn').click();
     await expect(page.locator('#help-panel')).toBeVisible();
+    await expect(page.locator('#hidden-input')).toBeFocused(); // a pointer open keeps focus on the puzzle
     await page.locator('#menu-btn').click();
     await expect(page.locator('#help-panel')).toBeHidden();
     await expect(page.locator('#menu-panel')).toBeVisible();
@@ -2095,5 +2135,274 @@ for (const tool of ALL_TOOLS.filter(t => t.name !== 'marching-bands')) {
     await page.goto('file://' + tool.paths.hashed);
     await ready(tool, page);
     await expect(page.locator('#active-clue-bar')).toHaveCSS('padding-right', '60px');
+  });
+}
+
+// ---- Keyboard route to the menus ------------------------------------------------------
+// Escape steps out of the puzzle onto the page's buttons, where native Tab works. All of
+// it is shared code (setupKeydown, setupPopupMenu), so only the first two tests loop over
+// the tools; the rest run on Crushword.
+// docs/CROSS_TOOL_SPEC.md → "Escape — leaving the puzzle".
+
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] Escape moves focus from the puzzle to the help button, and Escape again returns it`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#help-btn')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#hidden-input')).toBeFocused();
+  });
+
+  test(`[${tool.name}] the shortcuts table lists Esc`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.locator('#keys-btn').click();
+    const row = page.locator('#keys-overlay tr').filter({ has: page.locator('kbd', { hasText: /^Esc$/ }) });
+    await expect(row.locator('td').nth(1)).toHaveText('Go to the menus');
+  });
+}
+
+// Playwright's WebKit on macOS honors Safari's "Press Tab to highlight each item" setting
+// and so skips buttons on Tab; on Linux it tabs to them.
+const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
+
+{
+  const tool = TOOLS.find(t => t.name === 'crushword');
+
+  test('in a hashed build Escape lands on the options button', async ({ page }) => {
+    await page.goto('file://' + tool.paths.hashed);
+    await ready(tool, page);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#menu-btn')).toBeFocused();
+  });
+
+  test('Tab from the help button reaches the options button, then the shortcuts button', async ({ page, browserName }) => {
+    test.skip(browserName === 'webkit' && process.platform === 'darwin', MAC_WEBKIT_NO_TAB);
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#menu-btn')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#keys-btn')).toBeFocused();
+  });
+
+  test('Escape with a mouse-opened menu closes it and leaves focus on the puzzle', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.locator('#help-btn').click();
+    await expect(page.locator('#help-panel')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#help-panel')).toBeHidden();
+    await expect(page.locator('#hidden-input')).toBeFocused();
+    await expect(page.locator('#help-btn')).not.toBeFocused();
+  });
+
+  test('Escape in the shortcuts dialog closes it and leaves focus on the puzzle', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.locator('#keys-btn').click();
+    await expect(page.locator('#keys-overlay')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#keys-overlay')).toBeHidden();
+    await expect(page.locator('#hidden-input')).toBeFocused();
+  });
+
+  // On a fresh board Check cell and Check clue are disabled; the Reveal rows are not.
+  async function openHelpByKeyboard(page) {
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#help-panel')).toBeVisible();
+  }
+
+  test('Enter on the help button opens the menu with focus on its first enabled row', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    await expect(page.locator('#reveal-btn')).toBeFocused();
+    await expect(page.locator('#help-btn')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('arrow keys move between enabled rows and wrap; Home and End jump', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('#reveal-clue-btn')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('#reveal-btn')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('#reveal-puzzle-btn')).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(page.locator('#reveal-btn')).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(page.locator('#reveal-puzzle-btn')).toBeFocused();
+  });
+
+  test('ArrowDown on the help button opens the menu too', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('#help-panel')).toBeVisible();
+    await expect(page.locator('#reveal-btn')).toBeFocused();
+  });
+
+  test('Escape in an open menu closes it and focuses its button', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#help-panel')).toBeHidden();
+    await expect(page.locator('#help-btn')).toBeFocused();
+  });
+
+  test('Tab in an open menu closes it and moves focus on', async ({ page, browserName }) => {
+    test.skip(browserName === 'webkit' && process.platform === 'darwin', MAC_WEBKIT_NO_TAB);
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#help-panel')).toBeHidden();
+    await expect(page.locator('#menu-btn')).toBeFocused();
+  });
+
+  test('Enter on a row acts, closes the menu and returns focus to the puzzle', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#help-panel')).toBeHidden();
+    await expect(page.locator('#hidden-input')).toBeFocused();
+    await expect(page.locator('.cell-letter').filter({ hasText: /./ })).toHaveCount(1);
+  });
+
+  test('a letter typed in an open menu neither closes it nor reaches the grid', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    const before = await page.evaluate(() => document.getElementById('hidden-input').value);
+    await page.keyboard.press('KeyQ');
+    await expect(page.locator('#help-panel')).toBeVisible();
+    await expect(page.locator('#reveal-btn')).toBeFocused();
+    expect(await page.evaluate(() => document.getElementById('hidden-input').value)).toBe(before);
+    await expect(page.locator('.cell-letter').filter({ hasText: /./ })).toHaveCount(0);
+  });
+
+  test('menu rows carry menu-item roles', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await expect(page.locator('#reveal-btn')).toHaveAttribute('role', 'menuitem');
+    await expect(page.locator('#clear-btn')).toHaveAttribute('role', 'menuitem');
+  });
+
+  test('Clear from the keyboard: Enter arms and keeps focus, Enter again clears and returns focus to the puzzle', async ({ page, browserName }) => {
+    test.skip(browserName === 'webkit' && process.platform === 'darwin', MAC_WEBKIT_NO_TAB);
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.keyboard.press('KeyA');
+    await expect(page.locator('.cell-letter').filter({ hasText: /./ })).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#menu-btn')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#clear-btn')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#clear-btn')).toHaveText('Are you sure?');
+    await expect(page.locator('#clear-btn')).toBeFocused();
+    await expect(page.locator('#menu-panel')).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#menu-panel')).toBeHidden();
+    await expect(page.locator('#hidden-input')).toBeFocused();
+    await expect(page.locator('.cell-letter').filter({ hasText: /./ })).toHaveCount(0);
+  });
+
+  test('Reveal puzzle from the keyboard arms, then reveals', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    await page.keyboard.press('End');
+    await expect(page.locator('#reveal-puzzle-btn')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#reveal-puzzle-btn')).toHaveText('Are you sure?');
+    await expect(page.locator('#reveal-puzzle-btn')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#help-panel')).toBeHidden();
+    const cells = await page.locator('.cell-letter').count();
+    await expect(page.locator('.cell-letter').filter({ hasText: /./ })).toHaveCount(cells);
+  });
+
+  test('Escape with a modifier, or one that ends IME composition, leaves focus on the puzzle', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    for (const chord of ['Shift+Escape', 'Alt+Escape', 'Control+Escape']) {
+      await page.keyboard.press(chord);
+      await expect(page.locator('#hidden-input'), chord).toBeFocused();
+    }
+    await page.evaluate(() => document.getElementById('hidden-input').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true })));
+    await expect(page.locator('#hidden-input')).toBeFocused();
+  });
+
+  test('a keyboard open of the help menu does nothing while every row is disabled', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter'); // Reveal puzzle: confirmed, so every cell is correct
+    await expect(page.locator('#help-panel')).toBeHidden();
+    await expect(page.locator('#congrats-dialog')).toBeVisible(); // a revealed finish still celebrates
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#congrats-dialog')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#help-btn')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#help-panel')).toBeHidden();
+    await expect(page.locator('#help-btn')).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('#help-btn')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#hidden-input')).toBeFocused();
+  });
+
+  // Closing a dialog can restore focus to the row that opened it, after its menu has
+  // closed; the browser drops focus from a hidden element only at its next frame.
+  test('keys pressed while focus is still on a row of a closed menu act as if on the puzzle', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    await page.evaluate(() => {
+      const row = document.activeElement;
+      document.getElementById('help-panel').hidden = true;
+      row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await expect(page.locator('#help-btn')).toBeFocused();
+  });
+
+  test('a letter typed while focus is still on a row of a closed menu reaches the grid', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await openHelpByKeyboard(page);
+    await page.evaluate(() => {
+      const row = document.activeElement;
+      document.getElementById('help-panel').hidden = true;
+      row.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    });
+    await expect(page.locator('#hidden-input')).toBeFocused();
+  });
+
+  test('Escape while focus is still on a button of a just-closed dialog goes to the menus', async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.evaluate(() => {
+      const dialog = document.getElementById('keys-overlay');
+      const btn = document.getElementById('keys-close');
+      dialog.show(); // non-modal, so the page stays live behind it
+      btn.focus();
+      dialog.removeAttribute('open'); // hidden, but the browser drops focus only next frame
+      btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await expect(page.locator('#help-btn')).toBeFocused();
   });
 }

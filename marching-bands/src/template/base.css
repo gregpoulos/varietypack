@@ -28,7 +28,7 @@
 
 #puzzle-svg { display: block; overflow: visible; }
 
-.cell-letter { font-size: 14px; font-weight: bold; dominant-baseline: central; }
+.cell-letter { font-size: 14px; dominant-baseline: central; }
 
 
 .clue-section h2 {
@@ -42,7 +42,7 @@
 .clue-section ul { list-style: none; }
 
 .clue-group {
-  border-radius: 2px;
+  border-radius: var(--theme-clue-radius);
   cursor: pointer;
 }
 

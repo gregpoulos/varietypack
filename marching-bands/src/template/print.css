@@ -1,5 +1,5 @@
-/* Shared print resets live in shared/themes/print-base.css (concatenated just
-   before this file). Only marching-bands-specific print rules belong here. */
+/* Shared print resets live in shared/themes/print-base.css (just before this file,
+   in the same cascade layer). Only marching-bands-specific print rules belong here. */
 @media print {
   .puzzle-main   { padding: 8px 16px; }
   .puzzle-header { margin-bottom: 8px; }
@@ -19,10 +19,10 @@
 
   /* MB uses .clue-group.active-clue / .clue-group.secondary-entry (not .clue-item.*) —
      reset here since print-base.css covers the item selectors */
-  .clue-group.active-clue    { background: transparent !important; }
-  .clue-group.secondary-entry { background: transparent !important; }
+  .clue-group.active-clue    { background: transparent; }
+  .clue-group.secondary-entry { background: transparent; }
 
-  .cell-center { fill: #222 !important; }
+  .cell-center { fill: #222; }
 }
 
 @media print and (orientation: landscape) {

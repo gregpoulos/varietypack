@@ -32,7 +32,9 @@ function writePuzzlePage(puzzle, inputPath, outputPath, options = {}, hooks, { s
   }
   if (result.warnings.length) stderr.write(formatWarnings(result.warnings, label));
   for (const n of result.notes) stderr.write(`${n}\n`);
-  const output = options.minify ? minifyHtml(result.html) : result.html;
+  const output = options.minify
+    ? minifyHtml(result.html, message => stderr.write(`Note: ${label}: ${message}\n`))
+    : result.html;
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, output, 'utf8');
   return { title: result.title };

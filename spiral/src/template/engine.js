@@ -393,6 +393,7 @@ function init() {
       ['Space',     'Clear and advance'],
       ['Enter',     'Multi-letter cell'],
       ['.',         'Toggle inward / outward'],
+      ['Esc',       'Go to the menus'],
     ],
     refocus
   );

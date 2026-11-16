@@ -1,10 +1,9 @@
-/* Shared print resets — the final override layer for printing, applied to
-   every tool and theme. Prints the blank, unsolved puzzle regardless of solve state
-   or theme. Declarations are !important by design so this layer wins over any
-   theme rule regardless of its selector specificity or source order — a tool
-   theme that later adds a higher-specificity highlight rule can't silently
-   defeat the print reset. A tool's print.css that needs to override a reset
-   here must also use !important. */
+/* Shared print resets, applied to every tool and theme: prints the blank, unsolved
+   puzzle regardless of solve state or theme. This file and the tool's print.css after
+   it are the `print` cascade layer, the last one (composeThemeCss), so every rule here
+   wins over any screen rule whatever its selector, with no !important: a theme that
+   adds a more specific highlight rule can't defeat the print reset. Between this file
+   and a tool's print.css the usual rules hold (specificity, then order). */
 @media print {
   /* Hide interaction chrome */
   #active-clue-bar,
@@ -20,25 +19,35 @@
   #direction-chevron,
   .solve-top,
   #solve-bar,
-  #drawn-kb { display: none !important; }
+  #drawn-kb { display: none; }
 
-  body { padding-top: 0 !important; }
-  h1.title { font-size: 1.4rem !important; }
+  body { padding-top: 0; }
+  h1.title { font-size: 1.4rem; }
 
   /* Cell state → plain ink on white */
   .cell,
   .cell.active-entry,
   .cell.active-cell,
   .cell.correct,
-  .cell.secondary-entry { fill: #fff !important; stroke: #999 !important; stroke-width: 1 !important; stroke-dasharray: none !important; }
+  .cell.secondary-entry { fill: #fff; stroke: #999; stroke-width: 1; stroke-dasharray: none; }
 
   /* Entered letters → blank: a printout is always the unsolved puzzle */
-  .cell-letter { display: none !important; }
+  .cell-letter { display: none; }
   /* ...and the phone list view's cell rows (setupFillList), which repeat them */
-  .list-cells { display: none !important; }
+  .list-cells { display: none; }
 
   /* Clue highlight / filled-dimming reset */
   .clue-item.active-clue,
-  .clue-item.secondary-entry { background: transparent !important; }
-  .clue-item.filled .clue-text { opacity: 1 !important; text-decoration: none !important; }
+  .clue-item.secondary-entry { background: transparent; }
+  .clue-item.filled .clue-text { opacity: 1; text-decoration: none; }
+
+  /* A link prints in the color of the text around it: a theme's link color is chosen
+     against its screen background, which paper doesn't have. */
+  a { color: inherit; }
+
+  /* The phone layout prints its own arrangement: the page's gutter is on the header and
+     instructions (phone.css), and .puzzle-body is empty there. The html.phone prefix is
+     what outranks each tool's print.css, which shares this layer and sets both. */
+  html.phone .puzzle-main { padding: 0; }
+  html.phone .puzzle-body { display: none; }
 }

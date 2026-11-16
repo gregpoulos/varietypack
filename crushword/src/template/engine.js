@@ -432,6 +432,7 @@ function init() {
       ['Enter',     'Confirm cell and move on (keeps everything typed)'],
       ['Shift+Enter', 'Move to previous cell'],
       ['.',         'Toggle across / down'],
+      ['Esc',       'Go to the menus'],
     ],
     refocus
   );

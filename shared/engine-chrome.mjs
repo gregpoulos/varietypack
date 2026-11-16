@@ -75,15 +75,33 @@ function renderInstructions(data) {
   el.hidden = false;
 }
 
+// The page chrome's menu buttons, in Tab order: setupHelpMenu and setupOptionsMenu build
+// them under these ids, and setupKeydown's Escape route looks them up by the same.
+const HELP_BTN_ID = 'help-btn';
+const MENU_BTN_ID = 'menu-btn';
+
+// Whether `el` is inside a menu panel (a `role="menu"` element), where the menu handles
+// its own keys.
+function inMenu(el) {
+  return !!(el && el.closest && el.closest('[role="menu"]'));
+}
+
+// Whether keyboard use put focus on `el`, as opposed to a pointer. A pointer-driven focus
+// is returned to the puzzle; a keyboard-held one stays, so the next keypress lands on it.
+function isKeyboardFocus(el) {
+  return el.matches(':focus-visible');
+}
+
 // Two-click arm/disarm button, for an action too costly to run on one click: Clear
 // puzzle and Reveal puzzle. First click swaps the label to "Are you sure?" and adds
 // `.armed` for 3s; a second click within that window calls onConfirmed(), which each
 // engine supplies to perform the action (for Clear, the full in-memory board reset).
-// `refocus` (optional) restores puzzle focus after the arming click so the document
-// keydown BUTTON guard doesn't block the next keystroke. The label it returns to is the
-// one the button reads at setup. Returns { disarm }, which the menu holding the button
-// calls when it closes: closing is how a solver cancels, and an arm that outlived it
-// would let a single click on reopening run the action.
+// `refocus` (optional) restores puzzle focus after a pointer's arming click so the
+// document keydown BUTTON guard doesn't block the next keystroke; keyboard-held focus
+// (`:focus-visible`) stays on the button, where the confirming Enter lands. The label it
+// returns to is the one the button reads at setup. Returns { disarm }, which the menu
+// holding the button calls when it closes: closing is how a solver cancels, and an arm
+// that outlived it would let a single click on reopening run the action.
 function setupArmedButton(btn, onConfirmed, refocus) {
   const restLabel = btn.textContent;
   let armed = false;
@@ -100,7 +118,7 @@ function setupArmedButton(btn, onConfirmed, refocus) {
       btn.textContent = 'Are you sure?';
       btn.classList.add('armed');
       timer = setTimeout(disarm, 3000);
-      if (refocus) refocus();
+      if (refocus && !isKeyboardFocus(btn)) refocus();
     } else {
       disarm();
       onConfirmed();
@@ -306,13 +324,50 @@ function setupStorage(key, { getState, fits, applyState }) {
 // input's own input event, so it would be lost. Refocusing here, during keydown, lets
 // the browser deliver that same keystroke to the input.
 function setupKeydown(handler, { keysOverlay, refocus }) {
+  // Focus left on a control of a menu or dialog that has since closed (a dialog closing
+  // restores it to a row of the menu that opened it, or leaves it on its own button) is
+  // nowhere: the browser drops it from a hidden element only at the next frame. Checked
+  // in the capture phase, before any menu's own handler can close its panel, so a hidden
+  // panel means it was closed earlier. The key is then handled as one pressed on the
+  // page: focus is let go, and `strayEvent` stands in for its target below.
+  let strayEvent = null;
+  document.addEventListener('keydown', e => {
+    for (const el of [document.activeElement, e.target]) {
+      if (el && el.closest && el.closest('[role="menu"][hidden], dialog:not([open])')) {
+        el.blur();
+        strayEvent = e;
+      }
+    }
+  }, true);
   document.addEventListener('keydown', e => {
     if (!document.hasFocus()) return;
     if (keysOverlay && keysOverlay.open) return;
+    // A bare Escape steps out of the puzzle onto the page's buttons, where native Tab
+    // works, and back from them. Chords and the Escape that ends IME composition aren't
+    // ours. A dialog or open menu owns its own Escape: for a menu opened by pointer,
+    // focus is still on the puzzle, and the menu's own document listener (setupPopupMenu)
+    // closes it, so focus must stay put here. The buttons are looked up now, as they are
+    // built later.
+    if (e.key === 'Escape' && !e.isComposing && e.keyCode !== 229 &&
+        !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      const t = e === strayEvent ? document.body : e.target;
+      if (inMenu(t) || (t.closest && t.closest('dialog'))) return;
+      if (document.querySelector('[role="menu"]:not([hidden])')) return;
+      e.preventDefault();
+      if (t === document.getElementById('hidden-input') || t === document.body) {
+        const first = document.getElementById(HELP_BTN_ID) ||
+          document.getElementById(MENU_BTN_ID);
+        if (first) first.focus();
+      } else {
+        refocus();
+      }
+      return;
+    }
     if (e.metaKey && e.key === 'ArrowLeft') { history.back(); return; }
     if (e.metaKey && e.key === 'ArrowRight') { history.forward(); return; }
     if (e.metaKey || e.ctrlKey) return;
-    if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+    if (document.activeElement &&
+        (document.activeElement.tagName === 'BUTTON' || inMenu(document.activeElement))) return;
     if (!document.activeElement || document.activeElement === document.body) refocus();
     handler(e);
   });
@@ -457,21 +512,22 @@ function setupKeysOverlay(shortcuts, refocus) {
 // Clicks inside the panel never close it on their own. That is what lets #clear-btn's
 // existing two-click arm/confirm sequence (setupArmedButton) play out with the panel
 // visibly open through the 3s "Are you sure?" window, instead of vanishing after the
-// first (arming) click. Closing — by re-clicking the trigger, clicking outside, or Escape
-// — calls `refocus`, matching every other control that can steal focus from the hidden
-// input (see docs/CROSS_TOOL_SPEC.md → Focus management).
+// first (arming) click. Where focus goes on each way of closing is on setupPopupMenu.
 //
 // Returns { clearBtn, close, onClosed } for setupControls to wire.
 function setupOptionsMenu(refocus) {
   const btn = htmlEl('button', {
-    id: 'menu-btn', type: 'button', 'aria-label': 'Menu',
+    id: MENU_BTN_ID, type: 'button', 'aria-label': 'Menu',
     'aria-haspopup': 'true', 'aria-expanded': 'false',
   }, '☰');
-  document.body.appendChild(btn);
+  // Tab order is help, options, shortcuts: the earlier-built shortcuts button stays last.
+  const keysBtn = document.getElementById('keys-btn');
+  document.body.insertBefore(btn, keysBtn);
 
-  const clearBtn = htmlEl('button', { id: 'clear-btn', type: 'button' }, 'Clear puzzle');
+  const clearBtn = htmlEl('button',
+    { id: 'clear-btn', type: 'button', role: 'menuitem' }, 'Clear puzzle');
   const panel = htmlEl('div', { id: 'menu-panel', role: 'menu', hidden: '' }, clearBtn);
-  document.body.appendChild(panel);
+  document.body.insertBefore(panel, keysBtn);
 
   const { close, onClosed } = setupPopupMenu(btn, panel, refocus);
   return { clearBtn, close, onClosed };
@@ -496,45 +552,107 @@ function setupHelpMenu(refocus, rows, selfClosing = []) {
     }));
   }
   const btn = htmlEl('button', {
-    id: 'help-btn', type: 'button', 'aria-label': 'Help',
+    id: HELP_BTN_ID, type: 'button', 'aria-label': 'Help',
     'aria-haspopup': 'true', 'aria-expanded': 'false',
   }, ring);
   const panel = htmlEl('div', { id: 'help-panel', role: 'menu', hidden: '' }, ...rows);
-  document.body.append(btn, panel);
+  const menuBtn = document.getElementById(MENU_BTN_ID); // help comes first in Tab order
+  for (const el of [btn, panel]) document.body.insertBefore(el, menuBtn);
   document.body.classList.add('has-help-btn'); // the clue bar's gutter reads it (theme CSS)
 
   const { close, onClosed } = setupPopupMenu(btn, panel, refocus);
   for (const row of rows) {
-    if (!selfClosing.includes(row)) row.addEventListener('click', close);
+    if (!selfClosing.includes(row)) row.addEventListener('click', () => close());
   }
   return { btn, panel, close, onClosed };
 }
 
-// A non-modal dropdown: `btn` opens and closes `panel`, and a click outside both, Escape
-// or any key the puzzle takes closes it. Two such menus close each other, since a click
-// on one's trigger is outside the other. Returns { close, onClosed }: `onClosed(fn)`
-// registers a callback for each time the panel closes, however it closes.
+// The row a menu key lands on: `enabled[i]` is whether row i can take focus, `current`
+// the focused row's index (-1 for none), `key` one of ArrowDown, ArrowUp, Home, End.
+// Arrows wrap and skip disabled rows, and from no row ArrowDown starts at the first and
+// ArrowUp at the last; returns -1 when no row is enabled.
+function nextMenuItem(enabled, current, key) {
+  const n = enabled.length;
+  if (key === 'Home') return enabled.indexOf(true);
+  if (key === 'End') return enabled.lastIndexOf(true);
+  const step = key === 'ArrowUp' ? -1 : 1;
+  const from = current < 0 && step < 0 ? n : current;
+  for (let k = 1; k <= n; k++) {
+    const i = (((from + step * k) % n) + n) % n;
+    if (enabled[i]) return i;
+  }
+  return -1;
+}
+
+// A non-modal dropdown following the ARIA menu-button pattern: `btn` opens and closes
+// `panel`, and a click outside both, Escape or any key the puzzle takes closes it. Two
+// such menus close each other, since a click on one's trigger is outside the other.
+//
+// A pointer open leaves focus on the puzzle, so solvers can keep typing. A keyboard open
+// (Enter or Space, which click with detail 0, or ArrowDown on the button) puts focus on
+// the first enabled row, and then arrows, Home and End move between enabled rows, Escape
+// closes and refocuses the button, Tab closes and lets focus move on, and nothing typed
+// inside the panel closes it. `close(focusTo)` sends focus to the 'puzzle' (default, via
+// `refocus`), the 'trigger' or nowhere ('none').
+// Returns { close, onClosed }: `onClosed(fn)` registers a callback for each time the
+// panel closes, however it closes.
 function setupPopupMenu(btn, panel, refocus) {
   const closedHooks = [];
   function isOpen() { return !panel.hidden; }
 
-  function close() {
+  // The panel's controls in order, and which of them can take focus right now: not
+  // disabled, and not hidden (the phone's wrap row is hidden off the Clues screen).
+  function rows() { return [...panel.querySelectorAll('button, input')]; }
+  function enabledFlags(list) {
+    return list.map(r => {
+      const h = r.closest('[hidden]');
+      return !r.disabled && (!h || h === panel);
+    });
+  }
+
+  function close(focusTo = 'puzzle') {
     if (!isOpen()) return;
     panel.hidden = true;
     btn.setAttribute('aria-expanded', 'false');
     for (const fn of closedHooks) fn();
-    refocus();
+    if (focusTo === 'puzzle') refocus();
+    else if (focusTo === 'trigger') btn.focus();
   }
 
-  // Focus goes back to the puzzle on opening too: the menu isn't modal, and the button
-  // keeping focus would make setupKeydown drop every key while it's open.
-  function open() {
+  // A pointer open sends focus back to the puzzle: the menu isn't modal, and the button
+  // keeping focus would make setupKeydown drop every key while it's open. A keyboard open
+  // moves it into the menu instead, and doesn't open at all while no row is enabled, as
+  // there would be nothing for the keyboard to reach.
+  function open(viaKeyboard) {
+    let first = -1;
+    const list = rows();
+    if (viaKeyboard) {
+      first = nextMenuItem(enabledFlags(list), -1, 'ArrowDown');
+      if (first < 0) return;
+    }
     panel.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
-    refocus();
+    if (viaKeyboard) list[first].focus();
+    else refocus();
   }
 
-  btn.addEventListener('click', () => (isOpen() ? close() : open()));
+  btn.addEventListener('click', e => (isOpen() ? close() : open(e.detail === 0)));
+  btn.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowDown' || isOpen()) return;
+    e.preventDefault();
+    open(true);
+  });
+
+  // Keys inside the open menu.
+  panel.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); close('trigger'); return; }
+    if (e.key === 'Tab') { close('none'); return; }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const list = rows();
+    const i = nextMenuItem(enabledFlags(list), list.indexOf(document.activeElement), e.key);
+    if (i >= 0) list[i].focus();
+  });
 
   // A press on the panel never takes focus from the puzzle: one that lands on no control
   // (a disabled row, the padding) would otherwise leave focus on <body>. The click still
@@ -550,12 +668,14 @@ function setupPopupMenu(btn, panel, refocus) {
     close();
   });
 
-  // Escape closes it, and so does any key the puzzle takes: typing means the solver is
-  // done with the menu, as a click outside it does. A bare modifier or a ⌘/Ctrl shortcut
-  // isn't typing.
+  // Any key the puzzle takes closes it: typing means the solver is done with the menu, as
+  // a click outside it does. A bare modifier or a ⌘/Ctrl shortcut isn't typing, and a key
+  // pressed inside the panel (or the trigger's own ArrowDown) belongs to the menu.
   const MODIFIERS = ['Shift', 'Alt', 'Meta', 'Control', 'CapsLock'];
   document.addEventListener('keydown', e => {
     if (!isOpen() || MODIFIERS.includes(e.key) || e.metaKey || e.ctrlKey) return;
+    if (panel.contains(e.target)) return;
+    if (e.target === btn && e.key === 'ArrowDown') return;
     close();
   });
 
@@ -565,7 +685,7 @@ function setupPopupMenu(btn, panel, refocus) {
 // An options-menu row: a checkbox `id` inside a `.menu-toggle` label `id`-label. Returns
 // { label, input } for the caller to place and wire.
 function menuToggle(id, text) {
-  const input = htmlEl('input', { type: 'checkbox', id });
+  const input = htmlEl('input', { type: 'checkbox', id, role: 'menuitemcheckbox' });
   const label = htmlEl('label', { id: id + '-label', class: 'menu-toggle' }, input, ' ' + text);
   return { label, input };
 }
@@ -640,7 +760,8 @@ function setupControls({
   ];
   const revealPuzzle = rows.find(row => row.id === 'reveal-puzzle-btn');
   for (const row of rows) {
-    row.btn = htmlEl('button', { id: row.id, type: 'button', disabled: '' }, row.label());
+    row.btn = htmlEl('button',
+      { id: row.id, type: 'button', role: 'menuitem', disabled: '' }, row.label());
     // Every row acts on its first click but Reveal puzzle, which setupArmedButton wires.
     if (row !== revealPuzzle) row.btn.addEventListener('click', () => row.act(row.cells()));
   }
@@ -691,7 +812,7 @@ function setupEmbedResize({ win = window, root = document.documentElement, RO = 
 
 export {
   svgEl, htmlEl, setClueHtml, clueTextEl, onClueClick, renderByline, renderInstructions, setupArmedButton, setupRebusButton,
-  setupPopupMenu,
+  setupPopupMenu, nextMenuItem, isKeyboardFocus, HELP_BTN_ID, MENU_BTN_ID,
   scrollByKey, setupClueBar, scrollIntoViewBelow, storageKey, setupStorage, flashWrong, FLASH_WRONG_MS,
   setupKeydown, setupCellClicks, setupCongratsDialog, setupKeysOverlay, setupOptionsMenu,
   menuToggle, boolPref, setupControls, setupHelpMenu, setupEmbedResize, PHONE_CLASS,

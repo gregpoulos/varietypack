@@ -13,14 +13,14 @@ body {
 
 /* Masthead */
 .puzzle-header {
-  text-align:     center;
+  text-align:     var(--theme-header-align);
   border-bottom:  2px solid var(--theme-color-header-rule);
   padding-bottom: 12px;
   margin-bottom:  24px;
 }
 h1.title {
   font-family:     var(--theme-font-display);
-  font-size:       2rem;
+  font-size:       var(--theme-title-size);
   line-height:     1;
   letter-spacing:  var(--theme-title-tracking);
   text-transform:  var(--theme-title-transform);
@@ -47,26 +47,26 @@ html.phone #clue-full {
 /* #menu-btn and #help-btn sit *within* #active-clue-bar's own band instead of floating
    below it as a separate row — no extra vertical space. Pure CSS calc() against the
    bar's min-height (base.css), not JS-measured: nothing has to re-measure it when the
-   bar or the viewport resizes. 32px is the buttons' own height (base.css); Marching
-   Bands, with no bar, keeps the plain `top: 20px` default. The phone layout moves the
-   buttons into its top bar instead (base.css, html.phone). */
+   bar or the viewport resizes. --corner-* are the buttons' measurements (base.css);
+   Marching Bands, with no bar, keeps the plain default `top`. The phone layout moves the
+   buttons into its top bar instead (phone.css). */
 .has-clue-bar #menu-btn,
-.has-clue-bar #help-btn { top: calc((var(--active-clue-bar-space) - 32px) / 2); }
+.has-clue-bar #help-btn { top: calc((var(--active-clue-bar-space) - var(--corner-btn)) / 2); }
 
 /* #menu-panel and #help-panel open directly below the bar's bottom edge (8px gap,
    matching Marching Bands' static button-to-panel gap from base.css) — same
    CSS-not-JS reasoning as the buttons above. */
 .has-clue-bar #menu-panel,
-.has-clue-bar #help-panel { top: calc(var(--active-clue-bar-space) + 8px); }
+.has-clue-bar #help-panel { top: calc(var(--active-clue-bar-space) + var(--corner-gap)); }
 
-/* Right gutter for the bar's own text now that #menu-btn shares its row: its 32px and
-   the 20px inset, plus 8px to the text. Lives here rather than in base.css's shared
+/* Right gutter for the bar's own text now that #menu-btn shares its row: its width and
+   inset, plus a gap to the text. Lives here rather than in base.css's shared
    #active-clue-bar rule since only these three tools ever place the button there.
    A page with a help button (setupHelpMenu puts `has-help-btn` on <body>; a hashed
-   build has none) also reserves its 32px and the 8px between them. Same specificity as
-   the rule above, so it follows it, and still below html.phone's override. */
-.has-clue-bar #active-clue-bar { padding-right: 60px; }
-.has-help-btn #active-clue-bar { padding-right: 100px; }
+   build has none) also reserves its width and the gap between them. Same specificity as
+   the rule above, so it follows it; the phone layer overrides both. */
+.has-clue-bar #active-clue-bar { padding-right: var(--corner-btn-2); }
+.has-help-btn #active-clue-bar { padding-right: calc(var(--corner-btn-2) + var(--corner-btn) + var(--corner-gap)); }
 
 /* Direction label ("Across"/"Down", "In"/"Out") before the bar's clue number. */
 .active-clue-dir {
@@ -78,13 +78,17 @@ html.phone #clue-full {
   flex-shrink:    0;
 }
 
-#instructions {
+.instructions {
   color:         var(--theme-color-instructions);
   font-size:     var(--theme-instructions-size);
   line-height:   1.5;
   margin-bottom: 20px;
 }
-#instructions p + p { margin-top: 0.6em; }
+.instructions p + p { margin-top: 0.6em; }
+
+/* Links in a clue or the instructions (markdown). Visited ones keep the color: the
+   browser's own visited purple is unreadable on a dark theme. */
+a { color: var(--theme-color-link); }
 
 .clue-item { border-radius: var(--theme-clue-radius); }
 /* Clue-row highlights for the tools whose rows are <li class="clue-item"> (Marching
@@ -101,9 +105,23 @@ html.phone #clue-full {
   padding-bottom: 4px;
 }
 
+/* Every button: a button takes the browser's own font unless told otherwise. */
+button { font-family: var(--theme-font-button); }
+
+/* Corner radii: one for every text button, toggle and key (the phone keyboard's too),
+   another for the three icon buttons. No other layer sets a radius on these.
+   .puzzle-toggle's options, buttons themselves, stay square inside its frame. */
+button,
+.puzzle-toggle,
+.menu-toggle,
+kbd { border-radius: var(--theme-control-radius); }
+.puzzle-toggle .toggle-opt { border-radius: 0; }
+#menu-btn,
+#help-btn,
+#keys-btn { border-radius: var(--theme-icon-button-radius); }
+
 /* Primary button: the phone's first-visit Start */
 html.phone .intro-card > button {
-  font-family:    var(--theme-font-button);
   font-size:      0.95rem;
   padding:        8px 22px;
   background:     var(--theme-color-btn-bg);
@@ -116,7 +134,6 @@ html.phone .intro-card > button {
    bare checkbox. Color cues (armed, hover) carry entirely through text color
    and the shared row-hover background instead of a border. */
 #clear-btn {
-  font-family:    var(--theme-font-button);
   font-size:      0.8rem;
   padding:        6px 8px;
   background:     transparent;
@@ -141,7 +158,6 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
    below), so the button carries only its label — whose width is reserved in
    shared/base.css so the Rebus→Done swap does not reflow #controls. */
 #rebus-btn {
-  font-family:    var(--theme-font-button);
   font-size:      0.8rem;
   padding:        5px 12px;
   background:     transparent;
@@ -154,7 +170,6 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 /* Puzzle toggle (direction / mode / loop) */
 .puzzle-toggle { border: 1px solid var(--theme-color-btn2-border); }
 .toggle-opt {
-  font-family:    var(--theme-font-button);
   font-size:      0.9rem;
   font-weight:    bold;
   padding:        6px 16px;
@@ -242,7 +257,6 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 /* Each button of the help panel is a plain row, as #clear-btn is of ☰'s. */
 #help-panel button {
   width:          100%;
-  font-family:    var(--theme-font-button);
   font-size:      0.8rem;
   padding:        6px 8px;
   background:     transparent;
@@ -276,15 +290,11 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 #keys-close {
   background: transparent;
   border:     none;
-  cursor:     pointer;
   font-size:  1.1rem;
   line-height: 1;
   padding:    0 0 0 12px;
   color:      var(--theme-color-text);
 }
-/* Suppress the ring for mouse/programmatic focus, but keep it for keyboard
-   users — the close button is auto-focused when the modal opens. */
-#keys-close:focus:not(:focus-visible) { outline: none; }
 #keys-close:hover { opacity: 0.65; }
 #keys-modal table { border-collapse: collapse; width: 100%; }
 #keys-modal td    { padding: 3px 0; vertical-align: middle; }
@@ -293,9 +303,8 @@ kbd {
   display:       inline-block;
   background:    var(--theme-color-btn2-bg);
   border:        1px solid var(--theme-color-btn2-border);
-  border-radius: 3px;
   padding:       1px 5px;
-  font-family:   var(--theme-font-ui, monospace);
+  font-family:   monospace;
   font-size:     0.78rem;
   color:         var(--theme-color-text);
 }
@@ -354,7 +363,7 @@ kbd {
   letter-spacing: 0.04em;
 }
 
-/* Phone solving view (shared/engine-phone.mjs; structure in base.css). The keys take
+/* Phone solving view (shared/engine-phone.mjs; structure in phone.css). The keys take
    the secondary-button tokens and sit in a tray of the hover shade. */
 html.phone #solve-view { background: var(--theme-color-bg); }
 html.phone .solve-top  { border-bottom: 2px solid var(--theme-color-header-rule); }
@@ -373,7 +382,6 @@ html.phone .intro-card {
   border-radius: var(--theme-card-radius);
 }
 html.phone #clues-btn {
-  font-family:    var(--theme-font-button);
   background:     var(--theme-color-btn2-bg);
   border-color:   var(--theme-color-btn2-border);
   color:          var(--theme-color-text);
@@ -388,7 +396,6 @@ html.phone #drawn-kb {
   border-top: 1px solid var(--theme-color-bar-border);
 }
 html.phone #drawn-kb button {
-  font-family:  var(--theme-font-button);
   background:   var(--theme-color-btn2-bg);
   border:       1px solid var(--theme-color-btn2-border);
   color:        var(--theme-color-text);
@@ -425,7 +432,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
   box-shadow:   none;
 }
 
-/* Landscape phones (the query and its reason are defined in base.css). .solve-top has no
+/* Landscape phones (the query and its reason are defined in phone.css). .solve-top has no
    box there, so the strip's rule is drawn by the view's ::before, which spans it; the
    bar loses its own top rule, and the stage's right edge, the stage/keyboard divide,
    stands in for the keyboard's (a plain list takes the whole width, so has none). */
@@ -447,8 +454,7 @@ html.phone .clue-item .list-cell.list-cursor.composing {
    Each tool's <body> carries a class like .tool-snake-charmer so these rules
    scope to the right tool without a separate per-tool CSS file. Plain sizing and
    spacing that reads no --theme-* token belongs in the tool's template base.css
-   instead: the .tool- prefix outranks the tool's print.css, whose @media print
-   rules would then silently never apply. */
+   instead. */
 
 /* Snake Charmer */
 .tool-snake-charmer .cell.secondary-entry { fill: var(--theme-color-secondary-entry); }
@@ -473,6 +479,9 @@ html.phone .clue-item .list-cell.list-cursor.composing {
 .cell:where(.band-even) { fill: var(--theme-color-band-even); }
 .cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
 .cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
+/* A checked cell keeps its correct fill under the highlight, as .cell.correct does on an
+   odd band by following .cell.active-entry; the rule above outranks that one. */
+.cell.band-even.correct.active-entry { fill: var(--theme-color-correct-bg); }
 .tool-marching-bands .band-label  { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 .tool-marching-bands .row-label   { font-family: var(--theme-font-cell); fill: var(--theme-color-text); }
 .tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }

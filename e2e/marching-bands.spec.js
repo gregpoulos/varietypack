@@ -371,3 +371,21 @@ test('Reveal row fills the whole first row and nothing else', async ({ page }) =
   await expect(page.locator('#puzzle-svg .cell.correct')).toHaveCount(N);
   for (let c = 1; c <= N; c++) await expect(page.locator('#cell-' + c)).toHaveClass(/\bcorrect\b/);
 });
+
+// An even band's highlight rule outranks the shared .cell.correct, so without its own
+// rule a checked cell there took the highlight fill under its correct-colored letter
+// (unreadable in a theme whose correct letters are light, like swiss).
+test('a checked cell on an even band keeps its correct fill under the row highlight', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+
+  const correct = await page.evaluate(() => window.PUZZLE_DATA.letters.filter(l => l !== null));
+  for (const ch of correct) await page.locator('#hidden-input').fill(ch);
+  await expect(page.locator('#congrats-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  const fill = (sel) => page.locator(sel).first().evaluate(el => getComputedStyle(el).fill);
+  const highlighted = '#puzzle-svg .cell.band-even.correct.active-entry:not(.active-cell)';
+  await expect(page.locator(highlighted).first()).toBeVisible();
+  expect(await fill(highlighted)).toBe(await fill('#puzzle-svg .cell.correct:not(.active-entry)'));
+});

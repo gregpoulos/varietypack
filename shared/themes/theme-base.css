@@ -9,6 +9,8 @@
 
   /* Masthead / title / byline */
   --theme-color-header-rule: #cccccc;
+  --theme-header-align:      center;
+  --theme-title-size:        2rem;
   --theme-title-tracking:    normal;
   --theme-title-transform:   none;
   --theme-color-title:       var(--theme-color-text);
@@ -19,10 +21,16 @@
   --theme-color-bg:    #ffffff;
   --theme-color-text:  #111111;
   --theme-color-muted: #555555;
+  --theme-color-link:  #0000ee;
 
   /* Bars / borders */
   --theme-color-bar-border:  #cccccc;
   --theme-color-soft-border: #cccccc;
+
+  /* Corner radii: text buttons, toggles and keys; and the round menu, help and keys
+     buttons. */
+  --theme-control-radius:     4px;
+  --theme-icon-button-radius: 50%;
 
   /* Primary button */
   --theme-color-btn-bg:       #333333;

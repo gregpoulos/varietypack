@@ -71,6 +71,7 @@ test('clue and instructions text render markdown formatting, not literal syntax'
   const htmlPath = path.join(tmpDir, 'markdown-test.html');
   fs.writeFileSync(yamlPath, [
     'kind: crushword',
+    'themeTokens: { color-link: "#123456" }',
     'title: "Markdown Test"',
     'instructions: "Solve it. **Enjoy!**\\n\\nSecond paragraph with a [link](https://example.com)."',
     'grid:',
@@ -102,6 +103,12 @@ test('clue and instructions text render markdown formatting, not literal syntax'
 
   await page.goto('file://' + htmlPath);
   await ready(page);
+
+  // A link takes the theme's link color, in a clue and in the instructions alike. An
+  // overridden token, since the default is the color a browser gives a link anyway.
+  for (const sel of ['#across-clues .clue-text a', '#instructions a']) {
+    await expect(page.locator(sel)).toHaveCSS('color', 'rgb(18, 52, 86)');
+  }
 
   const clueHtml = await page.locator('#across-clues .clue-item').first().locator('.clue-text').innerHTML();
   assert.match(clueHtml, /<strong>Bold<\/strong>/);

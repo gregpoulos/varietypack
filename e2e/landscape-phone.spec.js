@@ -255,7 +255,7 @@ test.describe('short screens', () => {
 
 test.describe('strip details', () => {
   // The clue shows as many lines as the bar has height for (the container query steps in
-  // base.css), never a partly cut one. A taller screen leaves the bar more height.
+  // phone.css), never a partly cut one. A taller screen leaves the bar more height.
   for (const { tool } of TOOL_FIXTURES) {
     test(`[${tool}] the clue fills the bar's height in whole lines`, async ({ page }) => {
       let prev = 0;

@@ -127,7 +127,7 @@ test('buildFromObject: an invalid embedOrigin is a validation error, reported wi
 test('buildFromObject: an unknown --theme or --font is a validation error beside the puzzle\'s own', () => {
   const failing = hooks({ validateFn: () => ({ errors: ['e1'], warnings: [] }) });
   for (const [options, message] of [
-    [{ theme: 'toString' }, '--theme must be one of: broadsheet, skeleton, got "toString"'],
+    [{ theme: 'toString' }, '--theme must be one of: broadsheet, skeleton, swiss, got "toString"'],
     [{ font: 'bogus' }, '--font must be "embed" or "link", got "bogus"'],
   ]) {
     let caught;

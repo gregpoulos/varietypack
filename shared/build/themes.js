@@ -8,6 +8,9 @@ const { THEME_REGISTRY, VALID_THEMES, FONT_MODES } = require('./themeRegistry');
 
 const SHARED_DIR = path.join(__dirname, '..');
 
+// The cascade layers of a page's stylesheet, weakest first (composeThemeCss).
+const LAYERS = ['base', 'tool', 'theme', 'phone', 'print'];
+
 function buildFontCss(themeName, themeEntry, fontMode) {
   if (!themeEntry || !themeEntry.fonts) return '';
   if (!fontMode) fontMode = themeEntry.fonts.faces ? 'embed' : 'link';
@@ -43,13 +46,24 @@ function themeTokensCss(themeTokens) {
   return ':root {\n' + entries.map(([k, v]) => `  --theme-${k}: ${v};\n`).join('') + '}\n';
 }
 
-// Assembles the full inlined stylesheet for a tool build, in cascade order:
-//   font CSS (first: --font link emits an @import, which CSS ignores after any other rule)
-//   → shared base → tool base
-//   → theme-base (neutral --theme-* defaults) → <theme>-tokens (overrides)
-//   → the puzzle's themeTokens (override the theme's own tokens)
-//   → theme-components (every var-driven rule, so it picks all of the above up)
-//   → shared print → tool print.
+// One cascade layer: `css` wrapped in `@layer <name> { … }`.
+function layer(name, css) {
+  return `@layer ${name} {\n${css}\n}\n`;
+}
+
+// Assembles the full inlined stylesheet for a tool build, as cascade layers. A rule in a
+// later layer beats a rule in an earlier one whatever their selectors, so which file a
+// rule is in decides what it can override, and no selector has to be padded to win:
+//   base   shared/base.css: the reset and the structure every tool shares
+//   tool   the tool's base.css: its own layout
+//   theme  theme-base (neutral --theme-* defaults), <theme>-tokens (overrides), the
+//          puzzle's themeTokens (override the theme's own), then theme-components (every
+//          var-driven rule, so it picks all of those up)
+//   phone  shared/phone.css: the phone solving view, which rearranges all of the above
+//   print  shared print-base, then the tool's print.css
+// Within a layer the usual rules hold (specificity, then source order). Font CSS comes
+// before the layers, unlayered: --font link emits an @import, which CSS ignores after
+// any rule but the `@layer` statement, and @font-face is unaffected by layers.
 // Owns theme defaulting (→ broadsheet), so builders don't repeat it. It also refuses an
 // unregistered theme or font mode, which a build has already reported by then (the
 // YAML's theme in validateCommonHeader, the flags in validateBuildOptions). Adding a
@@ -70,14 +84,15 @@ function composeThemeCss(templateDir, theme = 'broadsheet', fontMode, themeToken
   const tool   = (rel) => fs.readFileSync(path.join(templateDir, rel), 'utf8');
 
   return fontCss
-    + shared('base.css') + '\n'
-    + tool('base.css') + '\n'
-    + shared('themes/theme-base.css') + '\n'
-    + shared(`themes/${theme}-tokens.css`) + '\n'
-    + themeTokensCss(themeTokens)
-    + shared('themes/theme-components.css') + '\n'
-    + shared('themes/print-base.css') + '\n'
-    + tool('print.css');
+    + `@layer ${LAYERS.join(', ')};\n`
+    + layer('base', shared('base.css'))
+    + layer('tool', tool('base.css'))
+    + layer('theme', shared('themes/theme-base.css') + '\n'
+      + shared(`themes/${theme}-tokens.css`) + '\n'
+      + themeTokensCss(themeTokens)
+      + shared('themes/theme-components.css'))
+    + layer('phone', shared('phone.css'))
+    + layer('print', shared('themes/print-base.css') + '\n' + tool('print.css'));
 }
 
 module.exports = { composeThemeCss, buildFontCss };

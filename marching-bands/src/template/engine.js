@@ -424,6 +424,7 @@ function init() {
       ['Space',     'Clear and advance'],
       ['Enter',     'Multi-letter cell'],
       ['.',         'Toggle row / band mode'],
+      ['Esc',       'Go to the menus'],
     ],
     refocus
   );

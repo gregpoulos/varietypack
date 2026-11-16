@@ -507,6 +507,26 @@ test('[snake-charmer] unchecking "Wrap long rows of cells" keeps a long cell row
   expect(await focusedId(page)).toBe('hidden-input');
 });
 
+// Shared code (setupMenuPref), so run once. Escape reaches the buttons (CROSS_TOOL_SPEC →
+// "Escape — leaving the puzzle"); the keyboard open lands on the menu's first row.
+test('[snake-charmer] a keyboard user toggles a menu checkbox row with Space and keeps focus on it', async ({ page, browserName }) => {
+  // macOS WebKit skips buttons on Tab (a Safari setting); Linux tabs to them.
+  test.skip(browserName === 'webkit' && process.platform === 'darwin', 'macOS WebKit does not Tab to buttons');
+  await load(page, 'snake-charmer');
+  await openList(page);
+  await page.evaluate(() => document.getElementById('hidden-input').focus());
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Tab'); // help → options
+  await expect(page.locator('#menu-btn')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#list-wrap-toggle')).toBeFocused();
+  await expect(page.locator('#list-wrap-toggle')).toBeChecked();
+  await page.keyboard.press('Space');
+  await expect(page.locator('#list-wrap-toggle')).not.toBeChecked();
+  await expect(page.locator('#list-wrap-toggle')).toBeFocused();
+  await expect(page.locator('#menu-panel')).toBeVisible();
+});
+
 // Shared code (setupFillList), so run once.
 test('[crushword] typing with the active clue scrolled out of the list brings its cursor back', async ({ page }) => {
   await load(page, 'crushword');
@@ -1093,6 +1113,28 @@ test.describe('crushword', () => {
     await expect(first).toHaveClass(/\blist-instructions\b/);
     await expect(first).toHaveText(INSTRUCTIONS);
     await expect(page.locator('#instructions')).toBeHidden();
+  });
+
+  test('the instructions read the same on the intro card and the Clues screen as on the page', async ({ page }) => {
+    await load(page, 'crushword-instructions', { keepIntro: true });
+    const style = sel => page.locator(sel).evaluate(el => {
+      const cs = getComputedStyle(el);
+      return [cs.fontSize, cs.color, cs.lineHeight];
+    });
+    const original = await style('#instructions');
+    expect(await style('#intro .intro-text')).toEqual(original);
+    await page.locator('#intro').tap();
+    await openList(page);
+    expect(await style('#list-pane .list-instructions')).toEqual(original);
+  });
+
+  test('the instruction copies fill their container, not the page\'s reading column', async ({ page }) => {
+    await load(page, 'crushword-instructions', { keepIntro: true });
+    const maxWidth = sel => page.locator(sel).evaluate(el => getComputedStyle(el).maxWidth);
+    expect(await maxWidth('#intro .intro-text')).toBe('none');
+    await page.locator('#intro').tap();
+    await openList(page);
+    expect(await maxWidth('#list-pane .list-instructions')).toBe('none');
   });
 
   test('instructions show over the view on a first visit, until a tap; not once there is a save', async ({ page }) => {

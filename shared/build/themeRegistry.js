@@ -18,6 +18,7 @@ const THEME_REGISTRY = {
       }
     }
   },
+  swiss: { fonts: null },
 };
 
 const VALID_THEMES = Object.keys(THEME_REGISTRY);
@@ -29,8 +30,10 @@ const FONT_MODES = ['embed', 'link'];
 // `themeTokens:` may override. shared/test/themeRegistry.test.js fails if the two drift.
 const THEME_TOKENS = [
   'font-body', 'font-display', 'font-button', 'font-cell', 'color-header-rule',
+  'header-align', 'title-size',
   'title-tracking', 'title-transform', 'color-title', 'byline-style', 'byline-size',
-  'color-bg', 'color-text', 'color-muted', 'color-bar-border', 'color-soft-border',
+  'color-bg', 'color-text', 'color-muted', 'color-link', 'color-bar-border', 'color-soft-border',
+  'control-radius', 'icon-button-radius',
   'color-btn-bg', 'color-btn-text', 'button-tracking',
   'color-btn2-bg', 'color-btn2-border', 'color-btn2-hover', 'color-clear-fg',
   'color-clear-hover-fg', 'color-cell-bg', 'color-cell-stroke', 'color-cell-text',

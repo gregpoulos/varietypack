@@ -26,6 +26,54 @@ test('minifyHtml: preserves /* */ inside a CSS string value (clean-css is CSS-aw
     `comment-like sequence inside a CSS string must survive; got: ${out}`);
 });
 
+test('minifyHtml: leaves a style block unchanged when clean-css warns about its syntax', () => {
+  // Nesting: clean-css 5 warns and returns only the mangled inner rule.
+  const css = 'html.phone { .solve-top { flex: none; } &.kb-left #solve-view { color: red; } }';
+  const out = minifyHtml(`<style>${css}</style>`);
+  assert.ok(out.includes(css), `the block must come back as written; got: ${out}`);
+});
+
+test('minifyHtml: reports each block it leaves unminified, and nothing for one it minifies', () => {
+  const skipped = [];
+  minifyHtml('<style>a { b { color: red; } }</style><script>not }{ js</script><style>a { color: red; }</style>',
+    message => skipped.push(message));
+  assert.equal(skipped.length, 2, skipped.join('\n'));
+  assert.match(skipped[0], /^a <style> was left unminified: \S/);
+  assert.match(skipped[1], /^a <script> was left unminified: \S/);
+});
+
+test('minifyHtml: minifies a style block that opens with a remote @import, keeping the import', () => {
+  // What --font link emits (buildFontCss).
+  const out = minifyHtml("<style>@import url('https://fonts.example/css2?family=X');\nbody {\n  color: red;\n}</style>");
+  assert.ok(out.includes('body{color:red}'), out);
+  assert.ok(out.includes('@import url(https://fonts.example/css2?family=X)'), out);
+});
+
+test('every tool and theme stylesheet minifies without a clean-css warning', () => {
+  // A warning leaves that page's CSS unminified (above), so new syntax the minifier
+  // can't read should fail here, not ship larger. Through minifyHtml, so the check uses
+  // the build's own clean-css options, and in every font mode a theme offers.
+  const path = require('path');
+  const { composeThemeCss } = require('../build/themes');
+  const { KINDS } = require('../build/tools');
+  const { THEME_REGISTRY, VALID_THEMES, FONT_MODES } = require('../build/themeRegistry');
+  const fontModes = theme => {
+    const { fonts } = THEME_REGISTRY[theme];
+    if (!fonts) return [undefined];
+    return FONT_MODES.filter(mode => (mode === 'link' ? fonts.cdn : fonts.faces));
+  };
+  for (const kind of KINDS) {
+    for (const theme of VALID_THEMES) {
+      for (const fontMode of fontModes(theme)) {
+        const css = composeThemeCss(path.join(__dirname, '..', '..', kind, 'src', 'template'), theme, fontMode);
+        const skipped = [];
+        minifyHtml(`<style>${css}</style>`, message => skipped.push(message));
+        assert.deepEqual(skipped, [], `${kind} / ${theme} / ${fontMode}`);
+      }
+    }
+  }
+});
+
 // ── comment-like text outside script and style ─────────────────────────────────
 
 // Outside <script>/<style> there are no JS or CSS comments: /* */ and // there are page

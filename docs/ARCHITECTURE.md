@@ -211,6 +211,19 @@ change to it can be covered. See [TESTING.md](TESTING.md).
 A function's category can shift as it's refactored (a DOM read gets displaced
 into an accessor), so check its test file rather than trusting a list.
 
+## Browser support
+
+A puzzle page needs a browser from about 2023 on: Chrome 108, Safari 16 or Firefox 121.
+The floor is set by what the phone layout already uses: `:has()` (the newest, in
+Firefox), container queries and their units, and the small-viewport unit `svh`;
+cascade layers are older than all three. Any CSS
+or DOM feature those three versions all support is fair to use without a fallback;
+anything newer needs one, or a decision to raise the floor here.
+
+One limit comes from the build, not from browsers: `--minify` runs clean-css, which
+doesn't read every newer syntax (CSS nesting, for one). `shared/test/minify.test.js`
+fails on a stylesheet it can't read.
+
 ## Themes and print
 
 `shared/themes/theme-base.css` defines neutral `--theme-*` defaults; each theme
@@ -221,10 +234,23 @@ chevrons, secondary cells), scoped by the `class="tool-<name>"` hook on each
 `<body>`, so no per-tool theme CSS file is needed. `print-base.css` holds the
 cross-tool `@media print` resets.
 
+**Cascade layers.** A page's stylesheet is five CSS cascade layers (`@layer`),
+weakest first: `base` (`shared/base.css`), `tool` (the tool's `base.css`), `theme`
+(the tokens, then `theme-components.css`), `phone` (`shared/phone.css`, the phone
+solving view) and `print` (`print-base.css`, then the tool's `print.css`). A rule in
+a later layer beats a rule in an earlier one whatever their selectors, so the file a
+rule lives in decides what it can override: a phone rule always beats a desktop rule,
+and a print rule always beats a screen rule. Selector specificity and source order
+decide only between rules of the same layer. When a rule doesn't take effect, check
+its layer before making its selector more specific, and never reach for `!important`
+to cross layers: among `!important` declarations the layer order runs backwards (the
+one `!important` in the stylesheet, the `[hidden]` reset in the `base` layer, relies
+on that to win everywhere).
+
 `composeThemeCss(templateDir, theme, fontMode, themeTokens)` in
-`shared/build/themes.js` owns theme defaulting (to `broadsheet`) and the cascade
-order (listed, with its reasons, in the comment above it). Builders call it once
-instead of defaulting and concatenating by hand.
+`shared/build/themes.js` owns theme defaulting (to `broadsheet`) and the layers
+(listed in the comment above it). Builders call it once instead of defaulting and
+concatenating by hand.
 
 **Adding a theme** takes two changes: a `<name>-tokens.css` in `shared/themes/`
 and a `THEME_REGISTRY` entry in `shared/build/themeRegistry.js`. System-font
@@ -241,8 +267,8 @@ overrides. If `@media print` must undo a theme's highlight colors, the theme
 isn't printer-friendly. The author's theme choice is the print decision; there
 is no separate print mode.
 
-**Explicit `display` in print rules.** `@media print` shares the cascade with
-screen styles. If a responsive breakpoint sets `display: block` on a flex or
-grid container, that rule applies in print too, so `@media print` must
+**Explicit `display` in print rules.** A screen rule still applies in print unless
+a print rule overrides it. If a responsive breakpoint sets `display: block` on a
+flex or grid container, that rule applies in print too, so `@media print` must
 re-declare `display: flex` or `display: grid` explicitly rather than rely on
 the base rule still being active.
