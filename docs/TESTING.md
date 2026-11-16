@@ -26,8 +26,8 @@ shell comments, and spelling everywhere, are checked by
 
 ## What to run when
 
-The full cross-browser suite is slow even sharded in CI, so it runs there and stays out
-of the edit loop. Run the cheapest layer that can catch what you changed:
+The full cross-browser suite is slow, so it stays out of the edit loop. Run the
+cheapest layer that can catch what you changed:
 
 | Change | Run | Cost |
 |---|---|---|
@@ -37,15 +37,33 @@ of the edit loop. Run the cheapest layer that can catch what you changed:
 | `shared/` or common engine code | `npm run test:e2e:quick` (all of Chromium) | the slowest local option |
 | Pointer, focus, soft keyboard, layout or CSS | `npm run test:e2e:tool -- <tool> --project=webkit`, then `--project=firefox` | a short wait each |
 | Documentation only | `npm test` | seconds |
+| Before merging a change to page behavior, layout or `shared/` | `npm run test:e2e:mac`, then `npm run test:e2e:linux` | the slowest option |
 
-Then push and keep working: CI runs the full matrix as parallel jobs (Chromium,
-WebKit, Firefox, and the phone projects), and a Linux-only failure shows up there.
-CI skips the e2e jobs for a change that touches only documentation; the `test` job
-still runs, because `test/commentStyle.test.js` reads the docs.
+Together, those two pre-merge commands run the full matrix, split by platform.
+`test:e2e:mac` runs Chromium and WebKit natively. `test:e2e:linux` runs Firefox and the
+phone projects on Linux in Docker, in the Playwright image matching the installed
+version: Linux is where fonts and timing differ from macOS, the phone layouts are the
+most sensitive to that, and it reaches Firefox, which an agent session can't launch on
+macOS. It passes Playwright flags through (a `--project` replaces its default
+projects) and needs Docker running. Running the whole matrix in one container
+overloads it, and WebKit tests then fail by timeout.
 
 `npm run test:e2e:tool` runs the tool's own specs plus its share of
 `e2e/shared.spec.js` (most of the desktop tests, run once per tool with the title
 prefixed `[<tool>]`). It passes other Playwright flags through.
+
+## CI
+
+Actions minutes are free only on a public repo, and the e2e matrix is nearly all of
+CI's cost, so the workflow runs the matrix according to the repo's visibility:
+
+- **In a public repo, on every push**, at no cost.
+- **In a private repo, only on demand:** `gh workflow run ci.yml --ref <branch>`.
+  Pushes and PRs run only `test` (lint and `npm test`). The pre-merge check in
+  "What to run when" stands in for it.
+
+Either way, the matrix skips itself for a change that touches only documentation;
+`test` always runs, because `test/commentStyle.test.js` reads the docs.
 
 ## End-to-end tests
 
@@ -107,15 +125,10 @@ variants.
 ## Reproducing a CI failure on Linux
 
 CI runs on Linux, where fonts and timing differ from macOS, so a test that passes
-locally can fail there. Reproduce it in the Playwright image that matches the
-installed version (`npx playwright --version`), copying the repo in without
-`node_modules`, which holds macOS binaries:
+locally can fail there. Reproduce it with the Linux runner:
 
 ```fish
-docker run --rm -v (pwd):/src:ro mcr.microsoft.com/playwright:v<version>-noble bash -c '
-  mkdir /work && cd /src && tar --exclude=node_modules --exclude=.git -cf - . | tar -xf - -C /work
-  cd /work && npm ci --silent
-  npx playwright test <spec> --project=chromium --repeat-each=20 --workers=1'
+npm run test:e2e:linux -- <spec> --project=chromium --repeat-each=20 --workers=1
 ```
 
 `--repeat-each` measures a flake's rate. Select tests with `-g "<name>"` rather than

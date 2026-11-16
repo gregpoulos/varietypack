@@ -14,8 +14,9 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const MAX_COMMENT_WIDTH = 90;
 
-// Tracked files, minus generated fixtures (built HTML carries whatever the source did).
-const files = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+// Tracked files and untracked ones not ignored, so a new file is checked before it is
+// added, minus generated fixtures (built HTML carries whatever the source did).
+const files = execFileSync('git', ['ls-files', '-co', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' })
   .split('\n')
   .filter(f => f && !f.includes('/fixtures/') && fs.existsSync(path.join(ROOT, f)));
 const withExt = (...exts) => files.filter(f => exts.includes(path.extname(f)));

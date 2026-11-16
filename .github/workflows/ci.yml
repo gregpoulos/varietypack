@@ -1,9 +1,14 @@
 name: CI
 
+# Cost policy: the e2e matrix is nearly all of this workflow's billed minutes, and minutes
+# are free only on a public repo. So in a public repo the matrix runs on every push; in a
+# private one it runs only on demand (workflow_dispatch), and `test` runs on every push.
+# Rationale and the local Linux run that replaces it: docs/TESTING.md -> "CI".
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -30,7 +35,9 @@ jobs:
   # Whether the change touches anything but documentation (`docs/`, `*.md`). Conservative:
   # an empty or failed diff counts as code, so e2e is skipped only when it is sure to be
   # irrelevant. `test` always runs, because test/commentStyle.test.js reads the docs.
+  # Skipping this job skips e2e too; when it runs is the cost policy above.
   changes:
+    if: github.event_name == 'workflow_dispatch' || !github.event.repository.private
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
