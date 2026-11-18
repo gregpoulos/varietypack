@@ -8,6 +8,7 @@
 import {
   FLASH_WRONG_MS, MENU_BTN_ID, PHONE_CLASS, boolPref, htmlEl, isKeyboardFocus, menuToggle, onClueClick, svgEl,
 } from './engine-chrome.mjs';
+import { applyMark } from './engine-state.mjs';
 import { attachSvgZoom } from './svg-zoom.mjs';
 
 // Detection is by the main input method, not by width, so tablets get the phone layout
@@ -24,6 +25,64 @@ const LANDSCAPE_PHONE = '(orientation: landscape) and (max-height: 500px)';
 // multiples of the zoom that fits the whole grid. Starting values, tuned on a phone.
 const MAX_ZOOM = 5;
 const DOUBLE_TAP_ZOOM = 2.5;
+// How far in screen px a zoomed grid rests past its edge: enough to see that it ends.
+const EDGE_MARGIN_PX = 12;
+// How far a pinch past the zoom limits can stretch, in log-zoom units: about a doubling.
+const ZOOM_STRETCH = Math.log(2);
+// How far in screen px a zoomed grid's edge shadow reaches in from the side.
+const EDGE_SHADOW_PX = 16;
+// The shadow's falloff from the side inward, as [offset, opacity] gradient stops: a
+// soft tail, (1 - offset)², as a blurred shadow has, rather than a line where it ends.
+const EDGE_SHADOW_STOPS = [[0, 1], [0.25, 0.56], [0.5, 0.25], [0.75, 0.06], [1, 0]];
+const EDGE_SIDES = ['top', 'right', 'bottom', 'left'];
+// The shapes that make up every tool's grid, which the edge shadow is clipped to.
+const GRID_SHAPES = '.cell, .cell-block, .cell-center';
+
+// Draws the zoomed grid's edge shadows into `svg`, on top of everything already in it:
+// a strip along each side of the view, darkest at the side, clipped to copies of the
+// grid's own shapes so it falls on cells and never on the page around them. Which strips
+// show is phone.css's (#grid-pane[data-more]); their colors are theme-components.css's.
+// Returns the function that moves the strips to a view, { x, y, width, height, scale }
+// (attachSvgZoom's onView), since they stay a fixed px thickness at the view's sides.
+function addEdgeShadows(svg) {
+  // The clip: copies of the grid's shapes, geometry only. The cells never move, so the
+  // copies taken now stay right.
+  const clip = svgEl('clipPath', { id: 'edge-shadow-clip' });
+  for (const shape of svg.querySelectorAll(GRID_SHAPES)) {
+    const copy = shape.cloneNode(false);
+    for (const name of ['id', 'class', 'style']) copy.removeAttribute(name);
+    clip.append(copy);
+  }
+  // One gradient per side, from the side inward.
+  const from = { top: [0, 0, 0, 1], right: [1, 0, 0, 0], bottom: [0, 1, 0, 0], left: [0, 0, 1, 0] };
+  const gradients = EDGE_SIDES.map(side => {
+    const [x1, y1, x2, y2] = from[side];
+    const gradient = svgEl('linearGradient', { id: `edge-shadow-${side}`, x1, y1, x2, y2 });
+    gradient.append(...EDGE_SHADOW_STOPS.map(([offset, opacity]) =>
+      svgEl('stop', { offset, class: 'edge-shadow-stop', 'stop-opacity': opacity })));
+    return gradient;
+  });
+  const defs = svgEl('defs');
+  defs.append(clip, ...gradients);
+  // The strips, placed by the function returned.
+  const strips = Object.fromEntries(EDGE_SIDES.map(side => [side, svgEl('rect', {
+    class: 'edge-shadow', 'data-side': side, fill: `url(#edge-shadow-${side})`,
+  })]));
+  const layer = svgEl('g', { class: 'edge-shadows', 'aria-hidden': 'true', 'clip-path': 'url(#edge-shadow-clip)' });
+  layer.append(...Object.values(strips));
+  svg.append(defs, layer);
+
+  return ({ x, y, width, height, scale }) => {
+    const t = EDGE_SHADOW_PX / scale;
+    const place = (side, attrs) => {
+      for (const [name, value] of Object.entries(attrs)) strips[side].setAttribute(name, value);
+    };
+    place('top', { x, y, width, height: t });
+    place('bottom', { x, y: y + height - t, width, height: t });
+    place('left', { x, y, width: t, height });
+    place('right', { x: x + width - t, y, width: t, height });
+  };
+}
 
 function isTouchFirst(win = window) {
   return win.matchMedia(TOUCH_FIRST).matches;
@@ -146,7 +205,7 @@ function setupClueExpand(barRow, clueText, win) {
 //                page has none); moved into the top bar beside ☰
 //   firstVisit:  nothing saved to restore, so the instructions show over the view
 //   ownSteps:    the bar brings its own ‹ › and handles its own taps
-//   fillList:    { items, getLetter, isCorrect, onCellTap, isComposing? } for a fill-in
+//   fillList:    { items, getLetter, getMark, onCellTap, isComposing? } for a fill-in
 //                list view (setupFillList), which also gets the "Wrap long rows of cells"
 //                menu row (setupListWrapPref). Without it the list is plain, and the
 //                drawn keyboard hides while the list is open.
@@ -155,7 +214,7 @@ function setupClueExpand(barRow, clueText, win) {
 // Returns { listPane, hideList, fillList, showingClue, follow }, `fillList` being
 // setupFillList's { sync, flash } or null, and showingClue setupClueExpand's.
 // follow(entryCells, cursorCell, cursorContent) is for syncUI: it keeps the cursor in
-// view while the grid is zoomed, panning (never zooming) the least that shows the active
+// view while the grid is zoomed, gliding (never zooming) the least that shows the active
 // entry, or failing that its start and the cursor, or the cursor. `entryCells` are the
 // active entry's cells in entry order, as the numbers in the cells' `cell-{n}` ids;
 // `cursorContent` is what the cursor's cell holds, so an edit that doesn't move the
@@ -259,10 +318,19 @@ function setupPhoneLayout({
   // Pinch, drag and double-tap zoom the grid (shared/svg-zoom.mjs). Crushword's `grid` is
   // the SVG itself, the others' a wrapper. A double-tap's first tap acts as a single tap
   // does (a tap on the cursor's cell switches direction at once); the second only zooms.
+  // The zoomed grid shades each side beyond which more grid lies: the zoom reports the
+  // sides, the pane carries them as `data-more` and phone.css shows those shadows.
   const svgNode = grid.matches('svg') ? grid : grid.querySelector('svg');
+  const placeShadows = addEdgeShadows(svgNode);
   const zoom = attachSvgZoom(svgNode, {
     pane: gridPane, maxZoom: MAX_ZOOM, doubleTapZoom: DOUBLE_TAP_ZOOM,
-    win,
+    marginPx: EDGE_MARGIN_PX, zoomStretch: ZOOM_STRETCH, win,
+    onEdges: edges => {
+      const more = EDGE_SIDES.filter(side => edges[side]).join(' ');
+      if (more) gridPane.dataset.more = more;
+      else delete gridPane.dataset.more;
+    },
+    onView: placeShadows,
   });
   // On a first visit, the instructions over the whole view until a tap anywhere on them.
   const introText = firstVisit && instructionsCopy('intro-text');
@@ -370,7 +438,8 @@ function setupPhoneLayout({
 //              along the snake) and getLetter and sync's activeCell share
 //   scroller:  the list pane
 //   getLetter: n → cell n's content (uppercased here, as the grid shows it)
-//   isCorrect: n → whether cell n has been checked correct (the grid's `.correct`)
+//   getMark:   n → cell n's mark, 'checked', 'revealed', 'wrong' or null (the grid's `data-mark`;
+//              makeCellStore's getMark), mirrored on its .list-cell
 //   isComposing: n → whether cell n is being composed as a rebus, which dashes the
 //              cursor's outline as the grid's does; omitted by Crushword, whose grid
 //              never dashes it, since every typed cell composes there
@@ -387,7 +456,7 @@ function setupPhoneLayout({
 // styled through its li's `.active-clue`. A tap on a cell reaches onCellTap alone because
 // onClueClick (shared/engine-chrome.mjs) skips `.list-cell`; stopping the tap here
 // instead would also keep it from the options menu's close-on-outside-click.
-function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = () => false, onCellTap }) {
+function setupFillList(items, { scroller, getLetter, getMark, isComposing = () => false, onCellTap }) {
   // One row per item. A cell's letter sits in an inner span, whose font scales with
   // the cell (phone.css) and with the length of a rebus cell's content (--len).
   const letterEls = items.map(({ li, cells }, i) => {
@@ -422,7 +491,7 @@ function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = ()
   }
 
   function sync(activeCell, activeLi, caretPos) {
-    // Letters and checked-correct marks in every row, the cursor in the active one.
+    // Letters and marks in every row, the cursor in the active one.
     let cursor = null, cursorLetter = null, edited = false;
     items.forEach(({ li, cells }, i) => cells.forEach((n, j) => {
       const letter = getLetter(n).toUpperCase(), el = letterEls[i].letters[j];
@@ -432,7 +501,7 @@ function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = ()
         el.style.setProperty('--len', Math.max(1, letter.length));
         if (active) edited = true;
       }
-      letterEls[i].cellEls[j].classList.toggle('correct', isCorrect(n));
+      applyMark(letterEls[i].cellEls[j], getMark(n));
       const isCursor = active && n === activeCell;
       letterEls[i].cellEls[j].classList.toggle('list-cursor', isCursor);
       letterEls[i].cellEls[j].classList.toggle('composing', isCursor && isComposing(n));

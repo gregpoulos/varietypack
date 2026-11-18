@@ -48,6 +48,4 @@ bands:
         length: 4
       - clue: Band B — same four-letter cell as row four
         length: 4
-hashed: true
-format: 2
 boardHash: efcc2ec66a09187729ee35baf7ac6fb25f2d4a05de102bb36bef86694f020651

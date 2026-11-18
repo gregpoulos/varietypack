@@ -23,7 +23,7 @@ function formatOptionsHelp(options) {
 // in its own beside them. Key order is only the order --help lists them in.
 const GLOBAL_OPTIONS = {
   muddle: { type: 'boolean',
-    description: 'Build a hashed (answer-obscured) HTML without needing hashed: in the YAML' },
+    description: 'Build a hashed (answer-obscured) HTML from a source YAML' },
   theme: { type: 'string', arg: 'name',
     description: `Visual theme: ${VALID_THEMES.join(', ')} (default: the YAML's theme:, else broadsheet)` },
   font: { type: 'string', arg: 'mode',
@@ -31,7 +31,7 @@ const GLOBAL_OPTIONS = {
   'embed-origin': { type: 'string', arg: 'origin',
     description: 'Post solves, with the solution, to this parent origin only (for embedding)' },
   minify: { type: 'boolean',
-    description: 'Minify the output HTML (terser-minifies scripts, clean-css minifies styles; strips comments + trailing whitespace)' },
+    description: 'Minify the output HTML (scripts and styles through esbuild; trailing whitespace elsewhere)' },
   output: { type: 'string', short: 'o', arg: 'file',
     description: 'Output path (default: <input-basename>.html next to input)' },
   force: { type: 'boolean', short: 'f',

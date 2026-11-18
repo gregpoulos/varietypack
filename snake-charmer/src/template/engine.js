@@ -7,7 +7,7 @@ import {
   clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
   scrollByKey, setupCellClicks, setupClueBar, setupCongratsDialog, setupControls,
   setupEmbedResize, setupKeydown, setupKeysOverlay, setupRebusButton, setupStorage,
-  storageKey, svgEl
+  setupMarkLayer, storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
 import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
 import { buildEntryMaps, nextRingPos, prevRingPos } from '../entryMaps.mjs';
@@ -49,32 +49,37 @@ function init() {
   // Ring positions 0→N−1 — the canonical board string order.
   const CELL_IDS = Array.from({ length: ringSize }, (_, rp) => rp);
 
-  // Each cell's letter and correct mark (makeCellStore, shared/engine-state.mjs).
-  const cells = makeCellStore({ ids: CELL_IDS, cellEl: rp => cellPaths[rp], letterEl: rp => letterTexts[rp] });
-  const { getCellLetter, setCellLetter, setCorrect, isCorrect } = cells;
+  // Each cell's letter and mark (makeCellStore, shared/engine-state.mjs).
+  const cells = makeCellStore({
+    ids: CELL_IDS, cellEl: rp => cellPaths[rp], letterEl: rp => letterTexts[rp],
+    drawMark: (rp, mark) => markShapes.draw(rp, mark),
+  });
+  const { getCellLetter, setCellLetter, setMark, getMark, isConfirmedRight, isLocked } = cells;
 
-  // Commit is wired only at the top of focusCell — docs/CROSS_TOOL_SPEC.md → Enter /
-  // Rebus button.
+  // Commit is wired only at the top of focusCell — docs/CROSS_TOOL_SPEC.md → "Enter /
+  // Rebus button — rebus entry".
   const composer = makeComposer({
     getContent: rp => getCellLetter(rp),
     setContent: (rp, s) => setCellLetter(rp, s),
     onCommit:   () => { syncUI(); checker.checkIfFilled(); saveState(); },
     isSolved:   () => latch.solved,
+    isLocked,
   });
 
   // Board state and answer checking. Ring positions 0..N-1 are the canonical board
   // string order. markSolved marks clue items in *both* modes, per the mode-symmetry
-  // rule in docs/CROSS_TOOL_SPEC.md → Answer checking.
+  // rule in docs/CROSS_TOOL_SPEC.md → "Answer checking".
   const checker = makeBoardChecker({
     cellIds:             CELL_IDS,
     getContent:          rp => getCellLetter(rp),
     isCellFilled:        rp => composer.isCellFilled(rp),
-    isCellMarkedCorrect: isCorrect,
+    isCellConfirmedRight: isConfirmedRight,
+    isCellMarkedWrong:   rp => cells.isMarkedWrong(rp),
     hashed:              !!data.hashed,
     getExpected:         rp => data.letters && data.letters[rp],
     getBoardHash:        () => data.boardHash,
     markSolved: () => {
-      cells.markAllCorrect();
+      svg.classList.add('solved');
       data.entries.forEach((_, ei) => cluesList.children[ei].classList.add('correct'));
     },
     syncUI: () => syncUI(),
@@ -103,8 +108,8 @@ function init() {
     focusCell(prevPos, prevLoop);
   }
 
-  // One rebus toggle for Enter and #rebus-btn — docs/CROSS_TOOL_SPEC.md → Enter / Rebus
-  // button.
+  // One rebus toggle for Enter and #rebus-btn — docs/CROSS_TOOL_SPEC.md → "Enter / Rebus
+  // button — rebus entry".
   function toggleRebus() {
     composer.toggle(activeRingPos);
     syncUI();
@@ -199,14 +204,17 @@ function init() {
   const cellPaths = [];
   const letterTexts = [];
 
-  // Five explicit layers: cells < circles < flash < letters < labels.
+  // Layer groups, painted bottom to top in the order svg.append lists them.
   // flashLayer holds wrong-guess flash overlays (see flashWrong) above the cells.
   const cellsLayer   = svgEl('g');
   const circlesLayer = svgEl('g');
   const flashLayer   = svgEl('g');
+  // Drawn by the cell store whenever a mark changes (setupMarkLayer).
+  const markLayer    = svgEl('g', { class: 'mark-layer' });
+  const markShapes   = setupMarkLayer(markLayer, rp => cellPaths[rp]);
   const lettersLayer = svgEl('g');
   const labelsLayer  = svgEl('g');
-  svg.append(cellsLayer, circlesLayer, flashLayer, lettersLayer, labelsLayer);
+  svg.append(cellsLayer, circlesLayer, flashLayer, markLayer, lettersLayer, labelsLayer);
 
   for (let i = 0; i < ringSize; i++) {
     const path = svgEl('path', { class: 'cell', id: `cell-${i}`, 'data-pos': i, d: cellPath(i) });
@@ -252,7 +260,9 @@ function init() {
   const cluesList = document.getElementById('clues');
   const fillItems = [];
   data.entries.forEach((entry, i) => {
-    const li = htmlEl('li', { class: 'clue-item', 'data-entry': i }, clueTextEl(entry.clue));
+    const li = htmlEl('li', { class: 'clue-item', 'data-entry': i },
+      htmlEl('span', { class: 'clue-num' }, (i + 1) + '.'),
+      clueTextEl(entry.clue));
     // Clue click → jump to the entry's first cell, in its own loop.
     onClueClick(li, () => {
       const { ringPos, loop } = canonicalStart[i];
@@ -264,8 +274,7 @@ function init() {
   });
 
   // ── Event wiring ──────────────────────────────────────────────────────────
-  // The page's static elements. Logic functions above use them (focusCell calls
-  // refocus, syncUI writes the bar); they first run in Restore & focus, after this.
+  // The page's static elements, which logic functions above read once they run.
   const hiddenInput = document.getElementById('hidden-input');
   const refocus = () => hiddenInput.focus({ preventScroll: true });
 
@@ -273,10 +282,10 @@ function init() {
 
   const doneWrong = document.getElementById('done-wrong');
 
-  // #rebus-btn — docs/CROSS_TOOL_SPEC.md → Enter / Rebus button.
   const rebusBtn = setupRebusButton(document.getElementById('rebus-btn'), {
     onToggle:    toggleRebus,
     isComposing: () => composer.isComposing(activeRingPos),
+    canCompose:  () => composer.canCompose(activeRingPos),
     refocus,
   });
 
@@ -346,11 +355,13 @@ function init() {
         saveState();
         return;
       }
-      if (getCellLetter(activeRingPos)) {
+      // A locked cell counts as empty here, so Backspace steps past it uncleared.
+      if (getCellLetter(activeRingPos) && !isLocked(activeRingPos)) {
         setCellLetter(activeRingPos, '');
         syncUI();
       } else {
-        setCellLetter(prevRingPos(activeRingPos, ringSize), '');
+        const prev = prevRingPos(activeRingPos, ringSize);
+        setCellLetter(prev, ''); // leaves a locked cell alone
         retreatCell();
       }
       saveState();
@@ -358,7 +369,7 @@ function init() {
     }
     if (e.key === ' ') {
       e.preventDefault();
-      setCellLetter(activeRingPos, '');
+      setCellLetter(activeRingPos, ''); // leaves a locked cell alone
       advanceCell();
       saveState();
       return;
@@ -389,8 +400,8 @@ function init() {
     if (composer.typeLetter(activeRingPos, typed)) advanceCell();
     else syncUI();
 
-    // Advance first, then check (docs/CROSS_TOOL_SPEC.md → Hashed-mode feedback
-    // timing).
+    // Advance first, then check (docs/CROSS_TOOL_SPEC.md → "Hashed-mode feedback
+    // timing").
     checker.checkIfFilled();
     saveState();
   });
@@ -406,6 +417,7 @@ function init() {
       composer, clearState, timer, latch, helpRecord,
       clearBoard() {
         cells.clearCells();
+        svg.classList.remove('solved');
         Array.from(cluesList.children).forEach(li => li.classList.remove('correct'));
         flashLayer.replaceChildren();
       },
@@ -413,11 +425,10 @@ function init() {
     });
   }
 
-  // The help menu's check and reveal actions (shared/engine-state.mjs → makeHelpActions):
-  // one pair over any set of cells, behind every row. Its deps are all defined above;
-  // `phone` is read when a wrong check flashes, long after init has set it.
+  // The help menu's actions (makeHelpActions). `phone` is read only when a wrong check
+  // flashes, long after init has set it.
   const helpActions = makeHelpActions({
-    checker, composer, helpRecord, setCellLetter, setCorrect, saveState, syncUI, refocus,
+    checker, composer, helpRecord, setCellLetter, setMark, saveState, syncUI, refocus,
     flashWrong(wrong) {
       for (const rp of wrong) flashWrong(cellPaths[rp], flashLayer);
       // The list's ids are snake positions, one per loop of each ring position.
@@ -448,7 +459,7 @@ function init() {
     fillList: {
       items: fillItems,
       getLetter: p => getCellLetter(p % ringSize),
-      isCorrect: p => isCorrect(p % ringSize),
+      getMark: p => getMark(p % ringSize),
       isComposing: p => composer.isComposing(p % ringSize),
       onCellTap: (i, j) => {
         const p = fillItems[i].cells[j];

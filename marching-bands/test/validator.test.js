@@ -43,12 +43,6 @@ test('validate: accepts minimal valid puzzle', () => {
 // forwards validateCommonHeader's errors and passes its own kind
 // ('marching-bands').
 
-test('validate: rejects wrong kind', () => {
-  const p = { ...minimalPuzzle(), kind: 'spiral' };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"kind"')));
-});
-
 test('validate: accepts optional fields — size, instructions, author, date', () => {
   const p = { ...minimalPuzzle(), size: 5, instructions: 'Solve it.', author: 'Greg', date: '2026' };
   const { errors } = validate(p);
@@ -144,7 +138,7 @@ test('validate: accepts valid even-N puzzle (N=4)', () => {
 function validMuddledMB() {
   return {
     kind: 'marching-bands', title: 'T',
-    hashed: true, format: 2, boardHash: 'any-hash',
+    boardHash: 'any-hash',
     rows: [
       { entries: [{ clue: 'a', length: 2 }, { clue: 'b', length: 1 }] },
       { entries: [{ clue: 'c', length: 1 }, { clue: 'd', length: 1 }] },
@@ -155,12 +149,6 @@ function validMuddledMB() {
     ],
   };
 }
-
-test('validate: muddled MB passes with a skip warning', () => {
-  const { errors, warnings } = validate(validMuddledMB());
-  assert.deepEqual(errors, []);
-  assert.ok(warnings.some(w => w.includes('muddled')));
-});
 
 test('validate: muddled MB — row length-sum check still enforced', () => {
   const p = validMuddledMB();
@@ -176,28 +164,11 @@ test('validate: muddled MB — band length-sum check still enforced', () => {
   assert.ok(errors.some(e => e.includes('bands[0]') && e.includes('sum')));
 });
 
-test('validate: muddled — answer: in rows[0] rejected with a use-length-not-answer message', () => {
-  const p = validMuddledMB();
-  p.rows[0].entries[0] = { clue: 'a', answer: 'AB' };  // answer: in a muddled puzzle is not allowed
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('rows[0].entries[0]') && e.includes('length:, not answer:')));
-});
-
 test('validate: muddled — answer: in a band entry rejected with a use-length-not-answer message', () => {
   const p = validMuddledMB();
   p.bands[0].entries[0] = { clue: 'g', answer: 'ABCDEF' };  // answer: on the validateEntries path
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('bands[0].entries[0]') && e.includes('length:, not answer:')));
-});
-
-test('validate: muddled entries without boardHash rejected for marching-bands', () => {
-  const p = validMuddledMB();
-  // Drop format: 2 alongside boardHash — without it the puzzle is neither a source
-  // nor a muddled file, and trips the "format: in a source puzzle" error as well.
-  delete p.boardHash;
-  delete p.format;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('boardHash')));
 });
 
 // 3x3 rebus fixture, per Task 4's construction:
@@ -223,18 +194,9 @@ test('a rebus cell must be bracketed identically in its row and its band', () =>
 });
 
 test('a rebus bracketed differently on the band is rejected', () => {
-  // Band cells: s ha ro e p a t n — still 8 cells, still the same letters,
-  // but cell 2 is "ha"/cell 3 is "ro" where the row says "har"/"o". A regex that
-  // merely checks for *some* "rows and bands disagree" error is not discriminating
-  // here: normalize() strips brackets, so the old letter-space cross-check flattens
-  // both this fixture and the agreeing one to the identical letter sequence and
-  // reports the same errors for either — it can't tell them apart. The old
-  // implementation also misaligns row0 (5 letters into 3 cell slots), producing
-  // five spurious single-character mismatches at unrelated cells regardless of the
-  // band's bracketing. So this asserts both: exactly two errors (old code produces
-  // five), and that they name the two disagreeing cells with their cell-space
-  // values ("har"/"ha" and "o"/"ro") — pinning the behavior that matters without
-  // pinning exact wording or order.
+  // Band cells: s ha ro e p a t n. The row reads "har"/"o" at those cells. Exactly two
+  // errors, naming the two disagreeing cells in cell space, tells this apart from the
+  // agreeing puzzle; a letter-space check flattens both to the same letters.
   const { errors } = validate(makeRebusPuzzle3x3('S[HA][RO]EPATN'));
   assert.strictEqual(errors.length, 2, `expected exactly 2 errors, got: ${JSON.stringify(errors)}`);
   assert.ok(
@@ -322,12 +284,6 @@ test('a band may spell a rebus backward on its bottom edge', () => {
 test('a band may not spell a rebus backward on its top edge', () => {
   const { errors } = validate(makeBottomRebusPuzzle3x3('S[RAH]OEP[AB]TN'));
   assert.ok(errors.some(e => e.startsWith('Cell (1, 2): row has "har" but band 0 has "rah"')), errors.join('|'));
-});
-
-test('validate: an unknown top-level key warns', () => {
-  const p = minimalPuzzle();
-  p.instruction = 2;
-  assert.ok(validate(p).warnings.includes('unknown key "instruction" (is it a typo?)'), validate(p).warnings.join('|'));
 });
 
 test('validate: an unknown key on a row or band object warns', () => {

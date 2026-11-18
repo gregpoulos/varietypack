@@ -43,6 +43,14 @@ test('buildFromObject: computes hashed=true for a muddled input (boardHash prese
   assert.equal(seen, true);
 });
 
+test('buildFromObject: a hashed: key in a source YAML does not make the build hashed', () => {
+  let seen;
+  buildFromObject({ kind: 'stub', title: 'T', hashed: true }, {}, hooks({
+    prepareFn: (raw) => { seen = raw.hashed; return stubPrepare(raw); },
+  }));
+  assert.equal(seen, false);
+});
+
 test('buildFromObject: passes the pre-prepare rawPuzzle to buildHtmlFn', () => {
   const { html } = buildFromObject({ kind: 'stub', title: 'T', shape: 'stadium' }, {}, hooks({
     buildHtmlFn: (prepared, raw) => `<html>${raw.shape}</html>`,

@@ -5,6 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
+const { openStudio, openStudioFile, downloadText: download, typeBoard: type } = require('./helpers');
 const { clickGapLine } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../marching-bands/src/builder');
@@ -19,10 +20,7 @@ const fixture = (name) => path.join(FIXTURES, name);
 
 // ---- helpers ----------------------------------------------------------------
 
-async function start(page) {
-  await page.goto(studio.url);
-  await expect(page.locator('#welcome')).toBeVisible();
-}
+const start = (page) => openStudio(page, studio.url);
 
 async function newGrid(page, size = 5) {
   await start(page);
@@ -32,24 +30,11 @@ async function newGrid(page, size = 5) {
   await expect(page.locator('#board')).toBeVisible();
 }
 
-async function openFile(page, file) {
-  await start(page);
-  await page.setInputFiles('#open-input', file);
-  await expect(page.locator('#board')).toBeVisible();
-}
+const openFile = (page, file) => openStudioFile(page, studio.url, file);
 
 const cell = (page, r, c) => page.locator(`rect.grid-cell[data-r="${r}"][data-c="${c}"]`);
 const letter = (page, r, c) => page.locator(`text.grid-letter[data-r="${r}"][data-c="${c}"]`);
 const mode = (page, m) => page.locator(`#cut-toggle [data-cut="${m}"]`);
-
-async function type(page, letters) {
-  for (const ch of letters) await page.locator('#board-input').fill(ch);
-}
-
-async function download(page, selector) {
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator(selector).click()]);
-  return fs.readFileSync(await dl.path(), 'utf8');
-}
 
 // ---- tests ------------------------------------------------------------------
 

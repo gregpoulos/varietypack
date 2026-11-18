@@ -2,6 +2,7 @@
 
 const { SHAPE_NAMES, ringFor } = require('./layout');
 const { buildEntryMaps } = require('./entryMaps.mjs');
+const { LOOPS } = require('./ringConstants');
 const { HEADER_KEYS, validateCommonHeader } = require('../../shared/build/validation');
 const { validateEntry, checkMuddledGuard, checkCellStyles, warnUnknownKeys } = require('../../shared/build/validateEntry');
 
@@ -23,14 +24,7 @@ function validate(puzzle, options = {}) {
   const warnings = [];
 
   if (!validateCommonHeader(puzzle, 'snake-charmer', errors)) return { errors, warnings };
-  warnUnknownKeys(puzzle, [...HEADER_KEYS, 'entries', 'loops', 'shape'], '', warnings);
-
-  const loops = puzzle.loops ?? 2;
-  if (loops !== 2) {
-    errors.push(
-      `"loops" must be 2; multi-loop (>2) Snake Charmer puzzles are not yet supported, got: ${JSON.stringify(puzzle.loops)}`
-    );
-  }
+  warnUnknownKeys(puzzle, [...HEADER_KEYS, 'entries', 'shape'], '', warnings);
 
   if (puzzle.shape !== undefined && !SHAPE_NAMES.includes(puzzle.shape)) {
     errors.push(`"shape" must be one of: ${SHAPE_NAMES.join(', ')}, got: ${JSON.stringify(puzzle.shape)}`);
@@ -61,17 +55,16 @@ function validate(puzzle, options = {}) {
   const totalCells = results.reduce((sum, r) => sum + (r ? r.length : 0), 0);
   const entriesOk  = !results.includes(null);
 
-  const validLoops = loops === 2;
-  if (validLoops && totalCells % loops !== 0) {
-    errors.push(`Total cell count must be divisible by loops (${loops}), got ${totalCells}`);
+  if (totalCells % LOOPS !== 0) {
+    errors.push(`Total cell count must be even (the answers run round the ring twice), got ${totalCells}`);
   }
 
-  const ringSize = validLoops && totalCells % loops === 0 ? totalCells / loops : 0;
+  const ringSize = totalCells % LOOPS === 0 ? totalCells / LOOPS : 0;
   if (ringSize > 0 && ringSize < 8) {
-    errors.push(`Ring size must be at least 8, got ${ringSize} (${totalCells} cells / ${loops} loops)`);
+    errors.push(`Ring size must be at least 8, got ${ringSize} (${totalCells} cells / ${LOOPS} loops)`);
   }
   if (ringSize > 0 && ringSize % 2 !== 0) {
-    errors.push(`Ring size must be even for the ring layout to close, got ${ringSize} (${totalCells} cells / ${loops} loops)`);
+    errors.push(`Ring size must be even for the ring layout to close, got ${ringSize} (${totalCells} cells / ${LOOPS} loops)`);
   }
 
   // A named shape never falls back at build time (ringFor), so one that can't lay out
@@ -98,11 +91,11 @@ function validate(puzzle, options = {}) {
     const cells = results.flatMap(r => r?.cells ?? []);
     const key   = arr => arr.join(' ');
     const loop0 = key(cells.slice(0, ringSize));
-    for (let k = 1; k < loops; k++) {
+    for (let k = 1; k < LOOPS; k++) {
       const loopK = key(cells.slice(k * ringSize, (k + 1) * ringSize));
       if (loopK !== loop0) {
         errors.push(
-          `Answers do not form a valid ${loops}-loop Snake Charmer: loop ${k} cells differ from loop 0 ` +
+          `Answers do not form a valid ${LOOPS}-loop Snake Charmer: loop ${k} cells differ from loop 0 ` +
           '(a multi-letter cell must be bracketed identically in every loop)'
         );
         break;
@@ -114,11 +107,11 @@ function validate(puzzle, options = {}) {
   // a ring size).
   if (entriesOk && ringSize > 0) {
     const lengths = results.map(r => r.length);   // every result is non-null once entriesOk
-    const { ringPosByEntry } = buildEntryMaps(lengths.map(length => ({ length })), loops);
+    const { ringPosByEntry } = buildEntryMaps(lengths.map(length => ({ length })), LOOPS);
     const coverage = puzzle.entries.map((entry, i) => ({ label: `entries[${i}]`, entry, cells: ringPosByEntry[i] }));
     checkCellStyles(coverage, errors);
 
-    const coincident = findCoincidentStarts(lengths, loops);
+    const coincident = findCoincidentStarts(lengths, LOOPS);
     if (coincident.length > 0) {
       warnings.push(
         `${coincident.length} ring cell(s) have entries from multiple loops starting on the same square: cells ${coincident.join(', ')}`

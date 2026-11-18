@@ -1,9 +1,6 @@
 /* Shared print resets live in shared/themes/print-base.css (just before this file,
    in the same cascade layer). Only snake-charmer-specific print rules belong here. */
 @media print {
-  .puzzle-main { padding: 12px 16px; }
-  .puzzle-header { margin-bottom: 12px; padding-bottom: 8px; }
-
   /* Stack ring above clues; scale grid to fit page */
   .puzzle-body  { display: block; }
   #ring-wrap    { break-inside: avoid; }
@@ -12,17 +9,10 @@
 
   /* Fit clues on one page */
   #clue-list { max-width: none; padding-top: 32px; }
-  #instructions { font-size: 0.8rem; margin-bottom: 16px; }
   #clues {
     column-count: 2;
     column-width: 12em;
     column-gap: 1.5em;
-  }
-  .clue-item {
-    break-inside: avoid;
-    font-size: 0.8rem;
-    margin-bottom: 3px;
-    padding: 1px 4px 1px 0;
   }
 }
 

@@ -15,9 +15,8 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
-const yaml = require('js-yaml');
 const {
-  clickHelpRow, typeCell, solveCrushwordBoard, solveRingBoard, rewriteSaveOnNextLoad,
+  clickHelpRow, typeCell, solveCrushwordBoard, solveRingBoard, rewriteSaveOnNextLoad, buildVariant,
 } = require('./helpers');
 const { sha256hex } = require('../shared/sha256hex.mjs');
 
@@ -42,6 +41,7 @@ const TOOLS = [
   {
     name: 'spiral',
     kind: 'spiral',
+    boardSelector: '#spiral-svg', // the board SVG, which carries .solved
     ring: true,
     fixDir: path.join(__dirname, '..', 'spiral', 'test', 'fixtures'),
     plainFixture: 'test-78.yaml',
@@ -59,13 +59,16 @@ const TOOLS = [
     // Cell number of the first cell in typing order (the rest follow consecutively),
     // and a cell to compose in with the ArrowRights that reach it from the start.
     firstCellNum: 1, rebusTwo: { cellNum: 5, arrowsRight: 4 },
-    // Cells and clue items the non-hashed rebus fixture marks .correct on solve.
-    rebusCorrectCells: 40, rebusCorrectClueItems: 16,
+    // Cells the non-hashed rebus fixture marks, and clue items it marks .correct, on
+    // solve.
+    rebusCorrectCells: 40, rebusCorrectClueItems: 16, rebusClueItems: 16,
+    cluesMarkCorrect: true, hasRebusButton: true,
     markCellId: 'cell-1', markLetterIndex: 0, sameEntryCellId: 'cell-2',
   },
   {
     name: 'snake-charmer',
     kind: 'snake-charmer',
+    boardSelector: '#ring-svg', // the board SVG, which carries .solved
     ring: true,
     fixDir: path.join(__dirname, '..', 'snake-charmer', 'test', 'fixtures'),
     plainFixture: 'circle-8.yaml',
@@ -79,12 +82,14 @@ const TOOLS = [
     solveBoard: solveRingBoard,
     REBUS_CELLS: SNAKE_CHARMER_REBUS_CELLS,
     firstCellNum: 0, rebusTwo: { cellNum: 0, arrowsRight: 0 },
-    rebusCorrectCells: 8, rebusCorrectClueItems: 5,
+    rebusCorrectCells: 8, rebusCorrectClueItems: 5, rebusClueItems: 5,
+    cluesMarkCorrect: true, hasRebusButton: true,
     markCellId: 'cell-0', markLetterIndex: 0, sameEntryCellId: 'cell-1',
   },
   {
     name: 'marching-bands',
     kind: 'marching-bands',
+    boardSelector: '#puzzle-svg', // the board SVG, which carries .solved
     ring: true,
     fixDir: path.join(__dirname, '..', 'marching-bands', 'test', 'fixtures'),
     plainFixture: 'mb-5.yaml',
@@ -98,13 +103,15 @@ const TOOLS = [
     solveBoard: solveRingBoard,
     REBUS_CELLS: MARCHING_BANDS_REBUS_CELLS,
     firstCellNum: 1, rebusTwo: { cellNum: 2, arrowsRight: 1 },
-    // No rebusCorrect* fields: Marching Bands marks no clue item .correct, so its
-    // rebus-solve test stays in e2e/marching-bands.spec.js.
+    // Marching Bands marks no clue item .correct: its clue groups hide entry boundaries,
+    // and marking them would spoil the puzzle.
+    rebusCorrectClueItems: 0, rebusClueItems: 15, cluesMarkCorrect: false, hasRebusButton: true,
     markCellId: 'cell-1', markLetterIndex: 0, sameEntryCellId: 'cell-2',
   },
   {
     name: 'crushword',
     kind: 'crushword',
+    boardSelector: '#puzzle-svg', // the board SVG, which carries .solved
     ring: false,
     fixDir: path.join(__dirname, '..', 'crushword', 'test', 'fixtures'),
     plainFixture: 'cw-9.yaml',
@@ -117,6 +124,7 @@ const TOOLS = [
     commitAfterFirstFill: true, // Crushword only auto-advances at maxCellLetters; a
                                  // single-letter guess needs an explicit Enter to commit.
     solveBoard: solveCrushwordBoard,
+    cluesMarkCorrect: true, hasRebusButton: false,   // typing composes a rebus cell directly
     // cw-9's first open cell has no across entry (its row run is length 1), so the
     // engine auto-flips to down and cell-11 is the next cell of that same down entry.
     markCellId: 'cell-2', markLetterIndex: 1, sameEntryCellId: 'cell-11',
@@ -154,6 +162,12 @@ test.afterAll(() => {
 async function ready(tool, page) {
   await expect(page.locator(tool.readySelector).first()).toBeVisible();
   await page.evaluate(() => document.getElementById('hidden-input').focus());
+}
+
+// Moves the cursor to `locator` unless it is already there (a click on the active cell
+// would switch direction, mode or loop instead).
+async function activateCell(page, locator) {
+  if (!/\bactive-cell\b/.test(await locator.getAttribute('class'))) await locator.click();
 }
 
 // ---- A: keys modal (button, ? key, Esc, backdrop click) — one tool --------------------
@@ -222,30 +236,6 @@ for (const tool of RING_TOOLS) {
     await expect(page.locator('#keys-overlay')).toBeHidden();
     await page.keyboard.type('A');
     await expect(firstCell).toHaveText('A');
-  });
-}
-
-// ---- D: congrats dialog on solve — ring tools -----------------------------------------
-
-for (const tool of RING_TOOLS) {
-  test(`[${tool.name}] congrats dialog opens on solve with solve time and action buttons`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-
-    await expect(page.locator('#congrats-dialog')).toBeHidden();
-
-    await tool.solveBoard(page);
-
-    await expect(page.locator('#congrats-dialog')).toBeVisible();
-    await expect(page.locator('#congrats-time')).toBeVisible();
-    const timeText = await page.locator('#congrats-time').textContent();
-    expect(timeText).toMatch(/^Solved in \d+:\d{2}$/);
-    await expect(page.locator('#congrats-copy-btn')).toBeVisible();
-    await expect(page.locator('#congrats-play-btn')).toBeVisible();
-    // A button with no font rule of its own still takes the theme's (the page's, in
-    // this theme) and not the browser's.
-    const font = sel => page.locator(sel).evaluate(el => getComputedStyle(el).fontFamily);
-    expect(await font('#congrats-play-btn')).toBe(await font('body'));
   });
 }
 
@@ -349,18 +339,147 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// ---- J: Play again resets the board — ring tools --------------------------------------
+// ---- K: one solve, and everything it leaves behind — all four tools ------------------
+// A single solve per tool asserts the completion payload, the congrats dialog, the
+// board's painted state, the lock on editing keys, and that Tab still steps. Each part
+// is a test.step; expect.soft only where later steps don't depend on the result, so one
+// failure doesn't hide the rest. Solving a board is long under load, hence the timeout.
+// The payload contract (kind, boardHash shape, solution hashes to it, timeMs, exactly one
+// postMessage with solution stripped) is identical across the engines; the payload's
+// title passthrough isn't a completion-event concern, and the postMessage repeats the
+// event's own fields, so neither is asserted separately.
 
-for (const tool of RING_TOOLS) {
-  test(`[${tool.name}] Play again button resets the board and re-enables input`, async ({ page }) => {
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] a solve fires one completion and locks the board; Tab still steps`, async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const textColor = () => page.locator('.clue-item .clue-text').first()
+      .evaluate(el => getComputedStyle(el).color);
+    const colorBefore = await textColor();
+
+    await test.step('listen', async () => {
+      await expect(page.locator('#congrats-dialog')).toBeHidden();
+      await expect(page.locator(tool.boardSelector)).not.toHaveClass(/\bsolved\b/);
+      await page.evaluate(() => {
+        window.__vpEvents = [];
+        window.__vpMsgs   = [];
+        document.querySelector('.puzzle-main').addEventListener('varietypack:complete', e => {
+          window.__vpEvents.push(JSON.parse(JSON.stringify(e.detail)));
+        });
+        window.addEventListener('message', e => {
+          if (e.data?.type === 'varietypack:complete') window.__vpMsgs.push(e.data);
+        });
+        document.getElementById('hidden-input').focus();
+      });
+    });
+
+    await test.step('solve', () => tool.solveBoard(page));
+
+    await test.step('completion', async () => {
+      await page.waitForFunction(() => window.__vpMsgs.length > 0);
+      const [events, msgs] = await page.evaluate(() => [window.__vpEvents, window.__vpMsgs]);
+
+      assert.strictEqual(events.length, 1, 'exactly one varietypack:complete event');
+      const detail = events[0];
+      assert.ok(typeof detail.boardHash === 'string' && detail.boardHash.length === 64, 'boardHash is 64-char hex');
+      assert.strictEqual(detail.kind, tool.kind);
+      assert.ok(typeof detail.timeMs === 'number' && detail.timeMs >= 0, 'timeMs is non-negative number');
+      assert.ok(typeof detail.solution === 'string' && detail.solution.length > 0, 'solution is a non-empty string');
+
+      const computedHash = sha256hex(detail.solution);
+      assert.strictEqual(computedHash, detail.boardHash, 'sha256hex(solution) === boardHash');
+
+      assert.strictEqual(msgs.length, 1, 'exactly one postMessage');
+      assert.strictEqual(msgs[0].type, 'varietypack:complete');
+      assert.strictEqual(msgs[0].solution, undefined, 'solution must be absent from postMessage');
+
+      // A solve typed straight through used no help.
+      assert.strictEqual(detail.checks, 0);
+      assert.strictEqual(detail.reveals, 0);
+      assert.strictEqual(msgs[0].checks, 0);
+      assert.strictEqual(msgs[0].reveals, 0);
+    });
+
+    await test.step('dialog', async () => {
+      await expect.soft(page.locator('#congrats-dialog')).toBeVisible();
+      await expect.soft(page.locator('#congrats-time')).toBeVisible();
+      expect.soft(await page.locator('#congrats-time').textContent()).toMatch(/^Solved in \d+:\d{2}$/);
+      await expect.soft(page.locator('#congrats-copy-btn')).toBeVisible();
+      await expect.soft(page.locator('#congrats-play-btn')).toBeVisible();
+      // A button with no font rule of its own still takes the theme's (the page's, in
+      // this theme) and not the browser's.
+      const font = sel => page.locator(sel).evaluate(el => getComputedStyle(el).fontFamily);
+      expect.soft(await font('#congrats-play-btn')).toBe(await font('body'));
+    });
+
+    await test.step('board', async () => {
+      await expect.soft(page.locator(tool.boardSelector)).toHaveClass(/\bsolved\b/);
+      await expect.soft(page.locator(tool.readySelector + '[data-mark]')).toHaveCount(0);
+      await expect.soft(page.locator('#check-btn')).toBeDisabled();
+      // Marching Bands marks no clue item; the others mark every one correct and filled.
+      const total = await page.locator('.clue-item').count();
+      expect.soft(total).toBeGreaterThan(0);   // so a 0 below can't pass against an empty list
+      const marked = tool.cluesMarkCorrect ? total : 0;
+      await expect.soft(page.locator('.clue-item.correct')).toHaveCount(marked);
+      await expect.soft(page.locator('.clue-item.filled')).toHaveCount(marked);
+      // Solving never restyles a clue's text.
+      expect.soft(await textColor()).toBe(colorBefore);
+      for (const text of await page.locator('.clue-item .clue-text').all()) {
+        await expect.soft(text).toHaveCSS('text-decoration-line', 'none');
+      }
+    });
+
+    await test.step('locked', async () => {
+      // Close the dialog without Play again, so the board stays solved.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#congrats-dialog')).toBeHidden();
+
+      // Two separate guards: typing is refused by the input handler's latch.solved check,
+      // Backspace by the keydown handler's. Removing either one turns this red on its
+      // own.
+      const before = await page.locator('.cell-letter').allTextContents();
+      await page.keyboard.type('ZZZZZ');
+      await page.keyboard.press('Backspace');
+      expect(await page.locator('.cell-letter').allTextContents()).toEqual(before);
+    });
+
+    await test.step('navigation', async () => {
+      // Keys that edit are ignored once solved; Tab and Shift+Tab only move the cursor,
+      // so they still step through the clues after View puzzle.
+      const start = await activeCellNum(tool, page);
+      await page.keyboard.press('Tab');
+      const next = await activeCellNum(tool, page);
+      expect(next).not.toBe(start);
+      // Back lands on the first cell of the entry Tab left (not necessarily `start`), so
+      // a second Tab returns to where the first one went.
+      await page.keyboard.press('Shift+Tab');
+      expect(await activeCellNum(tool, page)).not.toBe(next);
+      await page.keyboard.press('Tab');
+      expect(await activeCellNum(tool, page)).toBe(next);
+    });
+  });
+}
+
+// ---- J: Play again resets the board — all four tools ----------------------------------
+// Play again and Clear share clearBoard (resetAndRefocus). The solve here is Reveal
+// puzzle, so the help counts are non-zero for Play again to zero.
+
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] Play again resets the board, clears .solved and the help counts, and takes input`, async ({ page }) => {
+    test.setTimeout(60_000);
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
 
-    await tool.solveBoard(page);
+    await page.locator('#help-btn').click();
+    await page.locator('#reveal-puzzle-btn').click(); // arms
+    await page.locator('#reveal-puzzle-btn').click(); // confirms
     await expect(page.locator('#congrats-dialog')).toBeVisible();
+    await expect(page.locator(tool.boardSelector)).toHaveClass(/\bsolved\b/);
 
     await page.click('#congrats-play-btn');
     await expect(page.locator('#congrats-dialog')).toBeHidden();
+    await expect(page.locator(tool.boardSelector)).not.toHaveClass(/\bsolved\b/);
 
     const afterReset = await page.locator('.cell-letter').allTextContents();
     expect(afterReset.every(t => t === '')).toBe(true);
@@ -374,78 +493,79 @@ for (const tool of RING_TOOLS) {
     const afterType = await page.locator('.cell-letter').allTextContents();
     expect(afterType.filter(t => t !== '').length).toBe(1);
     expect(afterType.some(t => t === 'A')).toBe(true);
+
+    // The help counts restart: one reveal now is the only one. A cell other than the one
+    // just typed in, so the reveal has something to do.
+    await page.locator('#' + tool.sameEntryCellId).click();
+    await clickHelpRow(page, '#reveal-btn');
+    const key = await page.evaluate(() => Object.keys(localStorage)[0]);
+    const saved = await page.evaluate(k => JSON.parse(localStorage.getItem(k)), key);
+    assert.deepEqual(saved.help, { checks: 0, reveals: 1 });
   });
 }
 
-// ---- K: completion event payload — all four tools -------------------------------------
-// The core payload contract (kind, boardHash shape, solution hashes to it, timeMs,
-// exactly one postMessage with solution stripped) is identical across all four
-// engines. The payload's title passthrough isn't a completion-event concern, and the
-// postMessage repeats the event's own fields, so neither is asserted separately.
+// ---- A solved board restores solved and sealed — all four tools ----------------------
+// The auto-save payload holds no solved flag, so a solved board comes back unpainted;
+// checker.repaintIfSolved() re-adjudicates its content and repaints `.solved` and the
+// clue items at restore time. The solve marks no cell, so none comes back marked. The
+// ring tools solve their rebus fixture, which has multi-letter cells to compose in.
+
+async function solveForRestore(tool, page) {
+  if (tool.ring) {
+    await page.goto('file://' + tool.paths.rebus);
+    await ready(tool, page);
+    for (const cell of tool.REBUS_CELLS) await typeCell(page, cell);
+  } else {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await tool.solveBoard(page);
+  }
+}
 
 for (const tool of ALL_TOOLS) {
-  test(`[${tool.name}] completion event fires with correct payload on solve`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
+  test(`[${tool.name}] a solved board restores solved and sealed`, async ({ page }) => {
+    test.setTimeout(60_000);
+    await solveForRestore(tool, page);
+    await expect(page.locator('#congrats-dialog')).toBeVisible();
 
-    await page.evaluate(() => {
-      window.__vpEvents = [];
-      window.__vpMsgs   = [];
-      document.querySelector('.puzzle-main').addEventListener('varietypack:complete', e => {
-        window.__vpEvents.push(JSON.parse(JSON.stringify(e.detail)));
-      });
-      window.addEventListener('message', e => {
-        if (e.data?.type === 'varietypack:complete') window.__vpMsgs.push(e.data);
-      });
-      document.getElementById('hidden-input').focus();
-    });
+    const total = await page.locator('.clue-item').count();
+    expect(total).toBeGreaterThan(0);
+    const marked = tool.cluesMarkCorrect ? total : 0;
+    await expect(page.locator('.clue-item.correct')).toHaveCount(marked);
 
-    await tool.solveBoard(page);
-
-    await page.waitForFunction(() => window.__vpMsgs.length > 0);
-
-    const [events, msgs] = await page.evaluate(() => [window.__vpEvents, window.__vpMsgs]);
-
-    assert.strictEqual(events.length, 1, 'exactly one varietypack:complete event');
-    const detail = events[0];
-    assert.ok(typeof detail.boardHash === 'string' && detail.boardHash.length === 64, 'boardHash is 64-char hex');
-    assert.strictEqual(detail.kind, tool.kind);
-    assert.ok(typeof detail.timeMs === 'number' && detail.timeMs >= 0, 'timeMs is non-negative number');
-    assert.ok(typeof detail.solution === 'string' && detail.solution.length > 0, 'solution is a non-empty string');
-
-    const computedHash = sha256hex(detail.solution);
-    assert.strictEqual(computedHash, detail.boardHash, 'sha256hex(solution) === boardHash');
-
-    assert.strictEqual(msgs.length, 1, 'exactly one postMessage');
-    assert.strictEqual(msgs[0].type, 'varietypack:complete');
-    assert.strictEqual(msgs[0].solution, undefined, 'solution must be absent from postMessage');
-
-    // A solve typed straight through used no help.
-    assert.strictEqual(detail.checks, 0);
-    assert.strictEqual(detail.reveals, 0);
-    assert.strictEqual(msgs[0].checks, 0);
-    assert.strictEqual(msgs[0].reveals, 0);
-  });
-}
-
-// A hashed page has no Check or Reveal, so a solve that restores no counts reports none.
-// Ring tools only: a hashed Crushword page ships no letters to type from, and the counts
-// come from the same getHelp call in every engine.
-for (const tool of RING_TOOLS) {
-  test(`[${tool.name}] a hashed solve reports zero checks and reveals`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.rebusHashed);
+    await page.reload();
     await ready(tool, page);
 
-    const events = [];
-    await page.exposeFunction('__vpComplete', d => events.push(d));
-    await page.evaluate(() => {
-      document.querySelector('.puzzle-main')
-        .addEventListener('varietypack:complete', e => window.__vpComplete(e.detail));
-    });
-    for (const cell of tool.REBUS_CELLS) await typeCell(page, cell);
+    await expect(page.locator(tool.boardSelector)).toHaveClass(/\bsolved\b/);
+    await expect(page.locator(tool.readySelector + '[data-mark]')).toHaveCount(0);
+    await expect(page.locator('.clue-item.correct')).toHaveCount(marked);
+    // This guards the emission guarantee, and nothing about the repaint: focusCell's
+    // syncUI does call latch.check(true) here, and sealIfSolved() is the only reason the
+    // dialog stays shut. The repaint's own no-syncUI contract is pinned in
+    // shared/test/engine-state.checker.test.js, not here.
+    await expect(page.locator('#congrats-dialog')).toBeHidden();
 
-    await expect.poll(() => events.length).toBe(1);
-    expect(events[0].checks).toBe(0);
-    expect(events[0].reveals).toBe(0);
+    // What guards a solved board: latch.solved makes the keydown handler (Enter,
+    // Backspace) and the input handler (typed letters) return, and the composer refuses
+    // to open on a solved board too. This is the one place the guards run on a page that
+    // never touched a dialog — post-reload the latch is sealed by sealIfSolved(), so CDP
+    // key injection is unimpaired. The control is the ring tools' 'Enter opens a
+    // multi-letter cell' test: same fixture, and Enter does open composition when the
+    // board is not solved. The letters are compared too, since the composer alone would
+    // stop Enter and leave the keydown and input guards unproven.
+    const before = await page.locator('.cell-letter').allTextContents();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Backspace');
+    await page.locator('#hidden-input').fill('Z');
+    await page.keyboard.type('Z');
+    await expect(page.locator('.cell.composing')).toHaveCount(0);
+    expect(await page.locator('.cell-letter').allTextContents()).toEqual(before);
+
+    // #rebus-btn reaches composition without going through setupKeydown, so it is
+    // disabled on a solved board (setupRebusButton's canCompose); composer.toggle's own
+    // solved check, pinned in engine-state.composer.test.js, backs it up.
+    if (tool.hasRebusButton) await expect(page.locator('#rebus-btn')).toBeDisabled();
+    await expect(page.locator('.cell.composing')).toHaveCount(0);
   });
 }
 
@@ -469,28 +589,32 @@ for (const tool of ALL_TOOLS) {
     });
   }
 
-  test(`[${tool.name}] a wrong guess from Check Cell marks nothing and writes only the check count`, async ({ page }) => {
+  test(`[${tool.name}] Check Cell saves a wrong guess as wrong, then a retyped right one as checked, counting both`, async ({ page }) => {
     await page.goto('file://' + tool.paths.rebus);
     await ready(tool, page);
+    const n = tool.firstCellId.replace('cell-', '');
 
     await enterFirstCell(page, 'Z'); // deliberately wrong
     await page.evaluate(() => localStorage.clear());
-
     await clickHelpRow(page, '#check-btn');
-
-    await expect(page.locator('#' + tool.firstCellId)).not.toHaveClass(/correct/);
+    await expect(page.locator('#' + tool.firstCellId)).toHaveAttribute('data-mark', 'wrong');
     assert.equal(await page.evaluate(() => localStorage.length), 1);
-    const saved = await savedState(page);
+    let saved = await savedState(page);
     assert.deepEqual(saved.help, { checks: 1, reveals: 0 });
-    assert.deepEqual(saved.correct, []);
-  });
+    assert.deepEqual(saved.marks, { [n]: 'wrong' });
 
-  test(`[${tool.name}] a disabled Check Cell counts nothing and writes nothing`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.rebus);
-    await ready(tool, page);
-
-    await expect(page.locator('#check-btn')).toBeDisabled(); // nothing typed yet
-    assert.equal(await page.evaluate(() => localStorage.length), 0);
+    // Clear the wrong letter (Crushword would otherwise append to it), then type the
+    // right one; every rebus fixture answers its first cell 'A'.
+    await page.keyboard.press('Backspace');
+    await expect(page.locator('#' + tool.firstLetterId)).toHaveText('');
+    await enterFirstCell(page, 'A');
+    await page.evaluate(() => localStorage.clear());
+    await clickHelpRow(page, '#check-btn');
+    await expect(page.locator('#' + tool.firstCellId)).toHaveAttribute('data-mark', 'checked');
+    assert.equal(await page.evaluate(() => localStorage.length), 1);
+    saved = await savedState(page);
+    assert.equal(saved.help.checks, 2);
+    assert.deepEqual(saved.marks, { [n]: 'checked' });
   });
 
   test(`[${tool.name}] the check count survives a reload and keeps counting`, async ({ page }) => {
@@ -503,7 +627,8 @@ for (const tool of ALL_TOOLS) {
 
     await page.reload();
     await ready(tool, page);
-    await page.locator('#' + tool.firstCellId).click();
+    // The slashed cell can't be checked again until it changes.
+    await enterFirstCell(page, 'Y');
     await clickHelpRow(page, '#check-btn');
     assert.equal((await savedState(page)).help.checks, 2);
   });
@@ -525,22 +650,6 @@ for (const tool of ALL_TOOLS) {
 
     await expect(page.locator('#' + tool.firstLetterId)).toHaveText('Z');
     expect(errors).toEqual([]);
-  });
-
-  test(`[${tool.name}] a correct guess from Check Cell does write to localStorage`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.rebus);
-    await ready(tool, page);
-
-    await enterFirstCell(page, 'A');
-    await page.evaluate(() => localStorage.clear());
-
-    await clickHelpRow(page, '#check-btn');
-
-    await expect(page.locator('#' + tool.firstCellId)).toHaveClass(/correct/);
-    assert.equal(await page.evaluate(() => localStorage.length), 1);
-    const saved = await savedState(page);
-    assert.equal(saved.help.checks, 1);
-    assert.equal(saved.correct.length, 1);
   });
 
   // A save made for another board under the same storageKey (Crushword's hash leaves out
@@ -569,8 +678,8 @@ for (const tool of ALL_TOOLS) {
     await expect(letter).toHaveText('Z');
     await expect(letter).toBeVisible();
 
-    // Printing always yields a blank puzzle (docs/CROSS_TOOL_SPEC.md → Print-mode state
-    // erasure).
+    // Printing always yields a blank puzzle (docs/CROSS_TOOL_SPEC.md → "Print-mode state
+    // erasure").
     await page.emulateMedia({ media: 'print' });
     await expect(letter).toBeHidden();
   });
@@ -629,12 +738,18 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// ---- P: hashed rebus preimage matches boardHash — ring tools --------------------------
-// Crushword has no equivalent: it builds an unused rebusHashedPath fixture in its
-// own spec but never had a dedicated hashed-rebus completion test to pair it with.
+// ---- P: a hashed rebus solve from accented typing — ring tools ------------------------
+// Each engine runs what the solver types through the shared normalize(), which folds é
+// to e, so an accented guess fills the plain letter and the hash then matches. A hashed
+// page has no Check or Reveal, so the solve reports no help. Crushword's hashed
+// completion test is in crushword.spec.js; its accents test is section Z, on the plain
+// board.
+
+const ACCENTED = { A: 'Á', C: 'Ç', E: 'É', I: 'Í', N: 'Ñ', O: 'Ö', U: 'Ü' };
+const accent = s => [...s.toUpperCase()].map(ch => ACCENTED[ch] ?? ch).join('');
 
 for (const tool of RING_TOOLS) {
-  test(`[${tool.name}] a hashed rebus puzzle solves end to end and its preimage matches boardHash`, async ({ page }) => {
+  test(`[${tool.name}] a hashed rebus puzzle solves from accented typing: the solution hashes to boardHash, with no help used`, async ({ page }) => {
     await page.goto('file://' + tool.paths.rebusHashed);
     await ready(tool, page);
 
@@ -645,14 +760,79 @@ for (const tool of RING_TOOLS) {
         .addEventListener('varietypack:complete', e => window.__vpComplete(e.detail));
     });
 
-    for (const cell of tool.REBUS_CELLS) await typeCell(page, cell);
+    const typed = tool.REBUS_CELLS.map(accent);
+    expect(typed.join('')).not.toBe(tool.REBUS_CELLS.join(''));   // some letters really are accented
+    for (const cell of typed) await typeCell(page, cell);
 
     await expect.poll(() => events.length).toBe(1);
     const detail = events[0];
     expect(detail.solution).toBe(tool.REBUS_CELLS.map(c => c.toLowerCase()).join('.'));
+    expect(sha256hex(detail.solution)).toBe(detail.boardHash);
+    expect(detail.checks).toBe(0);
+    expect(detail.reveals).toBe(0);
+  });
+}
 
-    const recomputed = sha256hex(detail.solution);
-    expect(recomputed).toBe(detail.boardHash);
+// ---- Banners and print — all four tools -------------------------------------------
+
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] banners are state-derived and partial correctness stays hidden`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await expect(page.locator('#congrats')).toBeHidden();
+    await expect(page.locator('#done-wrong')).toBeHidden();
+
+    // Fill the board with the first cell wrong.
+    const letters = await filledLetters(page);
+    const firstId = await fillBoardFirstWrong(tool, page);
+
+    // Full but wrong: done-wrong shows, congrats does not, nothing marked correct.
+    await expect(page.locator('#done-wrong')).toBeVisible();
+    await expect(page.locator('#congrats')).toBeHidden();
+    await expect(page.locator(`${tool.readySelector}[data-mark]`)).toHaveCount(0);
+
+    // Clearing the wrong cell leaves the board unfull, so the banner must hide
+    // immediately (state-derived, no timeout).
+    // On the ring tools the cursor wrapped from the last cell to the wrong first one.
+    if (tool.ring) await expect(page.locator('#' + firstId)).toHaveClass(/\bactive-cell\b/);
+    await activateCell(page, page.locator('#' + firstId));
+    await page.keyboard.press('Backspace');
+    await expect(page.locator('#done-wrong')).toBeHidden();
+
+    // Re-type the correct first letter → board full and entirely correct → congrats.
+    await page.locator('#hidden-input').fill(letters[0].toUpperCase());
+    if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
+    await expect(page.locator('#congrats')).toBeVisible();
+    await expect(page.locator('#done-wrong')).toBeHidden();
+  });
+
+  test(`[${tool.name}] marked cells print white and blank`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const checked = page.locator('#' + tool.markCellId);
+    const revealed = page.locator('#' + tool.sameEntryCellId);
+    const letter = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
+
+    // The solve marks no cell, so mark one with Check and another with Reveal.
+    await activateCell(page, checked);
+    await page.locator('#hidden-input').fill(letter.toUpperCase());
+    if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
+    await activateCell(page, checked);
+    await clickHelpRow(page, '#check-btn');
+    await revealed.click();
+    await clickHelpRow(page, '#reveal-btn');
+    await expect(checked).toHaveAttribute('data-mark', 'checked');
+    await expect(revealed).toHaveAttribute('data-mark', 'revealed');
+
+    const fillOf = id => page.evaluate(i => getComputedStyle(document.getElementById(i)).fill, id);
+
+    // Under print every cell state resets to white (shared/themes/print-base.css).
+    await page.emulateMedia({ media: 'print' });
+    expect(await fillOf(tool.markCellId)).toBe('rgb(255, 255, 255)');
+    expect(await fillOf(tool.sameEntryCellId)).toBe('rgb(255, 255, 255)');
+    // Correct letters print blank too, not just their cells.
+    expect(await page.locator('.cell-letter[data-mark]').count()).toBeGreaterThan(0);
+    await expect(page.locator('.cell-letter[data-mark]:visible')).toHaveCount(0);
   });
 }
 
@@ -678,13 +858,55 @@ for (const tool of ALL_TOOLS) {
 
     await marked.click();
     await clickHelpRow(page, '#check-btn');
-    await expect(marked).toHaveClass(/\bcorrect\b/);
+    await expect(marked).toHaveAttribute('data-mark');
 
     // Move the cursor to another cell of the same entry, so the marked cell is part
     // of the active entry without being the active cell.
     await page.locator(`#${tool.sameEntryCellId}`).click();
-    await expect(marked).toHaveClass(/\bcorrect\b/);
+    await expect(marked).toHaveAttribute('data-mark');
     await expect(marked).toHaveClass(/\bactive-entry\b/);
+  });
+}
+
+// ---- Q2: a checked letter takes the checked color, under the cursor too -------------
+// Why: a mark never touches the cell's fill (theme-components.css →
+// .cell-letter[data-mark="checked"]).
+
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] a checked letter takes the checked color under the cursor`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    const marked = page.locator(`#${tool.markCellId}`);
+    const letterEl = page.locator('#' + tool.markCellId.replace('cell-', 'letter-'));
+    const other = page.locator(`#${tool.sameEntryCellId}`);
+    const letter = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
+    const fill = loc => loc.evaluate(el => getComputedStyle(el).fill);
+    const token = await page.evaluate(() => {
+      const probe = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      probe.style.fill = 'var(--theme-color-checked-text)';
+      document.querySelector('svg').appendChild(probe);
+      const c = getComputedStyle(probe).fill;
+      probe.remove();
+      return c;
+    });
+
+    // Move to the cell; at load it may already be active, and a click would toggle.
+    if (!/\bactive-cell\b/.test(await marked.getAttribute('class'))) await marked.click();
+    await page.locator('#hidden-input').fill(letter.toUpperCase());
+    if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
+    await marked.click();
+    await clickHelpRow(page, '#check-btn');
+    await expect(marked).toHaveAttribute('data-mark', 'checked');
+    await expect(marked).toHaveClass(/\bactive-cell\b/);
+    expect(await fill(letterEl)).toBe(token);
+    const markedUnderCursor = await fill(marked);
+
+    // The cell's own fill is the cursor's, exactly as on an unmarked cell.
+    await other.click();
+    await expect(other).toHaveClass(/\bactive-cell\b/);
+    expect(markedUnderCursor).toBe(await fill(other));
+    expect(await fill(letterEl)).toBe(token);
   });
 }
 
@@ -710,7 +932,7 @@ for (const tool of ALL_TOOLS) {
     await expect(check).toBeEnabled();
 
     await clickHelpRow(page, '#check-btn');
-    await expect(marked).toHaveClass(/\bcorrect\b/);
+    await expect(marked).toHaveAttribute('data-mark');
     await expect(check).toBeDisabled();
   });
 }
@@ -812,33 +1034,6 @@ const filledLetters = page =>
   page.evaluate(() => window.PUZZLE_DATA.letters.filter(l => l !== null));
 
 for (const tool of RING_TOOLS) {
-  test(`[${tool.name}] banners are state-derived and partial correctness stays hidden`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-    await expect(page.locator('#congrats')).toBeHidden();
-    await expect(page.locator('#done-wrong')).toBeHidden();
-
-    // Typing the letters in order fills the board; make the first cell wrong.
-    const letters = await filledLetters(page);
-    const wrongFirst = letters[0].toLowerCase() === 'z' ? 'y' : 'z';
-    for (const ch of [wrongFirst, ...letters.slice(1)]) await page.keyboard.type(ch);
-
-    // Full but wrong: done-wrong shows, congrats does not, nothing marked correct.
-    await expect(page.locator('#done-wrong')).toBeVisible();
-    await expect(page.locator('#congrats')).toBeHidden();
-    await expect(page.locator(`${tool.readySelector}.correct`)).toHaveCount(0);
-
-    // The cursor wrapped back to the wrong first cell. Clearing it leaves the board
-    // unfull, so the banner must hide immediately (state-derived, no timeout).
-    await page.keyboard.press('Backspace');
-    await expect(page.locator('#done-wrong')).toBeHidden();
-
-    // Re-type the correct first letter → board full and entirely correct → congrats.
-    await page.keyboard.type(letters[0]);
-    await expect(page.locator('#congrats')).toBeVisible();
-    await expect(page.locator('#done-wrong')).toBeHidden();
-  });
-
   test(`[${tool.name}] Backspace clears a filled cell in place, then retreats and clears the previous cell when empty`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
@@ -873,51 +1068,10 @@ for (const tool of RING_TOOLS) {
     // whole board is filled, and hashed mode never shows the Check Cell button.
     await page.keyboard.type('Z');
     expect(await activeCellNum(tool, page)).toBe(tool.firstCellNum + 1);
-    await expect(page.locator(`${tool.readySelector}.correct`)).toHaveCount(0);
+    await expect(page.locator(`${tool.readySelector}[data-mark]`)).toHaveCount(0);
     await expect(page.locator('#congrats')).toBeHidden();
     await expect(page.locator('#done-wrong')).toBeHidden();
     await expect(page.locator('#check-btn')).toHaveCount(0);
-  });
-
-  test(`[${tool.name}] .correct cells render with white fill under print media`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-
-    for (const ch of await filledLetters(page)) await page.keyboard.type(ch);
-    await expect(page.locator('#congrats')).toBeVisible();
-    await expect(page.locator('#' + tool.markCellId)).toHaveClass(/correct/);
-
-    // On screen a correct cell carries the highlight fill (not white).
-    const fillOf = () => page.evaluate(
-      id => getComputedStyle(document.getElementById(id)).fill, tool.markCellId);
-    expect(await fillOf()).not.toBe('rgb(255, 255, 255)');
-
-    // Under print the correct-state fill must reset to white
-    // (shared/themes/print-base.css).
-    await page.emulateMedia({ media: 'print' });
-    expect(await fillOf()).toBe('rgb(255, 255, 255)');
-    // Correct letters print blank too, not just their cells.
-    expect(await page.locator('.cell-letter.correct').count()).toBeGreaterThan(0);
-    await expect(page.locator('.cell-letter.correct:visible')).toHaveCount(0);
-  });
-
-  test(`[${tool.name}] board is locked after solve — input and Backspace are ignored`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-
-    for (const ch of await filledLetters(page)) await page.keyboard.type(ch);
-    await expect(page.locator('#congrats-dialog')).toBeVisible();
-
-    // Close dialog without play-again so the board stays locked.
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#congrats-dialog')).toBeHidden();
-
-    // Two separate guards: typing is refused by the input handler's latch.solved check,
-    // Backspace by the keydown handler's. Removing either one turns this red on its own.
-    const before = await page.locator('.cell-letter').allTextContents();
-    await page.keyboard.type('ZZZZZ');
-    await page.keyboard.press('Backspace');
-    expect(await page.locator('.cell-letter').allTextContents()).toEqual(before);
   });
 
   test(`[${tool.name}] Enter opens a multi-letter cell; a second Enter commits without advancing`, async ({ page }) => {
@@ -1028,23 +1182,25 @@ for (const tool of RING_TOOLS) {
   });
 }
 
-// Marching Bands never marks clue items correct (its clue groups hide entry boundaries;
-// marking them would spoil the puzzle), so its own copy stays in
-// e2e/marching-bands.spec.js.
-for (const tool of RING_TOOLS.filter(t => t.rebusCorrectClueItems !== undefined)) {
-  test(`[${tool.name}] a non-hashed rebus puzzle marks every cell and clue item correct on solve`, async ({ page }) => {
+// Marching Bands marks no clue item correct (rebusCorrectClueItems is 0), so its count
+// is the negative case; the list is never empty, so the 0 can't pass vacuously.
+for (const tool of RING_TOOLS) {
+  test(`[${tool.name}] a non-hashed rebus puzzle marks every clue item correct, and the board solved, on solve`, async ({ page }) => {
     await page.goto('file://' + tool.paths.rebus);
     await ready(tool, page);
 
     for (const cell of tool.REBUS_CELLS) await typeCell(page, cell);
 
     await expect(page.locator('#congrats')).toBeVisible();
-    await expect(page.locator('.cell.correct')).toHaveCount(tool.rebusCorrectCells);
+    await expect(page.locator(tool.boardSelector)).toHaveClass(/\bsolved\b/);
+    await expect(page.locator('.cell[data-mark]')).toHaveCount(0);
+    // An exact total (both modes' items are in the DOM) keeps a 0 from passing vacuously.
+    await expect(page.locator('.clue-item')).toHaveCount(tool.rebusClueItems);
     await expect(page.locator('.clue-item.correct')).toHaveCount(tool.rebusCorrectClueItems);
   });
 }
 
-// ---- W: filled clues — all four tools (Marching Bands never marks one) ----------------
+// ---- W: filled clues — three tools (Marching Bands never marks one) ------------------
 // `.filled` marks a clue whose cells all hold content, right or wrong; it is derived in
 // syncUI() and distinct from `.correct`. docs/CROSS_TOOL_SPEC.md → "Filled clues".
 
@@ -1083,22 +1239,6 @@ for (const tool of FILLED_TOOLS) {
     const after = await page.locator('.clue-item.filled').count();
     expect(after).toBeLessThan(total);
     expect(after).toBeGreaterThan(0);
-  });
-
-  test(`[${tool.name}] a solved board marks every clue .correct without restyling its text`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-
-    const color = () => page.locator('.clue-item .clue-text').first().evaluate(el => getComputedStyle(el).color);
-    const before = await color();
-    await tool.solveBoard(page);
-    const total = await page.locator('.clue-item').count();
-    await expect(page.locator('.clue-item.correct')).toHaveCount(total);
-    await expect(page.locator('.clue-item.filled')).toHaveCount(total);
-    expect(await color()).toBe(before);
-    for (const text of await page.locator('.clue-item .clue-text').all()) {
-      await expect(text).toHaveCSS('text-decoration-line', 'none');
-    }
   });
 
   test(`[${tool.name}] broadsheet dims a filled clue on screen but prints it undimmed`, async ({ page }) => {
@@ -1198,16 +1338,14 @@ for (const tool of ALL_TOOLS) {
 
 for (const tool of ALL_TOOLS) {
   test(`[${tool.name}] no cell carries two circles (doubled styles draw once)`, async ({ page }) => {
-    let src = path.join(tool.fixDir, tool.rebusFixture);
-    if (tool.name === 'crushword') {
-      const puzzle = yaml.load(fs.readFileSync(src, 'utf8'));
-      puzzle.across[1].styles = { circle: [0] };
-      puzzle.down[1].styles = { circle: [0] };
-      src = path.join(tool.tmpDir, 'doubled-circle.yaml');
-      fs.writeFileSync(src, yaml.dump(puzzle), 'utf8');
-    }
-    const out = path.join(tool.tmpDir, 'doubled-circle.html');
-    buildPuzzleFile(src, out);
+    const src = path.join(tool.fixDir, tool.rebusFixture);
+    const out = tool.name === 'crushword'
+      ? buildVariant(src, (puzzle) => {
+        puzzle.across[1].styles = { circle: [0] };
+        puzzle.down[1].styles = { circle: [0] };
+      }, 'doubled-circle', tool.tmpDir)
+      : path.join(tool.tmpDir, 'doubled-circle.html');
+    if (tool.name !== 'crushword') buildPuzzleFile(src, out);
     await page.goto('file://' + out);
     await ready(tool, page);
 
@@ -1231,34 +1369,8 @@ for (const tool of ALL_TOOLS) {
   });
 }
 
-// ---- Z: typed accents fold to their base letter — all four tools ----------------------
-// Each engine runs what the solver types through the shared normalize(), which folds
-// é to e, so an accented guess fills the plain letter. On a hashed page the hash then
-// matches; Crushword has no hashed rebus cell list, so its plain board is solved instead.
-
-const ACCENTED = { A: 'Á', C: 'Ç', E: 'É', I: 'Í', N: 'Ñ', O: 'Ö', U: 'Ü' };
-const accent = s => [...s.toUpperCase()].map(ch => ACCENTED[ch] ?? ch).join('');
-
-for (const tool of RING_TOOLS) {
-  test(`[${tool.name}] a hashed puzzle solves when the solver types accented letters`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.rebusHashed);
-    await ready(tool, page);
-
-    const events = [];
-    await page.exposeFunction('__vpComplete', d => events.push(d));
-    await page.evaluate(() => {
-      document.querySelector('.puzzle-main')
-        .addEventListener('varietypack:complete', e => window.__vpComplete(e.detail));
-    });
-
-    const typed = tool.REBUS_CELLS.map(accent);
-    expect(typed.join('')).not.toBe(tool.REBUS_CELLS.join(''));   // some letters really are accented
-    for (const cell of typed) await typeCell(page, cell);
-
-    await expect.poll(() => events.length).toBe(1);
-    expect(events[0].solution).toBe(tool.REBUS_CELLS.map(c => c.toLowerCase()).join('.'));
-  });
-}
+// ---- Z: Crushword's plain board solves from accented typing ---------------------------
+// The ring tools' accent solve is section P's hashed one.
 
 test('[crushword] a puzzle solves when the solver types accented letters', async ({ page }) => {
   const tool = TOOLS.find(t => t.name === 'crushword');
@@ -1385,40 +1497,9 @@ for (const tool of ALL_TOOLS) {
   });
 }
 
-// ---- AB: a solved board still navigates — all four tools ------------------------------
-// Keys that edit are ignored once solved; Tab and Shift+Tab only move the cursor, so they
-// still step through the clues after View puzzle.
-
-for (const tool of ALL_TOOLS) {
-  test(`[${tool.name}] on a solved board Tab and Shift+Tab still step between entries; typing does not`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-
-    await tool.solveBoard(page);
-    await expect(page.locator('#congrats-dialog')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#congrats-dialog')).toBeHidden();
-
-    const start = await activeCellNum(tool, page);
-    await page.keyboard.press('Tab');
-    const next = await activeCellNum(tool, page);
-    expect(next).not.toBe(start);
-    // Back lands on the first cell of the entry Tab left (not necessarily `start`), so a
-    // second Tab returns to where the first one went.
-    await page.keyboard.press('Shift+Tab');
-    expect(await activeCellNum(tool, page)).not.toBe(next);
-    await page.keyboard.press('Tab');
-    expect(await activeCellNum(tool, page)).toBe(next);
-
-    const before = await page.locator('.cell-letter').allTextContents();
-    await page.keyboard.type('ZZ');
-    expect(await page.locator('.cell-letter').allTextContents()).toEqual(before);
-  });
-}
-
 // ---- Help menu on every viewport — all four tools -----------------------------------
 // Check cell lives in the life-ring help menu (#help-btn, #help-panel) on desktop and
-// phone alike (docs/CROSS_TOOL_SPEC.md → "Help menu").
+// phone alike (docs/CROSS_TOOL_SPEC.md → "Help menu and help record").
 
 for (const tool of ALL_TOOLS) {
   test(`[${tool.name}] #help-btn sits immediately left of #menu-btn and its panel opens below it`, async ({ page }) => {
@@ -1435,25 +1516,6 @@ for (const tool of ALL_TOOLS) {
     const panel = await page.locator('#help-panel').boundingBox();
     expect(panel.y).toBeGreaterThanOrEqual(help.y + help.height);
     await expect(page.locator('#help-btn')).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  test(`[${tool.name}] Check cell is a row of the help panel, labeled in sentence case`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-
-    await expect(page.locator('#help-panel #check-btn')).toHaveText('Check cell');
-    await expect(page.locator('#controls #check-btn')).toHaveCount(0);
-    await expect(page.locator('#check-btn-toggle')).toHaveCount(0);
-    await expect(page.locator('#check-btn-toggle-label')).toHaveCount(0);
-  });
-
-  test(`[${tool.name}] the options menu holds only Clear puzzle`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-
-    await page.locator('#menu-btn').click();
-    await expect(page.locator('#clear-btn')).toHaveText('Clear puzzle');
-    await expect(page.locator('#menu-panel .menu-toggle')).toHaveCount(0);
   });
 
   test(`[${tool.name}] the help and options menus close each other, and typing closes the help menu`, async ({ page }) => {
@@ -1488,7 +1550,7 @@ for (const tool of ALL_TOOLS) {
 
     await page.locator('#help-btn').click();
     await page.locator('#help-panel #check-btn').click();
-    await expect(marked).toHaveClass(/\bcorrect\b/);
+    await expect(marked).toHaveAttribute('data-mark');
     await expect(page.locator('#help-panel')).toBeHidden();
     await expect(page.locator('#hidden-input')).toBeFocused();
   });
@@ -1503,6 +1565,42 @@ for (const tool of ALL_TOOLS) {
   });
 }
 
+// The label tests below cover shared code (setupControls), so they run on one tool: the
+// labels are fixed strings, except the clue noun, which Marching Bands' own spec covers
+// for its rows and bands.
+{
+  const tool = TOOLS.find(t => t.name === 'crushword');
+  test(`[${tool.name}] the puzzle rows read Check puzzle and Reveal puzzle`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await expect(page.locator('#help-panel #check-puzzle-btn')).toHaveText('Check puzzle');
+    await expect(page.locator('#help-panel #reveal-puzzle-btn')).toHaveText('Reveal puzzle');
+  });
+
+  test(`[${tool.name}] the clue rows read Check clue and Reveal clue`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await expect(page.locator('#help-panel #check-clue-btn')).toHaveText('Check clue');
+    await expect(page.locator('#help-panel #reveal-clue-btn')).toHaveText('Reveal clue');
+  });
+
+  test(`[${tool.name}] Check cell is a row of the help panel, labeled in sentence case`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    await expect(page.locator('#help-panel #check-btn')).toHaveText('Check cell');
+  });
+
+  test(`[${tool.name}] the options menu holds only Clear puzzle`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+
+    await page.locator('#menu-btn').click();
+    await expect(page.locator('#clear-btn')).toHaveText('Clear puzzle');
+    await expect(page.locator('#menu-panel .menu-toggle')).toHaveCount(0);
+  });
+}
+
 // Crushword's #controls held only Check Cell. With it gone the element goes too, so the
 // page reserves no space for it.
 {
@@ -1514,42 +1612,190 @@ for (const tool of ALL_TOOLS) {
   });
 }
 
-// Check cell marks a typed letter correct; Enter then opens composition on that cell,
-// which keeps its mark. Reveal puzzle marks every other cell, completing the board while
-// a cell still composes: the help action must end the composition so the completion path
-// runs (shared/engine-state.mjs → makeHelpActions). That function is shared and has unit
-// tests, so one tool covers the page's side of it.
-{
-  const tool = RING_TOOLS[0];
-  test(`[${tool.name}] Reveal puzzle ends a composition left open on a correct cell`, async ({ page }) => {
+// ---- Locked cells: checked and revealed — docs/CROSS_TOOL_SPEC.md → "Cell marks" ------
+// A locked cell behaves like a filled cell whose content keys can't change: the cursor
+// moves as if the key had landed (makeCellStore's isLocked holds the rule).
+
+for (const tool of ALL_TOOLS) {
+  const letterOf = id => '#' + id.replace('cell-', 'letter-');
+
+  test(`[${tool.name}] typing on a revealed cell keeps its letter and advances`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
-    const letter = await page.evaluate(() => window.PUZZLE_DATA.letters.find(l => l !== null));
+    await activateCell(page, page.locator('#' + tool.markCellId));
+    await clickHelpRow(page, '#reveal-btn');
+    const answer = await page.locator(letterOf(tool.markCellId)).textContent();
+    await page.keyboard.press(answer === 'Q' ? 'KeyZ' : 'KeyQ');
+    await expect(page.locator(letterOf(tool.markCellId))).toHaveText(answer);
+    await expect(page.locator('#' + tool.markCellId)).toHaveAttribute('data-mark', 'revealed');
+    await expect(page.locator('#' + tool.markCellId)).not.toHaveClass(/\bactive-cell\b/);
+  });
 
-    await page.locator('#' + tool.firstCellId).click();
-    await page.keyboard.press(`Key${letter.toUpperCase()}`);   // the cursor moves on
-    await page.locator('#' + tool.firstCellId).click();
+  test(`[${tool.name}] a checked cell is locked too`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const letter = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
+    await activateCell(page, page.locator('#' + tool.markCellId));
+    await page.locator('#hidden-input').fill(letter.toUpperCase());
+    if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
+    await activateCell(page, page.locator('#' + tool.markCellId));
     await clickHelpRow(page, '#check-btn');
-    await expect(page.locator('#' + tool.firstCellId)).toHaveClass(/\bcorrect\b/);
-    await page.locator('#' + tool.firstCellId).click();
+    await expect(page.locator('#' + tool.markCellId)).toHaveAttribute('data-mark', 'checked');
+    await page.keyboard.press(letter.toUpperCase() === 'Q' ? 'KeyZ' : 'KeyQ');
+    await expect(page.locator(letterOf(tool.markCellId))).toHaveText(letter.toUpperCase());
+    await expect(page.locator('#' + tool.markCellId)).toHaveAttribute('data-mark', 'checked');
+  });
+
+  test(`[${tool.name}] Space on a locked cell advances without clearing it`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await activateCell(page, page.locator('#' + tool.markCellId));
+    await clickHelpRow(page, '#reveal-btn');
+    const answer = await page.locator(letterOf(tool.markCellId)).textContent();
+    await page.keyboard.press('Space');
+    await expect(page.locator(letterOf(tool.markCellId))).toHaveText(answer);
+    await expect(page.locator('#' + tool.markCellId)).toHaveAttribute('data-mark', 'revealed');
+    await expect(page.locator('.mark-layer .mark-revealed')).toHaveCount(1);
+    await expect(page.locator('#' + tool.markCellId)).not.toHaveClass(/\bactive-cell\b/);
+  });
+
+  test(`[${tool.name}] Clear still empties a locked cell and removes its flag`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await activateCell(page, page.locator('#' + tool.markCellId));
+    await clickHelpRow(page, '#reveal-btn');
+    await page.click('#menu-btn');
+    await page.click('#clear-btn');
+    await page.click('#clear-btn'); // second click confirms
+    await expect(page.locator(letterOf(tool.markCellId))).toHaveText('');
+    await expect(page.locator('#' + tool.markCellId)).not.toHaveAttribute('data-mark');
+    await expect(page.locator('.mark-layer .mark-shape')).toHaveCount(0);
+  });
+}
+
+for (const tool of RING_TOOLS) {
+  // The spec's STONE example: type five cells, reveal the second, then Backspace from the
+  // fifth. Each press clears and steps back, except over the locked cell.
+  test(`[${tool.name}] Backspace walks back over a revealed cell without clearing it`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const f = tool.firstCellNum;
+    const letter = n => page.locator(`#letter-${n}`);
+    await page.keyboard.type('STONE');
+    await page.locator(`#cell-${f + 1}`).click();
+    await clickHelpRow(page, '#reveal-btn');
+    const t = await letter(f + 1).textContent();
+    await page.locator(`#cell-${f + 4}`).click();
+
+    const steps = [
+      { at: f + 4, cleared: f + 4 },
+      { at: f + 3, cleared: f + 3 },
+      { at: f + 2, cleared: f + 2 },
+      { at: f + 1, cleared: null },
+      { at: f,     cleared: f },
+    ];
+    for (const { at, cleared } of steps) {
+      await page.keyboard.press('Backspace');
+      expect(await activeCellNum(tool, page)).toBe(at);
+      if (cleared !== null) await expect(letter(cleared)).toHaveText('');
+      await expect(letter(f + 1)).toHaveText(t);
+    }
+    await expect(page.locator(`#cell-${f + 1}`)).toHaveAttribute('data-mark', 'revealed');
+  });
+
+  test(`[${tool.name}] Backspace passes two adjacent locked cells`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const f = tool.firstCellNum;
+    await page.keyboard.type('ABCD');
+    for (const n of [f + 1, f + 2]) {
+      await page.locator(`#cell-${n}`).click();
+      await clickHelpRow(page, '#reveal-btn');
+    }
+    await page.locator(`#cell-${f + 3}`).click();
+    await page.keyboard.press('Backspace'); // clears D in place
+    for (const at of [f + 2, f + 1, f]) {
+      await page.keyboard.press('Backspace');
+      expect(await activeCellNum(tool, page)).toBe(at);
+    }
+    await expect(page.locator(`#letter-${f}`)).toHaveText('');
+    for (const n of [f + 1, f + 2]) {
+      await expect(page.locator(`#cell-${n}`)).toHaveAttribute('data-mark', 'revealed');
+    }
+  });
+
+  test(`[${tool.name}] Enter does nothing on a locked cell, and #rebus-btn is disabled there`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await activateCell(page, page.locator('#' + tool.markCellId));
+    await clickHelpRow(page, '#reveal-btn');
     await page.keyboard.press('Enter');
-    await expect(page.locator('#' + tool.firstCellId)).toHaveClass(/composing/);
-
-    await page.locator('#help-btn').click();
-    await page.locator('#reveal-puzzle-btn').click(); // arms
-    await page.locator('#reveal-puzzle-btn').click(); // confirms
-
     await expect(page.locator('.cell.composing')).toHaveCount(0);
+    await expect(page.locator('#rebus-btn')).toBeDisabled();
     await expect(page.locator('#rebus-btn')).toHaveText('Rebus');
-    await expect(page.locator('#congrats-dialog')).toBeVisible();
+    // Moving to an unlocked cell enables it again.
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('#rebus-btn')).toBeEnabled();
   });
 }
 
 
+// ---- Wrong marks: a slash until the cell is edited ------------------------------------
+// docs/CROSS_TOOL_SPEC.md → "Cell marks"
+
+for (const tool of ALL_TOOLS) {
+  const slashes = page => page.locator('.mark-layer .mark-wrong');
+  // Types a wrong letter into the mark cell and checks it, leaving the cursor there.
+  async function checkWrong(page) {
+    const letter = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
+    const wrong = letter.toUpperCase() === 'Q' ? 'Z' : 'Q';
+    await activateCell(page, page.locator('#' + tool.markCellId));
+    await page.locator('#hidden-input').fill(wrong);
+    if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
+    await activateCell(page, page.locator('#' + tool.markCellId));
+    await clickHelpRow(page, '#check-btn');
+    await expect(page.locator('#' + tool.markCellId)).toHaveAttribute('data-mark', 'wrong');
+  }
+
+  test(`[${tool.name}] Check on a wrong cell draws a slash that survives moving away and a reload`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await checkWrong(page);
+    await expect(slashes(page)).toHaveCount(1);
+    await page.locator('#' + tool.sameEntryCellId).click();
+    await expect(slashes(page)).toHaveCount(1);
+    await page.reload();
+    await ready(tool, page);
+    await expect(page.locator('#' + tool.markCellId)).toHaveAttribute('data-mark', 'wrong');
+    await expect(slashes(page)).toHaveCount(1);
+  });
+
+  test(`[${tool.name}] typing in a slashed cell removes the slash`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await checkWrong(page);
+    await page.keyboard.press('KeyX');
+    await expect(page.locator('#' + tool.markCellId)).not.toHaveAttribute('data-mark');
+    await expect(slashes(page)).toHaveCount(0);
+  });
+
+  test(`[${tool.name}] Check cell is disabled on a slashed cell; Reveal turns it into a flag`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await checkWrong(page);
+    await expect(page.locator('#check-btn')).toBeDisabled();
+    await expect(page.locator('#reveal-btn')).toBeEnabled();
+    await clickHelpRow(page, '#reveal-btn');
+    await expect(page.locator('#' + tool.markCellId)).toHaveAttribute('data-mark', 'revealed');
+    await expect(slashes(page)).toHaveCount(0);
+    await expect(page.locator('.mark-layer .mark-revealed')).toHaveCount(1);
+  });
+}
+
 // ---- Reveal cell — all four tools -----------------------------------------------------
-// Fills the active cell with its answer and marks it correct, without locking it. It is a
-// row of the help menu beside Check cell and counts one reveal per use
-// (docs/CROSS_TOOL_SPEC.md → "Help menu", "Help record").
+// Fills the active cell with its answer (unless it already holds it) and marks it
+// revealed, which locks it. It is a row of the help menu beside Check cell and
+// counts one reveal per use (docs/CROSS_TOOL_SPEC.md → "Help menu and help record").
 
 // The cell number of PUZZLE_DATA.letters[i]: ring positions from 0 in Snake Charmer,
 // ids from 1 (flat index + 1) elsewhere.
@@ -1557,10 +1803,6 @@ function cellNumOf(tool, i) { return tool.name === 'snake-charmer' ? i : i + 1; 
 
 for (const tool of ALL_TOOLS) {
   const letterEl = page => page.locator('#' + tool.markCellId.replace('cell-', 'letter-'));
-
-  async function activate(page, locator) {
-    if (!/\bactive-cell\b/.test(await locator.getAttribute('class'))) await locator.click();
-  }
 
   async function savedState(page) {
     return page.evaluate(() => {
@@ -1575,13 +1817,14 @@ for (const tool of ALL_TOOLS) {
     const cell = page.locator('#' + tool.markCellId);
     const expected = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
 
-    await activate(page, cell);
+    await activateCell(page, cell);
     await expect(page.locator('#reveal-btn')).toBeEnabled();
     await expect(page.locator('#help-panel #reveal-btn')).toHaveText('Reveal cell');
 
     await clickHelpRow(page, '#reveal-btn');
     await expect(letterEl(page)).toHaveText(new RegExp('^' + expected + '$', 'i'));
-    await expect(cell).toHaveClass(/\bcorrect\b/);
+    await expect(cell).toHaveAttribute('data-mark', 'revealed');
+    await expect(letterEl(page)).toHaveAttribute('data-mark', 'revealed');
     await expect(page.locator('#reveal-btn')).toBeDisabled();
     await expect(page.locator('#help-panel')).toBeHidden();
     await expect(page.locator('#hidden-input')).toBeFocused();
@@ -1594,7 +1837,7 @@ for (const tool of ALL_TOOLS) {
     const expected = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
     const wrong = expected.toLowerCase() === 'z' ? 'Q' : 'Z';
 
-    await activate(page, cell);
+    await activateCell(page, cell);
     await page.locator('#hidden-input').fill(wrong);
     if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
     await cell.click();
@@ -1602,7 +1845,7 @@ for (const tool of ALL_TOOLS) {
 
     await clickHelpRow(page, '#reveal-btn');
     await expect(letterEl(page)).toHaveText(new RegExp('^' + expected + '$', 'i'));
-    await expect(cell).toHaveClass(/\bcorrect\b/);
+    await expect(cell).toHaveAttribute('data-mark');
   });
 
   test(`[${tool.name}] Reveal cell fills a rebus cell with every letter of its answer`, async ({ page }) => {
@@ -1618,24 +1861,35 @@ for (const tool of ALL_TOOLS) {
     await page.locator('#cell-' + n).click();
     await clickHelpRow(page, '#reveal-btn');
     await expect(page.locator('#letter-' + n)).toHaveText(new RegExp('^' + answer + '$', 'i'));
-    await expect(page.locator('#cell-' + n)).toHaveClass(/\bcorrect\b/);
+    await expect(page.locator('#cell-' + n)).toHaveAttribute('data-mark');
   });
 
   test(`[${tool.name}] a reveal is counted, saved with the cell, and survives a reload`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     const cell = page.locator('#' + tool.markCellId);
+    const other = page.locator('#' + tool.sameEntryCellId);
+    const letter = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
 
-    await activate(page, cell);
+    // One cell checked, another revealed: both marks and both counts are saved.
+    await activateCell(page, cell);
+    await page.locator('#hidden-input').fill(letter.toUpperCase());
+    if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
+    await activateCell(page, cell);
+    await clickHelpRow(page, '#check-btn');
+    await other.click();
     await clickHelpRow(page, '#reveal-btn');
+    await expect(cell).toHaveAttribute('data-mark', 'checked');
+    await expect(other).toHaveAttribute('data-mark', 'revealed');
     const saved = await savedState(page);
-    assert.deepEqual(saved.help, { checks: 0, reveals: 1 });
-    assert.equal(saved.correct.length, 1);
+    assert.deepEqual(saved.help, { checks: 1, reveals: 1 });
+    assert.equal(Object.keys(saved.marks).length, 2);
 
     await page.reload();
     await ready(tool, page);
-    await expect(cell).toHaveClass(/\bcorrect\b/);
-    assert.deepEqual((await savedState(page)).help, { checks: 0, reveals: 1 });
+    await expect(cell).toHaveAttribute('data-mark', 'checked');
+    await expect(other).toHaveAttribute('data-mark', 'revealed');
+    assert.deepEqual((await savedState(page)).help, { checks: 1, reveals: 1 });
   });
 
   test(`[${tool.name}] Clear puzzle zeroes the reveal count`, async ({ page }) => {
@@ -1643,19 +1897,22 @@ for (const tool of ALL_TOOLS) {
     await ready(tool, page);
     const cell = page.locator('#' + tool.markCellId);
 
-    await activate(page, cell);
+    await activateCell(page, cell);
     await clickHelpRow(page, '#reveal-btn');
     await page.click('#menu-btn');
     await page.click('#clear-btn');
     await page.click('#clear-btn'); // second click confirms
-    await expect(cell).not.toHaveClass(/\bcorrect\b/);
+    await expect(cell).not.toHaveAttribute('data-mark');
 
-    await activate(page, cell);
+    await activateCell(page, cell);
     await clickHelpRow(page, '#reveal-btn');
     assert.deepEqual((await savedState(page)).help, { checks: 0, reveals: 1 });
   });
 
-  test(`[${tool.name}] revealing every cell completes the puzzle once, reporting the reveals`, async ({ page }) => {
+  // One board is enough: Snake Charmer's circle-8, the smallest plain board at 8 cells.
+  // Each engine's reveal-to-completion wiring is covered by 'a board finished by Reveal
+  // cell reloads solved, and completes only once' below.
+  if (tool.name === 'snake-charmer') test(`[${tool.name}] revealing every cell completes the puzzle once, reporting the reveals`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     const events = [];
@@ -1677,11 +1934,6 @@ for (const tool of ALL_TOOLS) {
     await expect(page.locator('#congrats-dialog')).toBeVisible();
   });
 
-  test(`[${tool.name}] a hashed build has no Reveal cell`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.hashed);
-    await ready(tool, page);
-    await expect(page.locator('#reveal-btn')).toHaveCount(0);
-  });
 }
 
 // Fills every cell with its answer except the first open cell, which gets a wrong letter,
@@ -1722,7 +1974,6 @@ for (const tool of ALL_TOOLS) {
       document.querySelector('.puzzle-main')
         .addEventListener('varietypack:complete', e => window.__vpComplete(e.detail));
     });
-    const total = await page.locator(tool.readySelector).count();
 
     const firstId = await fillBoardFirstWrong(tool, page);
     await expect(page.locator('#done-wrong')).toBeVisible();
@@ -1734,7 +1985,9 @@ for (const tool of ALL_TOOLS) {
     await page.reload();
     await ready(tool, page);
     await expect(page.locator('#done-wrong')).toBeHidden();
-    await expect(page.locator(tool.readySelector + '.correct')).toHaveCount(total);
+    await expect(page.locator(tool.boardSelector)).toHaveClass(/\bsolved\b/);
+    await expect(page.locator(tool.readySelector + '[data-mark]')).toHaveCount(1);
+    await expect(page.locator('#' + firstId)).toHaveAttribute('data-mark', 'revealed');
 
     // The latch is sealed on reload, so typing on the solved board announces nothing.
     const again = [];
@@ -1747,6 +2000,120 @@ for (const tool of ALL_TOOLS) {
     await page.waitForTimeout(300);
     expect(again).toEqual([]);
     await expect(page.locator('#congrats-dialog')).toBeHidden();
+  });
+
+  // A board solved before this release saved every cell checked; it must restore solved.
+  test(`[${tool.name}] a save whose cells are all checked restores solved`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await tool.solveBoard(page);
+    await expect(page.locator(tool.boardSelector)).toHaveClass(/\bsolved\b/);
+    await rewriteSaveOnNextLoad(page, saved => {
+      saved.marks = Object.fromEntries(Object.keys(saved.letters).map(k => [k, 'checked']));
+    });
+    const events = [];
+    await page.exposeFunction('__vpComplete', d => events.push(d));
+    await page.addInitScript(() => document.addEventListener('varietypack:complete',
+      e => window.__vpComplete(e.detail)));
+    await page.reload();
+    await ready(tool, page);
+    const total = await page.locator(tool.readySelector).count();
+    await expect(page.locator(tool.boardSelector)).toHaveClass(/\bsolved\b/);
+    await expect(page.locator(tool.readySelector + '[data-mark="checked"]')).toHaveCount(total);
+    await expect(page.locator('#done-wrong')).toBeHidden();
+    for (const id of ['#check-btn', '#reveal-btn', '#check-puzzle-btn', '#reveal-puzzle-btn']) {
+      await expect(page.locator(id)).toBeDisabled();
+    }
+    const letter = page.locator('#' + tool.markCellId.replace('cell-', 'letter-'));
+    const before = await letter.textContent();
+    await page.keyboard.press('KeyQ');
+    await page.waitForTimeout(300);
+    await expect(letter).toHaveText(before);
+    expect(events).toEqual([]);
+  });
+
+  // Checked and revealed marks (docs/CROSS_TOOL_SPEC.md → "Cell marks").
+  const markLetter = page => page.locator('#' + tool.markCellId.replace('cell-', 'letter-'));
+
+  // No Enter even in Crushword: its just-typed cell is still composing, and Reveal must
+  // leave its letter as in the other tools. The solver asked, so it is revealed.
+  test(`[${tool.name}] Reveal cell on a cell just typed right marks it revealed and keeps its letter`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const cell = page.locator('#' + tool.markCellId);
+    const letter = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
+
+    await activateCell(page, cell);
+    await page.locator('#hidden-input').fill(letter.toUpperCase());
+    await activateCell(page, cell);   // the ring tools advance past it; Crushword stays
+    await clickHelpRow(page, '#reveal-btn');
+    await expect(cell).toHaveAttribute('data-mark', 'revealed');
+    await expect(markLetter(page)).toHaveText(new RegExp('^' + letter + '$', 'i'));
+  });
+
+  test(`[${tool.name}] Reveal puzzle keeps checked and revealed apart`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const cell = page.locator('#' + tool.markCellId);
+    const other = page.locator('#' + tool.sameEntryCellId);
+    const letter = await page.evaluate(i => window.PUZZLE_DATA.letters[i], tool.markLetterIndex);
+
+    await activateCell(page, cell);
+    await page.locator('#hidden-input').fill(letter.toUpperCase());
+    if (tool.commitAfterFirstFill) await page.keyboard.press('Enter');
+    await activateCell(page, cell);
+    await clickHelpRow(page, '#check-btn');
+    await other.click();
+    await clickHelpRow(page, '#reveal-btn');
+    await page.locator('#help-btn').click();
+    await page.locator('#reveal-puzzle-btn').click(); // arms
+    await page.locator('#reveal-puzzle-btn').click(); // confirms
+    await expect(cell).toHaveAttribute('data-mark', 'checked');
+    await expect(other).toHaveAttribute('data-mark', 'revealed');
+    await expect(page.locator(tool.readySelector + ':not([data-mark])')).toHaveCount(0);
+  });
+
+  // The flag is drawn by the mark layer (setupMarkLayer), clipped to the cell it marks.
+  const flags = page => page.locator('.mark-layer .mark-revealed');
+
+  test(`[${tool.name}] Reveal cell draws one flag clipped to that cell`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const cell = page.locator('#' + tool.markCellId);
+    await activateCell(page, cell);
+    await expect(flags(page)).toHaveCount(0);
+    await clickHelpRow(page, '#reveal-btn');
+    await expect(flags(page)).toHaveCount(1);
+    const n = tool.markCellId.replace('cell-', '');
+    await expect(flags(page)).toHaveAttribute('clip-path', `url(#mark-clip-${n})`);
+    await expect(flags(page).locator('.mark-flag')).toBeVisible();
+    // A checked cell draws no shape: its mark is the letter's color.
+    await expect(page.locator('.mark-layer .mark-shape')).toHaveCount(1);
+  });
+
+  test(`[${tool.name}] Clear removes every flag`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await activateCell(page, page.locator('#' + tool.markCellId));
+    await clickHelpRow(page, '#reveal-btn');
+    await page.locator('#' + tool.sameEntryCellId).click();
+    await clickHelpRow(page, '#reveal-btn');
+    await expect(flags(page)).toHaveCount(2);
+
+    await page.click('#menu-btn');
+    await page.click('#clear-btn');
+    await page.click('#clear-btn'); // second click confirms
+    await expect(flags(page)).toHaveCount(0);
+  });
+
+  test(`[${tool.name}] the flag is hidden in print`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await activateCell(page, page.locator('#' + tool.markCellId));
+    await clickHelpRow(page, '#reveal-btn');
+    await expect(flags(page)).toBeVisible();
+    await page.emulateMedia({ media: 'print' });
+    await expect(page.locator('.mark-layer')).toBeHidden();
   });
 }
 
@@ -1777,8 +2144,8 @@ for (const tool of ALL_TOOLS) {
 
     await clickHelpRow(page, '#reveal-clue-btn');
 
-    for (const id of ids) await expect(page.locator('#' + id)).toHaveClass(/\bcorrect\b/);
-    await expect(page.locator(tool.readySelector + '.correct')).toHaveCount(ids.length);
+    for (const id of ids) await expect(page.locator('#' + id)).toHaveAttribute('data-mark');
+    await expect(page.locator(tool.readySelector + '[data-mark]')).toHaveCount(ids.length);
     const saved = await savedState(page);
     assert.deepEqual(saved.help, { checks: 0, reveals: 1 });
     await expect(page.locator('#reveal-clue-btn')).toBeDisabled();
@@ -1786,15 +2153,7 @@ for (const tool of ALL_TOOLS) {
     await expect(page.locator('#hidden-input')).toBeFocused();
   });
 
-  test(`[${tool.name}] Check clue is disabled until a cell of the clue is filled`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-    await expect(page.locator('#check-clue-btn')).toBeDisabled();
-    await expect(page.locator('#reveal-clue-btn')).toBeEnabled();
-    assert.equal(await page.evaluate(() => localStorage.length), 0);
-  });
-
-  test(`[${tool.name}] Check clue marks the right cells of the clue, flashes the wrong, and counts one check`, async ({ page }) => {
+  test(`[${tool.name}] Check clue marks the clue's right cells checked and the wrong one wrong, flashes it, and counts one check`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     const firstId = await fillBoardFirstWrong(tool, page);
@@ -1805,15 +2164,15 @@ for (const tool of ALL_TOOLS) {
 
     await clickHelpRow(page, '#check-clue-btn');
 
-    await expect(page.locator('#' + firstId)).not.toHaveClass(/\bcorrect\b/);
-    await expect(page.locator(tool.readySelector + '.correct')).toHaveCount(ids.length - 1);
+    await expect(page.locator('#' + firstId)).toHaveAttribute('data-mark', 'wrong');
+    await expect(page.locator(tool.readySelector + '[data-mark="checked"]')).toHaveCount(ids.length - 1);
     for (const id of ids.filter(i => i !== firstId)) {
-      await expect(page.locator('#' + id)).toHaveClass(/\bcorrect\b/);
+      await expect(page.locator('#' + id)).toHaveAttribute('data-mark', 'checked');
     }
     await expect(page.locator('.flash-wrong-overlay').first()).toBeAttached();
     const saved = await savedState(page);
     assert.deepEqual(saved.help, { checks: 1, reveals: 0 });
-    assert.equal(saved.correct.length, ids.length - 1);
+    assert.equal(Object.keys(saved.marks).length, ids.length);
     await expect(page.locator('#hidden-input')).toBeFocused();
   });
 
@@ -1837,26 +2196,13 @@ for (const tool of ALL_TOOLS) {
     await page.reload();
     await ready(tool, page);
     await expect(page.locator('#done-wrong')).toBeHidden();
-    await expect(page.locator(tool.readySelector + '.correct')).toHaveCount(total);
+    await expect(page.locator(tool.boardSelector)).toHaveClass(/\bsolved\b/);
+    // Only the clue's cells were revealed; the rest were typed and stay unmarked.
+    const revealed = await page.locator(tool.readySelector + '[data-mark="revealed"]').count();
+    expect(revealed).toBeGreaterThan(0);
+    expect(revealed).toBeLessThan(total);
   });
 
-  test(`[${tool.name}] a hashed build has no Check clue or Reveal clue`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.hashed);
-    await ready(tool, page);
-    await expect(page.locator('#check-clue-btn')).toHaveCount(0);
-    await expect(page.locator('#reveal-clue-btn')).toHaveCount(0);
-  });
-}
-
-// The label's noun: "clue" in the tools whose clues are entries, "row" or "band" in
-// Marching Bands, which never names a single entry.
-for (const tool of ALL_TOOLS.filter(t => t.name !== 'marching-bands')) {
-  test(`[${tool.name}] the clue rows read Check clue and Reveal clue`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-    await expect(page.locator('#help-panel #check-clue-btn')).toHaveText('Check clue');
-    await expect(page.locator('#help-panel #reveal-clue-btn')).toHaveText('Reveal clue');
-  });
 }
 
 
@@ -1872,21 +2218,17 @@ for (const tool of ALL_TOOLS) {
     });
   }
 
-  test(`[${tool.name}] the puzzle rows read Check puzzle and Reveal puzzle`, async ({ page }) => {
+  test(`[${tool.name}] on an empty board the Check rows are disabled, the Reveal rows are not, and nothing is saved`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
-    await expect(page.locator('#help-panel #check-puzzle-btn')).toHaveText('Check puzzle');
-    await expect(page.locator('#help-panel #reveal-puzzle-btn')).toHaveText('Reveal puzzle');
-  });
-
-  test(`[${tool.name}] Check puzzle is disabled on an empty board, Reveal puzzle is not`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
+    await expect(page.locator('#check-clue-btn')).toBeDisabled();
+    await expect(page.locator('#reveal-clue-btn')).toBeEnabled();
     await expect(page.locator('#check-puzzle-btn')).toBeDisabled();
     await expect(page.locator('#reveal-puzzle-btn')).toBeEnabled();
+    assert.equal(await page.evaluate(() => localStorage.length), 0);
   });
 
-  test(`[${tool.name}] Check puzzle marks every right cell, flashes the wrong one, and counts one check`, async ({ page }) => {
+  test(`[${tool.name}] Check puzzle checks every right cell, slashes and flashes the wrong one, and counts one check`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     const total = await page.locator(tool.readySelector).count();
@@ -1896,8 +2238,9 @@ for (const tool of ALL_TOOLS) {
 
     await clickHelpRow(page, '#check-puzzle-btn');
 
-    await expect(page.locator(tool.readySelector + '.correct')).toHaveCount(total - 1);
-    await expect(page.locator('#' + firstId)).not.toHaveClass(/\bcorrect\b/);
+    await expect(page.locator(tool.readySelector + '[data-mark="checked"]')).toHaveCount(total - 1);
+    await expect(page.locator('#' + firstId)).toHaveAttribute('data-mark', 'wrong');
+    await expect(page.locator('.mark-layer .mark-wrong')).toHaveCount(1);
     await expect(page.locator('.flash-wrong-overlay').first()).toBeAttached();
     const saved = await savedState(page);
     assert.deepEqual(saved.help, { checks: 1, reveals: 0 });
@@ -1905,8 +2248,12 @@ for (const tool of ALL_TOOLS) {
   });
 
   test(`[${tool.name}] Reveal puzzle arms on the first click and changes nothing`, async ({ page }) => {
+    // A fake clock, paused once the page is ready, so the 3s lapse happens only when
+    // fast-forwarded below, not waited out. Nothing else here depends on time.
+    await page.clock.install();
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
+    await page.clock.pauseAt(new Date(Date.now() + 1000));
     await page.locator('#help-btn').click();
     const before = await page.locator('#help-panel').boundingBox();
 
@@ -1914,12 +2261,14 @@ for (const tool of ALL_TOOLS) {
 
     await expect(page.locator('#reveal-puzzle-btn')).toHaveText('Are you sure?');
     await expect(page.locator('#help-panel')).toBeVisible(); // arming keeps the menu open
-    await expect(page.locator(tool.readySelector + '.correct')).toHaveCount(0);
+    await expect(page.locator(tool.readySelector + '[data-mark]')).toHaveCount(0);
     assert.equal(await page.evaluate(() => localStorage.length), 0);
     // Reserved width: the panel does not resize when the label swaps.
     expect(await page.locator('#help-panel').boundingBox()).toEqual(before);
-    // And it lapses if left alone, as Clear's does.
-    await expect(page.locator('#reveal-puzzle-btn')).toHaveText('Reveal puzzle', { timeout: 6000 });
+    // And it lapses if left alone, as Clear's does. The unit test in
+    // shared/test/engine-chrome.armed-button.test.js pins the 3s; this checks the wiring.
+    await page.clock.fastForward(3000);
+    await expect(page.locator('#reveal-puzzle-btn')).toHaveText('Reveal puzzle');
   });
 
   test(`[${tool.name}] confirming Reveal puzzle completes the puzzle once, saved solved`, async ({ page }) => {
@@ -1940,7 +2289,7 @@ for (const tool of ALL_TOOLS) {
     await expect.poll(() => events.length).toBe(1);
     expect(events[0].reveals).toBe(1);
     expect(events[0].checks).toBe(0);
-    await expect(page.locator(tool.readySelector + '.correct')).toHaveCount(total);
+    await expect(page.locator(tool.readySelector + '[data-mark]')).toHaveCount(total);
     await expect(page.locator('#help-panel')).toBeHidden();
     await expect(page.locator('#reveal-puzzle-btn')).toBeDisabled();
     await expect(page.locator('#check-puzzle-btn')).toBeDisabled();
@@ -1948,15 +2297,9 @@ for (const tool of ALL_TOOLS) {
     await page.reload();
     await ready(tool, page);
     await expect(page.locator('#done-wrong')).toBeHidden();
-    await expect(page.locator(tool.readySelector + '.correct')).toHaveCount(total);
+    await expect(page.locator(tool.readySelector + '[data-mark]')).toHaveCount(total);
   });
 
-  test(`[${tool.name}] a hashed build has no puzzle rows`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.hashed);
-    await ready(tool, page);
-    await expect(page.locator('#check-puzzle-btn')).toHaveCount(0);
-    await expect(page.locator('#reveal-puzzle-btn')).toHaveCount(0);
-  });
 }
 
 
@@ -1981,7 +2324,7 @@ for (const tool of ALL_TOOLS) {
     await expect(page.locator('#reveal-puzzle-btn')).toHaveText('Reveal puzzle', { timeout: 1000 });
     await page.locator('#reveal-puzzle-btn').click(); // one click arms again, nothing more
     await expect(page.locator('#reveal-puzzle-btn')).toHaveText('Are you sure?');
-    await expect(page.locator(tool.readySelector + '.correct')).toHaveCount(0);
+    await expect(page.locator(tool.readySelector + '[data-mark]')).toHaveCount(0);
   });
 
   test(`[${tool.name}] Reveal puzzle disarms when another row is used`, async ({ page }) => {
@@ -2078,22 +2421,6 @@ for (const tool of ALL_TOOLS) {
     assert.equal((await savedState(page)).help.reveals, 1);
   });
 
-  test(`[${tool.name}] Play again zeroes the help counts`, async ({ page }) => {
-    await page.goto('file://' + tool.paths.plain);
-    await ready(tool, page);
-
-    await page.locator('#help-btn').click();
-    await page.locator('#reveal-puzzle-btn').click();
-    await page.locator('#reveal-puzzle-btn').click();
-    await expect(page.locator('#congrats-dialog')).toBeVisible();
-
-    await page.click('#congrats-play-btn');
-    await expect(page.locator('#congrats-dialog')).toBeHidden();
-    await page.locator('#' + tool.markCellId).click();
-    await clickHelpRow(page, '#reveal-btn');
-    assert.deepEqual((await savedState(page)).help, { checks: 0, reveals: 1 });
-  });
-
   test(`[${tool.name}] a puzzle finished from a save written without a help record reports zero help`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
@@ -2170,14 +2497,14 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
 {
   const tool = TOOLS.find(t => t.name === 'crushword');
 
-  test('in a hashed build Escape lands on the options button', async ({ page }) => {
+  test('[crushword] in a hashed build Escape lands on the options button', async ({ page }) => {
     await page.goto('file://' + tool.paths.hashed);
     await ready(tool, page);
     await page.keyboard.press('Escape');
     await expect(page.locator('#menu-btn')).toBeFocused();
   });
 
-  test('Tab from the help button reaches the options button, then the shortcuts button', async ({ page, browserName }) => {
+  test('[crushword] Tab from the help button reaches the options button, then the shortcuts button', async ({ page, browserName }) => {
     test.skip(browserName === 'webkit' && process.platform === 'darwin', MAC_WEBKIT_NO_TAB);
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
@@ -2188,7 +2515,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#keys-btn')).toBeFocused();
   });
 
-  test('Escape with a mouse-opened menu closes it and leaves focus on the puzzle', async ({ page }) => {
+  test('[crushword] Escape with a mouse-opened menu closes it and leaves focus on the puzzle', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await page.locator('#help-btn').click();
@@ -2199,7 +2526,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#help-btn')).not.toBeFocused();
   });
 
-  test('Escape in the shortcuts dialog closes it and leaves focus on the puzzle', async ({ page }) => {
+  test('[crushword] Escape in the shortcuts dialog closes it and leaves focus on the puzzle', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await page.locator('#keys-btn').click();
@@ -2216,7 +2543,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#help-panel')).toBeVisible();
   }
 
-  test('Enter on the help button opens the menu with focus on its first enabled row', async ({ page }) => {
+  test('[crushword] Enter on the help button opens the menu with focus on its first enabled row', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await openHelpByKeyboard(page);
@@ -2224,7 +2551,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#help-btn')).toHaveAttribute('aria-expanded', 'true');
   });
 
-  test('arrow keys move between enabled rows and wrap; Home and End jump', async ({ page }) => {
+  test('[crushword] arrow keys move between enabled rows and wrap; Home and End jump', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await openHelpByKeyboard(page);
@@ -2240,7 +2567,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#reveal-puzzle-btn')).toBeFocused();
   });
 
-  test('ArrowDown on the help button opens the menu too', async ({ page }) => {
+  test('[crushword] ArrowDown on the help button opens the menu too', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await page.keyboard.press('Escape');
@@ -2249,7 +2576,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#reveal-btn')).toBeFocused();
   });
 
-  test('Escape in an open menu closes it and focuses its button', async ({ page }) => {
+  test('[crushword] Escape in an open menu closes it and focuses its button', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await openHelpByKeyboard(page);
@@ -2258,7 +2585,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#help-btn')).toBeFocused();
   });
 
-  test('Tab in an open menu closes it and moves focus on', async ({ page, browserName }) => {
+  test('[crushword] Tab in an open menu closes it and moves focus on', async ({ page, browserName }) => {
     test.skip(browserName === 'webkit' && process.platform === 'darwin', MAC_WEBKIT_NO_TAB);
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
@@ -2268,7 +2595,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#menu-btn')).toBeFocused();
   });
 
-  test('Enter on a row acts, closes the menu and returns focus to the puzzle', async ({ page }) => {
+  test('[crushword] Enter on a row acts, closes the menu and returns focus to the puzzle', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await openHelpByKeyboard(page);
@@ -2278,7 +2605,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('.cell-letter').filter({ hasText: /./ })).toHaveCount(1);
   });
 
-  test('a letter typed in an open menu neither closes it nor reaches the grid', async ({ page }) => {
+  test('[crushword] a letter typed in an open menu neither closes it nor reaches the grid', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await openHelpByKeyboard(page);
@@ -2290,14 +2617,14 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('.cell-letter').filter({ hasText: /./ })).toHaveCount(0);
   });
 
-  test('menu rows carry menu-item roles', async ({ page }) => {
+  test('[crushword] menu rows carry menu-item roles', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await expect(page.locator('#reveal-btn')).toHaveAttribute('role', 'menuitem');
     await expect(page.locator('#clear-btn')).toHaveAttribute('role', 'menuitem');
   });
 
-  test('Clear from the keyboard: Enter arms and keeps focus, Enter again clears and returns focus to the puzzle', async ({ page, browserName }) => {
+  test('[crushword] Clear from the keyboard: Enter arms and keeps focus, Enter again clears and returns focus to the puzzle', async ({ page, browserName }) => {
     test.skip(browserName === 'webkit' && process.platform === 'darwin', MAC_WEBKIT_NO_TAB);
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
@@ -2318,7 +2645,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('.cell-letter').filter({ hasText: /./ })).toHaveCount(0);
   });
 
-  test('Reveal puzzle from the keyboard arms, then reveals', async ({ page }) => {
+  test('[crushword] Reveal puzzle from the keyboard arms, then reveals', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await openHelpByKeyboard(page);
@@ -2333,7 +2660,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('.cell-letter').filter({ hasText: /./ })).toHaveCount(cells);
   });
 
-  test('Escape with a modifier, or one that ends IME composition, leaves focus on the puzzle', async ({ page }) => {
+  test('[crushword] Escape with a modifier, or one that ends IME composition, leaves focus on the puzzle', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     for (const chord of ['Shift+Escape', 'Alt+Escape', 'Control+Escape']) {
@@ -2345,7 +2672,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#hidden-input')).toBeFocused();
   });
 
-  test('a keyboard open of the help menu does nothing while every row is disabled', async ({ page }) => {
+  test('[crushword] a keyboard open of the help menu does nothing while every row is disabled', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await openHelpByKeyboard(page);
@@ -2368,7 +2695,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
 
   // Closing a dialog can restore focus to the row that opened it, after its menu has
   // closed; the browser drops focus from a hidden element only at its next frame.
-  test('keys pressed while focus is still on a row of a closed menu act as if on the puzzle', async ({ page }) => {
+  test('[crushword] keys pressed while focus is still on a row of a closed menu act as if on the puzzle', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await openHelpByKeyboard(page);
@@ -2380,7 +2707,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#help-btn')).toBeFocused();
   });
 
-  test('a letter typed while focus is still on a row of a closed menu reaches the grid', async ({ page }) => {
+  test('[crushword] a letter typed while focus is still on a row of a closed menu reaches the grid', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await openHelpByKeyboard(page);
@@ -2392,7 +2719,7 @@ const MAC_WEBKIT_NO_TAB = 'macOS WebKit does not Tab to buttons';
     await expect(page.locator('#hidden-input')).toBeFocused();
   });
 
-  test('Escape while focus is still on a button of a just-closed dialog goes to the menus', async ({ page }) => {
+  test('[crushword] Escape while focus is still on a button of a just-closed dialog goes to the menus', async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
     await page.evaluate(() => {

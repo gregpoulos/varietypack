@@ -7,10 +7,8 @@ function walkAnswers(obj) {
   if (obj !== null && typeof obj === 'object') {
     if (Object.prototype.hasOwnProperty.call(obj, 'answer')) {
       const { answer, ...rest } = obj;
-      // length: is a CELL count, not a letter count — see docs/ARCHITECTURE.md ->
-      // "Muddled YAML" for why format: 2 accompanies it. Shares its
-      // answer parsing (and invalid-answer throw) with
-      // entryCellCount/processEntries via cells.js' cellsOrThrow.
+      // length: is a CELL count, not a letter count. Shares its answer parsing (and
+      // invalid-answer throw) with entryCellCount/processEntries via cellsOrThrow.
       const cells = cellsOrThrow(answer);
       return { ...rest, length: cells.length };
     }
@@ -25,7 +23,7 @@ function walkAnswers(obj) {
 
 function buildMuddledYaml(puzzle, boardHash) {
   const walked = walkAnswers(puzzle);
-  return { ...walked, hashed: true, format: 2, boardHash };
+  return { ...walked, boardHash };
 }
 
 // The options every muddled-YAML dump uses (js-yaml's default 80-column folding would

@@ -4,8 +4,7 @@ const { test } = require('node:test');
 const assert   = require('node:assert/strict');
 const cw       = require('../src/model/kinds/crushword');
 const { StructureError } = require('../src/model/errors');
-
-function deepFreeze(o) { Object.values(o).forEach(v => { if (v && typeof v === 'object') deepFreeze(v); }); return Object.freeze(o); }
+const { commandRunner } = require('./helpers');
 
 // The validator's own minimal puzzle: a fully open 3×3 grid, across {1,4,5}, down
 // {1,2,3}.
@@ -16,7 +15,7 @@ const puzzle = () => ({
   down:   { 1: { clue: 'd1', answer: 'CDA' }, 2: { clue: 'd2', answer: 'AON' }, 3: { clue: 'd3', answer: 'TGT' } },
 });
 const imp = (p = puzzle()) => cw.fromYaml(p);
-const run = (model, name, ...args) => cw.commands[name](deepFreeze(structuredClone(model)), ...args);
+const run = commandRunner(cw);
 // Blank model for a grid given as strings.
 // (Its clues don't match the blocks; the grid checks read only blocks and cells.)
 function fromGrid(grid) {

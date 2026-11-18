@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert   = require('node:assert/strict');
+const { deepFreeze } = require('./helpers');
 const fs       = require('fs');
 const path     = require('path');
 const yaml     = require('js-yaml');
@@ -9,11 +10,6 @@ const { newDoc, openText, setYaml, setOption, setUi, setMuddledTheme, puzzleText
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
-
-function deepFreeze(o) {
-  Object.values(o).forEach(v => { if (v && typeof v === 'object') deepFreeze(v); });
-  return Object.freeze(o);
-}
 
 test('openText: a clean source Crushword opens structured, kind detected, no notice', () => {
   const { doc, notice } = openText(read('examples/crushword.yaml'), { id: 'a', now: 1 });

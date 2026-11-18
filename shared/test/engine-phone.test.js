@@ -86,6 +86,7 @@ function mockEl(tag) {
   return {
     tagName: tag.toUpperCase(),
     attrs: {},
+    dataset: {},
     children: [],
     textContent: '',
     style: { props, setProperty(k, v) { props[k] = String(v); } },
@@ -138,15 +139,15 @@ function fillHarness({ rect = () => ({ top: 0, bottom: 0 }) } = {}) {
       set scrollTop(v) { writes.push(v); scrollTop = v; },
     };
     const letters = { 1: 'a', 3: 'xy' };
-    const correct = new Set();
+    const marks = new Map();
     const composing = new Set();
     const taps = [];
     const fillList = setupFillList(items, {
-      scroller, getLetter: n => letters[n] || '', isCorrect: n => correct.has(n),
+      scroller, getLetter: n => letters[n] || '', getMark: n => marks.get(n) || null,
       isComposing: n => composing.has(n), onCellTap: (i, j) => taps.push([i, j]),
     });
     for (const el of items.flatMap(({ li }) => [li, ...cellsOf(li)])) el.getBoundingClientRect = rect;
-    return { items, fillList, writes, taps, letters, correct, composing };
+    return { items, fillList, writes, taps, letters, marks, composing };
   });
 }
 
@@ -166,17 +167,23 @@ test('setupFillList: sync shows each cell\'s letter, uppercased, in every row ho
   assert.deepEqual(cellsOf(items[1].li).map(shown), ['XY', '']);
 });
 
-test('setupFillList: sync marks a checked cell .correct in every row holding it, and unmarks it', () => {
-  const { items, fillList, correct } = fillHarness();
-  const marks = li => cellsOf(li).map(c => has(c, 'correct'));
-  correct.add(3);
+test('setupFillList: sync mirrors a cell\'s mark in every row holding it, and clears it', () => {
+  const { items, fillList, marks } = fillHarness();
+  const shownMarks = li => cellsOf(li).map(c => c.dataset.mark ?? null);
+  marks.set(3, 'checked');
   fillList.sync(1, items[0].li);
-  assert.deepEqual(marks(items[0].li), [false, false, true]);
-  assert.deepEqual(marks(items[1].li), [true, false]);
-  correct.delete(3);
+  assert.deepEqual(shownMarks(items[0].li), [null, null, 'checked']);
+  assert.deepEqual(shownMarks(items[1].li), ['checked', null]);
+  marks.set(3, 'revealed');
   fillList.sync(1, items[0].li);
-  assert.deepEqual(marks(items[0].li), [false, false, false]);
-  assert.deepEqual(marks(items[1].li), [false, false]);
+  assert.deepEqual(shownMarks(items[1].li), ['revealed', null]);
+  marks.set(3, 'wrong');
+  fillList.sync(1, items[0].li);
+  assert.deepEqual(shownMarks(items[1].li), ['wrong', null]);
+  marks.delete(3);
+  fillList.sync(1, items[0].li);
+  assert.deepEqual(shownMarks(items[0].li), [null, null, null]);
+  assert.deepEqual(shownMarks(items[1].li), [null, null]);
 });
 
 // A timer the test runs by hand, so a 600ms flash needn't be waited out. A cleared timer

@@ -229,70 +229,40 @@ function runStyles(entry, label = 'entries[0]', cellCount = 4) {
   return { errors, warnings };
 }
 
-test('validateEntryStyles: no-op when styles is absent', () => {
-  const { errors, warnings } = runStyles({});
-  assert.deepEqual(errors, []);
-  assert.deepEqual(warnings, []);
+test('validateEntryStyles: valid input reports nothing', () => {
+  const rows = [
+    { name: 'absent',           entry: {} },
+    { name: 'empty object',     entry: { styles: {} } },
+    { name: 'valid positions',  entry: { styles: { circle: [0, 3] } } },
+  ];
+  for (const { name, entry } of rows) {
+    const { errors, warnings } = runStyles(entry, 'entries[0]', 4);
+    assert.deepEqual(errors, [], name);
+    assert.deepEqual(warnings, [], name);
+  }
 });
 
-test('validateEntryStyles: error when styles is null', () => {
-  const { errors } = runStyles({ styles: null });
-  assert.ok(errors.some(e => e.includes('entries[0].styles must be an object')));
-});
-
-test('validateEntryStyles: error when styles is a string', () => {
-  const { errors } = runStyles({ styles: 'circle' });
-  assert.ok(errors.some(e => e.includes('entries[0].styles must be an object')));
-});
-
-test('validateEntryStyles: error when styles is an array', () => {
-  const { errors } = runStyles({ styles: [0, 1] });
-  assert.ok(errors.some(e => e.includes('entries[0].styles must be an object')));
-});
-
-test('validateEntryStyles: warning for unrecognized style name', () => {
-  const { errors, warnings } = runStyles({ styles: { 'blue-shade': [0] } });
-  assert.ok(warnings.some(w => w.includes('unrecognized style "blue-shade"')));
-  assert.deepEqual(errors, []);
-});
-
-test('validateEntryStyles: error when style value is not an array', () => {
-  const { errors } = runStyles({ styles: { circle: 0 } });
-  assert.ok(errors.some(e => e.includes('circle') && e.includes('must be an array')));
-});
-
-test('validateEntryStyles: error when position is out of range', () => {
-  const { errors } = runStyles({ styles: { circle: [4] } }, 'entries[0]', 4);
-  assert.ok(errors.some(e => e.includes('position 4 is out of range (answer has 4 cells)')));
-});
-
-test('validateEntryStyles: error when position is negative', () => {
-  const { errors } = runStyles({ styles: { circle: [-1] } });
-  assert.ok(errors.some(e => e.includes('position -1 is out of range')));
-});
-
-test('validateEntryStyles: error when position is non-integer', () => {
-  const { errors } = runStyles({ styles: { circle: [0.5] } });
-  assert.ok(errors.some(e => e.includes('position 0.5 is out of range')));
-});
-
-test('validateEntryStyles: valid positions produce no errors', () => {
-  const { errors, warnings } = runStyles({ styles: { circle: [0, 3] } }, 'entries[0]', 4);
-  assert.deepEqual(errors, []);
-  assert.deepEqual(warnings, []);
-});
-
-test('validateEntryStyles: empty styles object produces no errors', () => {
-  const { errors, warnings } = runStyles({ styles: {} });
-  assert.deepEqual(errors, []);
-  assert.deepEqual(warnings, []);
-});
-
-test('validateEntryStyles: multiple style names — known valid and unknown both processed', () => {
-  const { errors, warnings } = runStyles({ styles: { circle: [0], 'blue-shade': [1] } }, 'entries[0]', 4);
-  assert.deepEqual(errors, []);
-  assert.ok(warnings.some(w => w.includes('unrecognized style "blue-shade"')));
-  assert.ok(!warnings.some(w => w.includes('circle')));
+test('validateEntryStyles: each problem is reported', () => {
+  const rows = [
+    { name: 'null styles',       styles: null,                         errors: [/entries\[0\]\.styles must be an object/] },
+    { name: 'string styles',     styles: 'circle',                     errors: [/entries\[0\]\.styles must be an object/] },
+    { name: 'array styles',      styles: [0, 1],                       errors: [/entries\[0\]\.styles must be an object/] },
+    { name: 'unrecognized name', styles: { 'blue-shade': [0] },        warnings: [/unrecognized style "blue-shade"/] },
+    { name: 'value not array',   styles: { circle: 0 },                errors: [/circle.*must be an array/] },
+    { name: 'out of range',      styles: { circle: [4] },              errors: [/position 4 is out of range \(answer has 4 cells\)/] },
+    { name: 'negative',          styles: { circle: [-1] },             errors: [/position -1 is out of range/] },
+    { name: 'non-integer',       styles: { circle: [0.5] },            errors: [/position 0.5 is out of range/] },
+    // A known style beside an unknown one: both are processed; only the unknown warns.
+    { name: 'known and unknown', styles: { circle: [0], 'blue-shade': [1] },
+      warnings: [/unrecognized style "blue-shade"/], noWarning: /circle/ },
+  ];
+  for (const { name, styles, errors: wantErrors = [], warnings: wantWarnings = [], noWarning } of rows) {
+    const { errors, warnings } = runStyles({ styles }, 'entries[0]', 4);
+    for (const re of wantErrors) assert.ok(errors.some(e => re.test(e)), `${name}: error ${re}, got ${errors}`);
+    for (const re of wantWarnings) assert.ok(warnings.some(w => re.test(w)), `${name}: warning ${re}, got ${warnings}`);
+    if (wantErrors.length === 0) assert.deepEqual(errors, [], name);
+    if (noWarning) assert.ok(!warnings.some(w => noWarning.test(w)), name);
+  }
 });
 
 test('validateEntryStyles: entryLabel appears in all error messages', () => {

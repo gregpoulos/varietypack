@@ -4,8 +4,7 @@ const { test } = require('node:test');
 const assert   = require('node:assert/strict');
 const sc       = require('../src/model/kinds/snake-charmer');
 const { StructureError } = require('../src/model/errors');
-
-function deepFreeze(o) { Object.values(o).forEach(v => { if (v && typeof v === 'object') deepFreeze(v); }); return Object.freeze(o); }
+const { commandRunner } = require('./helpers');
 
 // Ring ABCDEFGH (N = 8), five entries over 16 positions; the third, GHAB, straddles the
 // lap boundary.
@@ -17,7 +16,7 @@ const puzzle = () => ({
   ],
 });
 const imp = (p = puzzle()) => sc.fromYaml(p);
-const run = (model, name, ...args) => sc.commands[name](deepFreeze(structuredClone(model)), ...args);
+const run = commandRunner(sc);
 
 test('newModel: a blank ring and one entry over both laps; the shape is kept', () => {
   const m = sc.newModel({ cells: 16 });
@@ -25,7 +24,6 @@ test('newModel: a blank ring and one entry over both laps; the shape is kept', (
   assert.ok(m.ring.every(c => c === ''));
   assert.deepEqual(m.cut.starts, [0]);
   assert.equal(m.shape, null);
-  assert.equal(m.loops, null);
   assert.equal(sc.newModel({ cells: 48, shape: 'turn' }).shape, 'turn');
   assert.deepEqual(sc.sizeFields, [{ name: 'cells', label: 'Cells per lap', min: 8, max: 120, step: 2, default: 48 }]);
 });
@@ -48,11 +46,9 @@ test('fromYaml: a lap conflict keeps lap 1 and warns with both entries', () => {
   assert.deepEqual(warnings, ['Ring cell 8: kept "H" from entry 3 (lap 1), discarded "X" from entry 5 (lap 2)']);
 });
 
-test('fromYaml: an odd total, loops other than 2, and muddled entries throw StructureErrors', () => {
+test('fromYaml: an odd total and muddled entries throw StructureErrors', () => {
   const odd = puzzle(); odd.entries[4].answer = 'EFG';
   assert.throws(() => imp(odd), (e) => e instanceof StructureError && /odd number of cells \(15\)/.test(e.message));
-  const loops = puzzle(); loops.loops = 3;
-  assert.throws(() => imp(loops), (e) => e instanceof StructureError && /only two-loop puzzles/.test(e.message));
   const mud = puzzle(); delete mud.entries[0].answer; mud.entries[0].length = 3;
   assert.throws(() => imp(mud), (e) => e instanceof StructureError && /muddled/.test(e.message));
 });
@@ -74,20 +70,18 @@ test('fromYaml: a one-sided circle is completed with a warning naming the entry'
   assert.deepEqual(warnings, ['Completed the circle on ring cell 2 (added to entry 3)']);
 });
 
-test('toYaml: circles are written on both laps, and loops and shape only when present', () => {
+test('toYaml: circles are written on both laps, and shape only when present', () => {
   const p = puzzle();
   p.entries[0].styles = { circle: [1] };
   p.entries[2].styles = { circle: [3] };            // position 9
   const out = sc.toYaml(imp(p).model);
   assert.deepEqual(out.entries[0].styles, { circle: [1] });
   assert.deepEqual(out.entries[2].styles, { circle: [3] });
-  assert.ok(!('loops' in out) && !('shape' in out));
+  assert.ok(!('shape' in out));
   assert.deepEqual(Object.keys(out), ['kind', 'title', 'entries']);
-  const withBoth = { ...puzzle(), loops: 2, shape: 'stadium' };
-  const out2 = sc.toYaml(imp(withBoth).model);
-  assert.equal(out2.loops, 2);
+  const out2 = sc.toYaml(imp({ ...puzzle(), shape: 'stadium' }).model);
   assert.equal(out2.shape, 'stadium');
-  assert.deepEqual(Object.keys(out2), ['kind', 'title', 'loops', 'shape', 'entries']);
+  assert.deepEqual(Object.keys(out2), ['kind', 'title', 'shape', 'entries']);
 });
 
 test('setRing: inserting a cell shifts the starts in both laps and keeps a straddling entry', () => {
@@ -204,14 +198,6 @@ test('fromYaml: a shape that is not one of the four throws a StructureError', ()
   assert.equal(imp({ ...puzzle(), shape: 'turn' }).model.shape, 'turn');
 });
 
-test('isModel: starts and entries must line up', () => {
-  const { model } = imp();
-  assert.equal(sc.isModel(model), true);
-  assert.equal(sc.isModel({ ...model, cut: { ...model.cut, entries: model.cut.entries.slice(1) } }), false);
-  assert.equal(sc.isModel({ ...model, cut: { ...model.cut, starts: [1, ...model.cut.starts.slice(1)] } }), false);
-  assert.equal(sc.isModel({ ...model, shape: 'hexagon' }), false);
-});
-
 test('attachOrphan with an entry that no longer exists changes nothing', () => {
   const { model } = imp();
   const orphaned = run(model, 'toggleBreak', 10);
@@ -220,6 +206,10 @@ test('attachOrphan with an entry that no longer exists changes nothing', () => {
 
 test('isModel looks inside: cells, starts, entries and circles must be sound', () => {
   const { model } = imp();
+  assert.equal(sc.isModel(model), true);
+  assert.equal(sc.isModel({ ...model, cut: { ...model.cut, entries: model.cut.entries.slice(1) } }), false);
+  assert.equal(sc.isModel({ ...model, cut: { ...model.cut, starts: [1, ...model.cut.starts.slice(1)] } }), false);
+  assert.equal(sc.isModel({ ...model, shape: 'hexagon' }), false);
   const bad = (patch) => assert.equal(sc.isModel({ ...model, ...patch }), false, JSON.stringify(patch).slice(0, 60));
   bad({ ring: [null, ...model.ring.slice(1)] });
   bad({ ring: ['A', ...model.ring.slice(1)] });

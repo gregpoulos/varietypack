@@ -1,9 +1,3 @@
-.puzzle-main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 24px 24px;
-}
-
 .puzzle-body {
   display: flex;
   flex-direction: row-reverse;
@@ -36,28 +30,11 @@
   height: auto;
 }
 
-
 #clue-list {
   flex: 1;
   min-width: 200px;
   max-width: 420px;
 }
 
-#clues {
-  list-style: decimal;
-  padding-left: 1.6em;
-  margin-top: 0;
-}
-
-.clue-item {
-  cursor: pointer;
-  margin-bottom: 5px;
-  font-size: 0.88rem;
-  line-height: 1.4;
-  padding: 2px 6px 2px 2px;
-}
-
 .cell-num    { font-size: 9px; }
 .cell-letter { font-size: 14px; }
-
-

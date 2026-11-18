@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { makeBoardChecker, makeComposer, revealCells } = require('../engine-state.mjs');
+const { makeBoardChecker, makeComposer, makeCellStore, revealCells } = require('../engine-state.mjs');
 const { sha256hex } = require('../sha256hex.mjs');
 const { joinCells } = require('../boardString.mjs');
 
@@ -12,16 +12,21 @@ const CELL_IDS = [0, 1, 2];
 const ANSWER = { 0: 'a', 1: 'bc', 2: 'd' };
 const CORRECT_HASH = sha256hex(joinCells(CELL_IDS.map(n => ANSWER[n])));
 
-function harness({ hashed = false, content = {}, marked = [], composing = null } = {}) {
+function harness({
+  hashed = false, content = {}, marked = [], wrong = [], composing = null, checkComposing = false,
+} = {}) {
   const store = { ...content };
   const markedSet = new Set(marked);
+  const wrongSet = new Set(wrong);
   const calls = { markSolved: 0, syncUI: 0, getExpected: 0, getBoardHash: 0 };
   const checker = makeBoardChecker({
     cellIds: CELL_IDS,
     getContent: n => store[n] || '',
     // Mirrors composer.isCellFilled: content present AND not composing.
     isCellFilled: n => (store[n] || '') !== '' && n !== composing,
-    isCellMarkedCorrect: n => markedSet.has(n),
+    isCellConfirmedRight: n => markedSet.has(n),
+    isCellMarkedWrong: n => wrongSet.has(n),
+    checkComposing,
     hashed,
     getExpected:  n => { calls.getExpected++; return ANSWER[n]; },
     getBoardHash: () => { calls.getBoardHash++; return CORRECT_HASH; },
@@ -68,11 +73,32 @@ test('isBoardFilled is false while a cell is composing, even with content', () =
   assert.equal(checker.isBoardFilled(), false);
 });
 
-test('isSolved reads the tool marker, not the content', () => {
-  const { checker } = harness({ content: SOLVED });
+// isSolved: the board's content, filled and correct. Marks don't enter into it: a solve
+// marks no cell, and a checked cell can still sit beside a wrong one.
+test('isSolved is true for a filled board whose content is correct, with no cell marked', () => {
+  assert.equal(harness({ content: SOLVED }).checker.isSolved(), true);
+});
+
+test('isSolved is false while a cell holding its right content is composing', () => {
+  assert.equal(harness({ content: SOLVED, composing: 1 }).checker.isSolved(), false);
+});
+
+test('isSolved is false for a filled board with one wrong cell, even if every other cell is checked', () => {
+  const { checker } = harness({ content: { 0: 'a', 1: 'bc', 2: 'x' }, marked: [0, 1] });
   assert.equal(checker.isSolved(), false);
-  const { checker: allMarked } = harness({ content: SOLVED, marked: [0, 1, 2] });
-  assert.equal(allMarked.isSolved(), true);
+});
+
+test('isSolved compares the board hash when hashed', () => {
+  assert.equal(harness({ hashed: true, content: SOLVED }).checker.isSolved(), true);
+  const { checker, calls } = harness({ hashed: true, content: { 0: 'a', 1: 'bc', 2: 'x' } });
+  assert.equal(checker.isSolved(), false);
+  assert.equal(calls.getBoardHash, 1);
+});
+
+test('isSolved hashes nothing on a board that is not full', () => {
+  const { checker, calls } = harness({ hashed: true, content: { 0: 'a' } });
+  assert.equal(checker.isSolved(), false);
+  assert.equal(calls.getBoardHash, 0);
 });
 
 test('checkIfFilled does nothing at all on a partly filled board', () => {
@@ -119,40 +145,45 @@ test('hashed and non-hashed agree on every board — the symmetry contract', () 
   }
 });
 
-// repaintIfSolved — the restore-time repaint. The auto-save payload carries cell
-// correctness only, so a solved board comes back with its clue items unmarked; this
-// re-derives the rest of the solved painting from the marks that were restored.
-test('repaintIfSolved marks solved when every cell was restored correct', () => {
-  const { checker, calls } = harness({ content: SOLVED, marked: [0, 1, 2] });
+// repaintIfSolved — the restore-time repaint. The auto-save payload carries no solved
+// flag, so a solved board comes back unpainted; this re-adjudicates it from content.
+test('repaintIfSolved calls markSolved for a correct filled board with no marks', () => {
+  const { checker, calls } = harness({ content: SOLVED });
   checker.repaintIfSolved();
   assert.equal(calls.markSolved, 1);
 });
 
-test('repaintIfSolved does nothing when any cell is unmarked', () => {
-  const { checker, calls } = harness({ content: SOLVED, marked: [0, 1] });
+test('repaintIfSolved does nothing on a wrong filled board', () => {
+  const { checker, calls } = harness({ content: { 0: 'a', 1: 'bc', 2: 'x' }, marked: [0, 1] });
   checker.repaintIfSolved();
   assert.equal(calls.markSolved, 0);
+});
+
+// A reload of a board solved with help: the restore brings back each cell's mark, and the
+// repaint, which runs the solve's own painting, must leave them as they were.
+test('repaintIfSolved on a restored board keeps revealed cells revealed', () => {
+  const el = () => ({ textContent: '', style: {}, dataset: {}, getAttribute: () => '0', classList: { toggle() {} } });
+  const els = Object.fromEntries(CELL_IDS.map(n => [n, { cell: el(), letter: el() }]));
+  const cells = makeCellStore({ ids: CELL_IDS, cellEl: n => els[n].cell, letterEl: n => els[n].letter });
+  cells.restoreFields({ letters: SOLVED, marks: { 0: 'checked', 1: 'revealed', 2: 'revealed' } });
+  let painted = 0;
+  const checker = makeBoardChecker({
+    cellIds: CELL_IDS, getContent: cells.getCellLetter, isCellFilled: n => cells.getCellLetter(n) !== '',
+    isCellConfirmedRight: cells.isConfirmedRight, hashed: false, getExpected: n => ANSWER[n],
+    getBoardHash: () => CORRECT_HASH, markSolved: () => { painted++; }, syncUI: () => {},
+  });
+  checker.repaintIfSolved();
+  assert.equal(painted, 1);
+  assert.deepEqual(CELL_IDS.map(cells.getMark), ['checked', 'revealed', 'revealed']);
 });
 
 // syncUI() would reach the engine's latch.check(), popping the congrats dialog on
 // every reload of a solved puzzle — the exact thing latch.sealIfSolved() exists to
 // prevent. The repaint paints; it does not re-announce.
 test('repaintIfSolved does not call syncUI', () => {
-  const { checker, calls } = harness({ content: SOLVED, marked: [0, 1, 2] });
+  const { checker, calls } = harness({ content: SOLVED });
   checker.repaintIfSolved();
   assert.equal(calls.syncUI, 0);
-});
-
-// Mark-driven, not evidence-driven: restore repaints what was already established,
-// it does not re-adjudicate the board. So the two modes cannot diverge here.
-test('repaintIfSolved consults no answer evidence — both modes', () => {
-  for (const hashed of [false, true]) {
-    const { checker, calls } = harness({ hashed, content: SOLVED, marked: [0, 1, 2] });
-    checker.repaintIfSolved();
-    assert.equal(calls.markSolved, 1, `hashed=${hashed}`);
-    assert.equal(calls.getExpected, 0, `hashed=${hashed}`);
-    assert.equal(calls.getBoardHash, 0, `hashed=${hashed}`);
-  }
 });
 
 // The mid-composition-prefix case: a partly-typed cell can leave a *correct* board.
@@ -174,6 +205,38 @@ test('canCheck is true only for a filled, not-yet-correct cell', () => {
   assert.equal(checker.canCheck(0), true);
   assert.equal(checker.canCheck(1), false, 'already marked correct');
   assert.equal(checker.canCheck(2), false, 'empty');
+});
+
+// A wrong-marked cell is unchanged since its check (any edit clears the mark), so
+// checking it again could only say the same thing; Reveal still works on it.
+test('canCheck refuses a wrong-marked cell', () => {
+  const { checker } = harness({ content: { 0: 'x' }, wrong: [0] });
+  assert.equal(checker.canCheck(0), false);
+});
+
+test('canReveal accepts a wrong-marked cell', () => {
+  const { checker } = harness({ content: { 0: 'x' }, wrong: [0] });
+  assert.equal(checker.canReveal(0), true);
+});
+
+test('checkCells skips wrong-marked cells', () => {
+  const { checker } = harness({ content: { 0: 'x', 1: 'yy', 2: 'd' }, wrong: [0, 1] });
+  assert.deepEqual(checker.checkCells([0, 1, 2]), { right: [2], wrong: [] });
+});
+
+// Crushword composes every cell as it is typed and commits it before a check, so a
+// composing cell with content is checkable there.
+test('with checkComposing, canCheck accepts a composing cell holding content', () => {
+  const { checker } = harness({ content: { 1: 'b', 2: '' }, composing: 1, checkComposing: true });
+  assert.equal(checker.canCheck(1), true);
+  const { checker: empty } = harness({ content: {}, composing: 2, checkComposing: true });
+  assert.equal(empty.canCheck(2), false, 'nothing typed yet');
+});
+
+test('with checkComposing, canCheck still refuses a confirmed or wrong-marked cell', () => {
+  const { checker } = harness({ content: { 0: 'a', 1: 'x' }, marked: [0], wrong: [1], checkComposing: true });
+  assert.equal(checker.canCheck(0), false);
+  assert.equal(checker.canCheck(1), false);
 });
 
 test('canCheck is false for a cell that is still composing', () => {
@@ -203,7 +266,7 @@ test('canReveal is true for an empty, a wrong and a composing cell, false for a 
   assert.equal(checker.canReveal(2), false, 'already marked correct');
 });
 
-// The `.correct` invariant (docs/CROSS_TOOL_SPEC.md → "'Filled' excludes composing
+// The mark invariant (docs/CROSS_TOOL_SPEC.md → "Filled excludes composing
 // cells"): Reveal applies it only after ending composition and writing the answer.
 // Pinned here with a real composer: revealing the last cell while it composes must leave
 // a board the checker reads as filled and solved, and no cell composing.
@@ -219,16 +282,17 @@ test('revealing the last cell while it composes lets the board finish', () => {
   store[2] = 'dd'; // a half-typed prefix
   const checker = makeBoardChecker({
     cellIds: CELL_IDS, getContent: n => store[n] || '', isCellFilled: composer.isCellFilled,
-    isCellMarkedCorrect: n => marked.has(n), hashed: false, getExpected: n => ANSWER[n],
+    isCellConfirmedRight: n => marked.has(n), hashed: false, getExpected: n => ANSWER[n],
     getBoardHash: () => CORRECT_HASH, markSolved: () => { solvedPaints++; marked.add(2); },
     syncUI: () => {},
   });
   assert.equal(checker.isBoardFilled(), false, 'composing: not filled yet');
 
   revealCells({
-    ids: [2], composer, getExpected: n => ANSWER[n], canReveal: () => true,
+    ids: [2], composer, getContent: n => store[n] || '', getExpected: n => ANSWER[n],
+    canReveal: () => true,
     setCellLetter: (n, s) => { store[n] = s; marked.delete(n); },
-    setCorrect: (n, on) => { if (on) marked.add(n); else marked.delete(n); },
+    setMark: (n, mark) => { if (mark) marked.add(n); else marked.delete(n); },
   });
   checker.checkIfFilled();
 

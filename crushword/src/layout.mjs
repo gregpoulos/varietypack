@@ -20,7 +20,7 @@ function svgSize(grid, cellWidth, cellHeight) {
 // with maxCellLetters so a wide bracketed rebus group has visual room to sit
 // in a single cell; every cell gets the same width (capacity is a puzzle-wide
 // setting, not a per-cell one, so this can't hint at which specific cells are
-// rebus — see docs/CROSS_TOOL_SPEC.md -> "Enter / Rebus button" for the
+// rebus — see docs/CROSS_TOOL_SPEC.md -> "Enter / Rebus button — rebus entry" for the
 // per-cell version of that rule). WIDTH_STEP is a hand-picked constant, not
 // derived from font metrics — it just needs to comfortably fit
 // `maxCellLetters` characters at the engine's fixed cell font-size.

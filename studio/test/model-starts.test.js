@@ -2,11 +2,11 @@
 
 const { test } = require('node:test');
 const assert   = require('node:assert/strict');
+const { deepFreeze } = require('./helpers');
 const { ranges, entryAt, addBreak, removeBreak, reanchor, orphanOf } = require('../src/model/starts');
 
 const E = (id, clue = '') => ({ id, clue });
 const cut = (starts, ids, clues = []) => ({ starts, entries: ids.map((id, i) => E(id, clues[i] ?? '')) });
-function deepFreeze(o) { Object.values(o).forEach(v => { if (v && typeof v === 'object') deepFreeze(v); }); return Object.freeze(o); }
 
 test('ranges: each entry covers [start, next start) and the last runs to the total', () => {
   assert.deepEqual(ranges([0, 4, 9], 12), [[0, 4], [4, 9], [9, 12]]);

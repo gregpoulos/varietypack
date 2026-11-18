@@ -9,7 +9,7 @@ function parts(log = []) {
   return {
     log,
     cells: {
-      saveFields: () => ({ letters: { 0: 'a' }, correct: [0] }),
+      saveFields: () => ({ letters: { 0: 'a' }, marks: { 0: 'checked' } }),
       fitsSave: saved => saved.letters !== undefined,
       restoreFields: () => log.push('cells'),
     },
@@ -25,7 +25,7 @@ function parts(log = []) {
 test('getState joins the cells, the help counts, the elapsed time and the composing cell', () => {
   const { getState } = makeSavePayload(parts());
   assert.deepEqual(getState(), {
-    letters: { 0: 'a' }, correct: [0], help: { checks: 2, reveals: 1 }, activeMs: 4200, composing: 3,
+    letters: { 0: 'a' }, marks: { 0: 'checked' }, help: { checks: 2, reveals: 1 }, activeMs: 4200, composing: 3,
   });
 });
 

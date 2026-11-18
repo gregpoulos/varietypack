@@ -15,11 +15,10 @@ const { buildPuzzleFile } = require('../test/helpers');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
-const yaml = require('js-yaml');
 const {
   TOOL_FIXTURES, LONG_CLUE, MUDDLED_CW, BAR_TEXT, buildClueVariant, dismissIntro, scrollFlush,
 } = require('./mobile');
-const { solveCrushwordBoard, solveRingBoard } = require('./helpers');
+const { solveCrushwordBoard, solveRingBoard, buildVariant } = require('./helpers');
 const { startServer } = require('./studio-server');
 
 // Where each tool shows the active direction, mode or loop: the toggle's active segment
@@ -57,10 +56,7 @@ test.beforeAll(() => {
     if (v === null || typeof v !== 'object') return v;
     return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === 'clue' ? LONG_CLUE : sameClues(x)]));
   };
-  fs.writeFileSync(path.join(tmpDir, 'crushword-same.yaml'),
-    yaml.dump(sameClues(yaml.load(fs.readFileSync(cw.yamlPath, 'utf8')))));
-  htmlPaths['crushword-same'] = path.join(tmpDir, 'crushword-same.html');
-  buildPuzzleFile(path.join(tmpDir, 'crushword-same.yaml'), htmlPaths['crushword-same']);
+  htmlPaths['crushword-same'] = buildVariant(cw.yamlPath, sameClues, 'crushword-same', tmpDir);
   // Snake Charmer with an entry longer than the ring (8 cells): its last two cells are
   // its first two ring positions again, in the second loop.
   fs.writeFileSync(path.join(tmpDir, 'snake-charmer-long-entry.yaml'), [
@@ -75,16 +71,12 @@ test.beforeAll(() => {
   buildPuzzleFile(path.join(tmpDir, 'snake-charmer-long-entry.yaml'),
     htmlPaths['snake-charmer-long-entry']);
   // Marching Bands with a link in row 1's first clue.
-  const mb = yaml.load(fs.readFileSync(TOOL_FIXTURES.find(f => f.tool === 'marching-bands').yamlPath, 'utf8'));
-  mb.rows[0].entries[0].clue = 'See [this page](https://example.com/) first';
-  fs.writeFileSync(path.join(tmpDir, 'marching-bands-link.yaml'), yaml.dump(mb));
-  htmlPaths['marching-bands-link'] = path.join(tmpDir, 'marching-bands-link.html');
-  buildPuzzleFile(path.join(tmpDir, 'marching-bands-link.yaml'), htmlPaths['marching-bands-link']);
+  htmlPaths['marching-bands-link'] = buildVariant(TOOL_FIXTURES.find(f => f.tool === 'marching-bands').yamlPath, mb => {
+    mb.rows[0].entries[0].clue = 'See [this page](https://example.com/) first';
+  }, 'marching-bands-link', tmpDir);
   // Crushword with instructions; its fixture has none.
-  const instructed = yaml.load(fs.readFileSync(TOOL_FIXTURES.find(f => f.tool === 'crushword').yamlPath, 'utf8'));
-  fs.writeFileSync(path.join(tmpDir, 'crushword-instructions.yaml'), yaml.dump({ ...instructed, instructions: INSTRUCTIONS }));
-  htmlPaths['crushword-instructions'] = path.join(tmpDir, 'crushword-instructions.html');
-  buildPuzzleFile(path.join(tmpDir, 'crushword-instructions.yaml'), htmlPaths['crushword-instructions']);
+  htmlPaths['crushword-instructions'] = buildVariant(cw.yamlPath, p => ({ ...p, instructions: INSTRUCTIONS }),
+    'crushword-instructions', tmpDir);
   htmlPaths.muddled = path.join(tmpDir, 'crushword-muddled.html');
   buildPuzzleFile(MUDDLED_CW, htmlPaths.muddled);
 });
@@ -174,7 +166,7 @@ test('[crushword] the congrats card\'s buttons fit and are tappable; View puzzle
   expect(short).toEqual([]);
   await page.locator('#congrats-view-btn').tap();
   await expect(dialog).toBeHidden();
-  await expect(page.locator('.cell:not(.correct)')).toHaveCount(0);
+  await expect(page.locator('#puzzle-svg')).toHaveClass(/\bsolved\b/);
   expect(await focusedId(page)).toBe('hidden-input');
 });
 
@@ -182,6 +174,20 @@ const allLetters = page => page.locator('.cell-letter').evaluateAll(els => els.m
 
 for (const fx of TOOL_FIXTURES) {
   test.describe(fx.tool, () => {
+    // A revealed cell is locked: a drawn key leaves its letter and the cursor moves on,
+    // as with a hardware key (makeCellStore's isLocked).
+    test('a drawn key on a revealed cell keeps its letter and moves on', async ({ page }) => {
+      await load(page, fx.tool);
+      const tapped = await tapMiddleCell(page);
+      await page.locator('#help-btn').tap();
+      await page.locator('#help-panel #reveal-btn').tap();
+      await expect(page.locator('#' + tapped)).toHaveAttribute('data-mark', 'revealed');
+      const answer = await letterOf(page, tapped).textContent();
+      await key(page, answer === 'Q' ? 'Z' : 'Q').tap();
+      await expect(letterOf(page, tapped)).toHaveText(answer);
+      await expect(page.locator('.active-cell')).not.toHaveId(tapped);
+    });
+
     test('drawn letters fill the tapped cell and focus stays on the hidden input', async ({ page }) => {
       await load(page, fx.tool);
       await expect(page.locator('#hidden-input')).toHaveAttribute('inputmode', 'none');
@@ -353,7 +359,7 @@ for (const fx of FILL_LIST_FIXTURES) {
       await expect(cell).toHaveCSS('border-top-style', 'solid');
     });
 
-    // Each engine hands setupFillList its own isCorrect (Snake Charmer's takes a ring
+    // Each engine hands setupFillList its own getMark (Snake Charmer's takes a ring
     // position).
     test('Check Cell marks the checked cell in the list too', async ({ page }) => {
       await load(page, fx.tool);
@@ -367,9 +373,9 @@ for (const fx of FILL_LIST_FIXTURES) {
       // Moving off commits Crushword's cell; then back, so Check is enabled on it.
       await listCells(page, 2).nth(0).tap();
       await cell.tap();
-      await expect(cell).not.toHaveClass(/\bcorrect\b/);
+      await expect(cell).not.toHaveAttribute('data-mark');
       await tapCheck(page);
-      await expect(cell).toHaveClass(/\bcorrect\b/);
+      await expect(cell).toHaveAttribute('data-mark');
     });
 
     // The row spans the item's width, so a short entry leaves empty row to its right.
@@ -903,7 +909,7 @@ test.describe('crushword', () => {
     return id;
   }
 
-  test('Check flashes a wrong cell and marks a right one correct', async ({ page }) => {
+  test('Check flashes a wrong cell and marks it wrong, and marks a right one checked', async ({ page }) => {
     await load(page, 'crushword');
     const right = await page.evaluate(() => {
       const cells = [...document.querySelectorAll('.cell')];
@@ -915,20 +921,20 @@ test.describe('crushword', () => {
     const id = await enterCell(page, wrong);
     await tapCheck(page);
     await expect(page.locator('.flash-wrong-overlay')).toHaveCount(1);
-    await expect(page.locator('#' + id)).not.toHaveClass(/\bcorrect\b/);
+    await expect(page.locator('#' + id)).toHaveAttribute('data-mark', 'wrong');
 
     await page.locator('#drawn-kb [data-key="Backspace"]').first().tap();
     for (const ch of right) await key(page, ch).tap();
     await page.locator('#drawn-kb [data-key="Enter"]:not([data-shift])').tap();
     await page.locator('#' + id).tap();
     await tapCheck(page);
-    await expect(page.locator('#' + id)).toHaveClass(/\bcorrect\b/);
+    await expect(page.locator('#' + id)).toHaveAttribute('data-mark', 'checked');
     expect(await focusedId(page)).toBe('hidden-input');
   });
 
   // Crushword's typed cell composes until committed, so Check commits it itself and the
   // solver needn't move off the cell. A wrong cell flashes on the Clues screen too.
-  test('on the Clues screen, Check works on a just-typed cell and flashes a wrong one', async ({ page }) => {
+  test('on the Clues screen, Check works on a just-typed cell and flashes and marks a wrong one', async ({ page }) => {
     await load(page, 'crushword');
     await openList(page);
     const cell = listCells(page, 2).nth(1);
@@ -945,13 +951,17 @@ test.describe('crushword', () => {
     await expect(page.locator('#help-panel #check-btn')).toBeEnabled();
     await page.locator('#help-panel #check-btn').tap();
     await expect(cell).toHaveClass(/\bflash-wrong\b/);
-    await expect(cell).not.toHaveClass(/\bcorrect\b/);
+    await expect(cell).toHaveAttribute('data-mark', 'wrong');
+    // The slash runs bottom-left to top-right, as the grid's does (markShapes slashLine):
+    // a gradient toward the bottom-right puts its midline on that diagonal.
+    const slash = await cell.evaluate(el => getComputedStyle(el, '::after').backgroundImage);
+    expect(slash).toMatch(/to (right bottom|bottom right)/);
 
     await page.locator('#drawn-kb [data-key="Backspace"]').first().tap();
     await key(page, right).tap();
     await page.locator('#help-btn').tap();
     await page.locator('#help-panel #check-btn').tap();
-    await expect(cell).toHaveClass(/\bcorrect\b/);
+    await expect(cell).toHaveAttribute('data-mark', 'checked');
   });
 
   // The grid's caret has a counterpart in the list, in the cursor's cell only.

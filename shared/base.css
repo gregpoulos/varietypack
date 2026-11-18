@@ -77,9 +77,37 @@ body.has-clue-bar {
   margin: 0 auto;
 }
 
+/* The page column and the clue lists look the same in every tool, so their sizes live
+   here and not in a tool's base.css (docs/ARCHITECTURE.md → "Tool stylesheets"). */
+.puzzle-main { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
+
+.clue-section h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.clue-section :is(ul, ol) { list-style: none; }
+
 .clue-item {
+  display: flex;
+  align-items: baseline;
+  cursor: pointer;
+  margin-bottom: 4px;
+  padding: 2px 6px 2px 2px;
   font-size: 0.875rem;
-  padding: 2px 6px;
+  line-height: 1.4;
+}
+
+/* The number, label or cell range ahead of a clue's text. */
+.clue-num {
+  flex-shrink: 0;
+  min-width: 1.6em;
+  margin-right: 4px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  text-align: right;
 }
 
 .cell        { cursor: pointer; }
@@ -137,6 +165,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 #reveal-puzzle-btn::after { content: 'Reveal puzzle\A Are you sure?'; white-space: pre; }
 #rebus-btn::after { content: 'Rebus'; }
 
+/* Fixed, not absolute: a fixed element is always inside the viewport, so focusing it
+   never scrolls the page. */
 #hidden-input {
   position: fixed;
   left: -9999px;

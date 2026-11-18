@@ -17,7 +17,7 @@ Every puzzle YAML, regardless of tool, starts with these fields:
 | `title` | yes | string | Displayed in the puzzle header and browser tab |
 | `author` | no | string | Displayed in the puzzle header; not empty when present |
 | `date` | no | string or number | Displayed in the puzzle header; not empty when present. A calendar date (`date: 2026-11-10`) needs no quotes. A bare number is shown as YAML reads it (`10.20` shows as 10.2), so quote one that must appear as typed |
-| `instructions` | no | string | Puzzle instructions; supports multiple paragraphs separated by blank lines. Most tools show it between the header and the grid — Snake Charmer places it at the top of the clue column instead, since its layout has no full-width band. Accepts the same markdown subset as `clue` (below). |
+| `instructions` | no | string | Puzzle instructions, shown between the header and the grid; not empty when present; supports multiple paragraphs separated by blank lines. Accepts the same markdown subset as `clue` (below). |
 | `theme` | no | string | Visual theme: `broadsheet`, `skeleton` or `swiss`. The `--theme` flag overrides it. Default `broadsheet`. See "Themes and fonts" |
 
 Beyond these, each tool adds its own puzzle-content fields (e.g. `entries`,
@@ -72,10 +72,6 @@ block becomes its own paragraph in the rendered output.
 images, and bare URLs are not auto-linked — this format is for short
 single-line or short-paragraph text, not documents. Any literal HTML you
 type is escaped, not rendered, so a clue can't inject markup.
-
-Full implementation contract (for anyone extending an engine, not needed
-for authoring): `docs/CROSS_TOOL_SPEC.md` → "Markdown formatting in clue
-and instructions text".
 
 ---
 
@@ -152,7 +148,7 @@ error.
 
 ---
 
-## Rebus cells (multi-letter cells)
+## Rebus cells
 
 Wrap a run of letters in `[...]` to make it occupy a single cell instead of
 one cell per character:
@@ -185,40 +181,11 @@ entry length, grid size, or row/band totals, it's counting *cells*:
 | A bracketed single letter (e.g. `[A]`) | legal and silent — identical to writing bare `A`; harmless if you bracket every cell for visual consistency |
 | A bracketed group of 5 or more letters | warning ("is that intended?") — 4 or fewer is silent |
 
-**Solving a rebus cell (Snake Charmer, Spiral, Marching Bands).** The
-solver presses `Enter` on the cell, types its letters, then presses `Enter`
-again to commit and move on. Moving the cursor off the cell by any other
-means — an arrow key, Tab, Space, or clicking elsewhere — commits it too.
-The **Rebus** button does the same thing for solvers without a keyboard:
-tap it to open the cell (its label becomes **Done**), type the letters, tap
-again to commit. It's always present and always enabled, on every square of
-every puzzle, so it never hints at which squares hold a rebus. Crushword
-has no separate rebus mode — see its own `docs/SPEC.md` for how it handles
-multi-letter cells instead.
-
-**On a phone or tablet,** the page fits one screen: the title, the grid, the active clue
-with ‹ › to step through the clues, and a built-in keyboard (the device's own keyboard
-stays closed). **Clues** swaps the grid for the clue list; tapping a clue there jumps to
-it. The keyboard's bottom row holds the Rebus key (Crushword: Prev and Next cell) and a key to switch
-direction. The options menu has a "Wrap long rows of cells" setting on the Clues screen
-(except in Marching Bands, whose clue list has no cell rows).
-
-**On every device,** the life-ring help menu beside the options menu holds Check cell and
-Reveal cell, Check clue and Reveal clue for the active clue (the active row or band in
-Marching Bands, which never singles out one entry), and Check puzzle and Reveal puzzle
-(which asks for a second click first). It is absent in a muddled puzzle, which
-carries no answers to check against. Reveal fills in the answer. A solver who uses them is
-not stopped from finishing: the completion event reports how many times they checked and
-revealed.
-
 **Each tool adds its own rule for how a rebus cell's *cells* (not letters)
 must agree across the two entries that share it** — see that tool's own
 `docs/SPEC.md` → "Rebus cells" for the specific rule (Snake Charmer's loop
 period, Spiral's reversal, Marching Bands' row/band cross-check,
 Crushword's across/down cross-check plus its `maxCellLetters` cap).
-
-Implementation contract (grammar enforcement, cell-count plumbing) for
-anyone extending an engine: `docs/CROSS_TOOL_SPEC.md` → "Rebus cells".
 
 ---
 
@@ -234,7 +201,7 @@ present in the page data, since the puzzle isn't meant to hide them.
 **Muddling for distribution.** `varietypack muddle <file.yaml>` produces a
 **muddled YAML**: structurally the same as your source file, except every
 entry's `answer:` becomes `length:` (a cell count) and the top level gains
-`hashed: true`, `format: 2`, and `boardHash:`. Everything else — `author`,
+`boardHash:`. Everything else — `author`,
 `date`, `title`, `instructions`, `styles`, and any tool-specific shape
 fields — carries through unchanged. Share the muddled YAML with
 collaborators, playtesters, or test-solvers who need to build the HTML
@@ -244,11 +211,6 @@ themselves without ever seeing the answers. Your source YAML must pass
 Building a muddled YAML always produces a hashed HTML, with no extra flags
 needed — the builder detects `boardHash:` in the input and switches modes
 automatically.
-
-Each tool's own `docs/SPEC.md` → "Hashed mode" documents exactly which
-cells feed that tool's board hash and in what order. Algorithmic detail
-(the hash preimage construction, delimiter choice) lives in
-`docs/CROSS_TOOL_SPEC.md` and `docs/ARCHITECTURE.md`, not here.
 
 ---
 
@@ -303,18 +265,41 @@ See `docs/ARCHITECTURE.md` → "Themes and print" for how to add a new theme
 
 ---
 
-## CLI usage
+## What solvers see
 
-If you'd rather not use a command line, the studio (`npm run build:studio`, then open `studio/build/index.html`) edits, previews and exports puzzles in the browser with the same validators and build; see `README.md` → "Studio".
+**A rebus cell (Snake Charmer, Spiral, Marching Bands).** The
+solver presses `Enter` on the cell, types its letters, then presses `Enter`
+again to commit and move on. Moving the cursor off the cell by any other
+means — an arrow key, Tab, Space, or clicking elsewhere — commits it too.
+The **Rebus** button does the same thing for solvers without a keyboard:
+tap it to open the cell (its label becomes **Done**), type the letters, tap
+again to commit. It's always present and always enabled, on every square of
+every puzzle, so it never hints at which squares hold a rebus. Crushword
+has no separate rebus mode — see its own `docs/SPEC.md` for how it handles
+multi-letter cells instead.
 
-Every tool builds through the same command:
+**On a phone or tablet,** the page fits one screen: the title, the grid, the active clue
+with ‹ › to step through the clues, and a built-in keyboard (the device's own keyboard
+stays closed). **Clues** swaps the grid for the clue list; tapping a clue there jumps to
+it. The keyboard's bottom row steps to the previous and next cell and, except in
+Crushword (which has arrow keys instead), holds the Rebus key and a key to switch
+direction. The options menu has a "Wrap long rows of cells" setting on the Clues screen
+(except in Marching Bands, whose clue list has no cell rows).
 
-```
-varietypack build <input.yaml> [options]
-```
+**On every device,** the life-ring help menu beside the options menu holds Check cell and
+Reveal cell, Check clue and Reveal clue for the active clue (the active row or band in
+Marching Bands, which never singles out one entry), and Check puzzle and Reveal puzzle
+(which asks for a second click first). It is absent in a muddled puzzle, which
+carries no answers to check against. Reveal fills in the answer. A solver who uses them is
+not stopped from finishing: the completion event reports how many times they checked and
+revealed.
 
-Shared options, accepted by every tool, are documented in the root
-`README.md` → "Global options" (`--muddle`, `--theme`, `--font`,
-`--minify`, `--embed-origin`, `-o`/`--output`, `-f`/`--force`, `-h`/`--help`). A few tools also accept
-their own extra flags (e.g. Snake Charmer's `--shape`) — see that tool's
-`docs/SPEC.md`, or run `varietypack build --help`.
+---
+
+## Building
+
+Every tool builds through `varietypack build <input.yaml> [options]`; the options are
+in the README's "Global options", and a tool's own (Snake Charmer's `--shape`) in its
+`docs/SPEC.md`. The studio (`npm run build:studio`, then open
+`studio/build/index.html`) edits, previews and exports puzzles in the browser with the
+same validators and build.

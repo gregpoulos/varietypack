@@ -159,14 +159,14 @@ test('writePuzzlePage: prints buildHtmlFn notes to the injected stderr', () => {
 test('writePuzzlePage: names a block --minify left unminified on the injected stderr, and still writes the page', () => {
   const inPath = writeTmpYaml({ kind: 'stub', title: 'T' });
   const outPath = path.join(os.tmpdir(), `writePuzzlePage-test-skip-${Date.now()}.html`);
-  const nested = 'a { b { color: red; } }';
+  const bad = 'not }{ js';
   let out = '';
   try {
     writePuzzlePage(loadYaml(inPath), inPath, outPath, { minify: true },
-      hooks({ buildHtmlFn: () => `<style>${nested}</style>` }),
+      hooks({ buildHtmlFn: () => `<script>${bad}</script>` }),
       { stderr: { write: chunk => { out += chunk; } } });
-    assert.match(out, new RegExp(`^Note: "${inPath}": a <style> was left unminified: .+\n$`));
-    assert.ok(fs.readFileSync(outPath, 'utf8').includes(nested));
+    assert.match(out, new RegExp(`^Note: "${inPath}": a <script> was left unminified: .+\n$`));
+    assert.ok(fs.readFileSync(outPath, 'utf8').includes(bad));
   } finally {
     fs.rmSync(inPath, { force: true });
     fs.rmSync(outPath, { force: true });

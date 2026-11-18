@@ -5,6 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
+const { openStudio, openStudioFile, downloadText: download, typeBoard: type } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../crushword/src/builder');
 
@@ -18,10 +19,7 @@ const EXAMPLE = path.join(REPO, 'examples/crushword.yaml');
 
 // ---- helpers (cells are (row, column), 1-based) ------------------------------
 
-async function start(page) {
-  await page.goto(studio.url);
-  await expect(page.locator('#welcome')).toBeVisible();
-}
+const start = (page) => openStudio(page, studio.url);
 
 async function newGrid(page, rows = 5, cols = 5) {
   await start(page);
@@ -32,11 +30,7 @@ async function newGrid(page, rows = 5, cols = 5) {
   await expect(page.locator('#board')).toBeVisible();
 }
 
-async function openFile(page, file) {
-  await start(page);
-  await page.setInputFiles('#open-input', file);
-  await expect(page.locator('#board')).toBeVisible();
-}
+const openFile = (page, file) => openStudioFile(page, studio.url, file);
 
 const cell = (page, r, c) => page.locator(`rect.grid-cell[data-r="${r - 1}"][data-c="${c - 1}"]`);
 const block = (page, r, c) => page.locator(`rect.grid-block[data-r="${r - 1}"][data-c="${c - 1}"]`);
@@ -45,15 +39,6 @@ const letter = (page, r, c) => page.locator(`text.grid-letter[data-r="${r - 1}"]
 async function caretAt(page) {
   const box = await page.locator('rect.grid-caret').evaluate(el => ({ x: +el.getAttribute('x'), y: +el.getAttribute('y') }));
   return { r: Math.round((box.y - 1.5 - 6) / 40) + 1, c: Math.round((box.x - 1.5 - 28) / 40) + 1 };
-}
-
-async function type(page, letters) {
-  for (const ch of letters) await page.locator('#board-input').fill(ch);
-}
-
-async function download(page, selector) {
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator(selector).click()]);
-  return fs.readFileSync(await dl.path(), 'utf8');
 }
 
 async function fillLetters(page, text) {

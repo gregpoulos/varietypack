@@ -32,12 +32,13 @@ function makeBtn() {
 
 // Minimal harness: composing is a plain flag the fake onToggle flips, so the tests
 // exercise the button's own logic rather than a stubbed composer.
-function harness() {
-  const state = { composing: false, toggles: 0, refocused: 0 };
+function harness({ canCompose = true } = {}) {
+  const state = { composing: false, toggles: 0, refocused: 0, canCompose };
   const btn = makeBtn();
   const api = setupRebusButton(btn, {
     onToggle:    () => { state.toggles++; state.composing = !state.composing; },
     isComposing: () => state.composing,
+    canCompose:  () => state.canCompose,
     refocus:     () => { state.refocused++; },
   });
   return { btn, state, api };
@@ -86,19 +87,34 @@ test('sync() restores the label when composition ended elsewhere', () => {
   assert.strictEqual(btn.textContent, 'Rebus');
 });
 
-// The spoiler rule: nothing in the UI may vary with a cell's capacity. #check-btn is
-// disabled per-cell and must not be copied here.
-test('the button is never disabled, in any state', () => {
+// The spoiler rule: nothing in the UI may vary with a cell's capacity, so the button is
+// enabled on every cell composition can open, rebus or not.
+test('the button is enabled wherever composition can open, composing or not', () => {
   const { btn, api } = harness();
   assert.strictEqual(btn.disabled, false);
   btn.click();               // composing
   api.sync();
   assert.strictEqual(btn.disabled, false);
+});
 
-  const solvedCase = harness({ solved: true });
-  solvedCase.btn.click();
-  solvedCase.api.sync();
-  assert.strictEqual(solvedCase.btn.disabled, false);
+// A locked cell or a solved board refuses composition (composer.toggle); the button says
+// so rather than looking live and doing nothing. Both are already plain to see, so this
+// reveals nothing about capacity.
+test('the button is disabled where composition is refused', () => {
+  const { btn, state, api } = harness({ canCompose: false });
+  assert.strictEqual(btn.disabled, true);
+  state.canCompose = true;
+  api.sync();
+  assert.strictEqual(btn.disabled, false);
+});
+
+// Done must stay pressable: it commits, which toggle allows on any composing cell.
+test('the button stays enabled while composing, even where composition could not open', () => {
+  const { btn, state, api } = harness();
+  btn.click();               // composing
+  state.canCompose = false;
+  api.sync();
+  assert.strictEqual(btn.disabled, false);
 });
 
 // Needed for the keyboard path: a Tab-focused button keeps focus after activation, so

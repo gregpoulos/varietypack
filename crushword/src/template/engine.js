@@ -8,7 +8,7 @@ import {
   clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
   scrollByKey, scrollIntoViewBelow, setupCellClicks, setupClueBar, setupCongratsDialog,
   setupControls, setupEmbedResize, setupKeydown, setupKeysOverlay, setupStorage,
-  storageKey, svgEl
+  setupMarkLayer, storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
 import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
 import {
@@ -111,11 +111,12 @@ function init() {
     for (let c = 0; c < COLS; c++)
       if (isOpenCell(r, c)) CELL_IDS.push(idOf(r, c));
 
-  // Each cell's letter and correct mark (makeCellStore, shared/engine-state.mjs).
+  // Each cell's letter and mark (makeCellStore, shared/engine-state.mjs).
   const cells = makeCellStore({
     ids: CELL_IDS, cellEl: n => cellRects[n], letterEl: n => letterTexts[n], show: setLetterDisplay,
+    drawMark: (n, mark) => markShapes.draw(n, mark),
   });
-  const { getCellLetter, setCellLetter, setCorrect, isCorrect } = cells;
+  const { getCellLetter, setCellLetter, setMark, getMark, isConfirmedRight, isLocked } = cells;
 
   // Composing state only. Content is edited at cursorPos by the input and
   // Backspace handlers, so composer.typeLetter/backspace (end-only) and hence
@@ -124,18 +125,23 @@ function init() {
     getContent: n => getCellLetter(n),
     onCommit:   () => { syncUI(); checker.checkIfFilled(); saveState(); },
     isSolved:   () => latch.solved,
+    isLocked,
   });
 
   const checker = makeBoardChecker({
     cellIds:             CELL_IDS,
     getContent:          n => getCellLetter(n),
     isCellFilled:        n => composer.isCellFilled(n),
-    isCellMarkedCorrect: isCorrect,
+    isCellConfirmedRight: isConfirmedRight,
+    isCellMarkedWrong:   n => cells.isMarkedWrong(n),
+    // Every typed cell composes until committed, and beforeCheck commits it into the
+    // check, so Check is enabled on one holding content.
+    checkComposing:      true,
     hashed:              !!data.hashed,
     getExpected:         n => data.letters && data.letters[n - 1],
     getBoardHash:        () => data.boardHash,
     markSolved: () => {
-      cells.markAllCorrect();
+      svg.classList.add('solved');
       for (const li of Object.values(acrossClueItems)) li.classList.add('correct');
       for (const li of Object.values(downClueItems))   li.classList.add('correct');
     },
@@ -299,14 +305,19 @@ function init() {
   svg.setAttribute('height', svgHeight);
   svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
 
+  // Layer groups, painted bottom to top in the order svg.append lists them.
+  // flashLayer holds wrong-guess flash overlays (see flashWrong) above the cells.
   const cellsLayer   = svgEl('g', { id: 'cells-layer' });
   const circlesLayer = svgEl('g', { id: 'circles-layer' });
   const flashLayer   = svgEl('g', { id: 'flash-layer' });
+  // Drawn by the cell store whenever a mark changes (setupMarkLayer).
+  const markLayer    = svgEl('g', { class: 'mark-layer' });
+  const markShapes   = setupMarkLayer(markLayer, n => cellRects[n]);
   // Its own layer: resetBoard empties flashLayer, and letters paint over it.
   const caretLayer   = svgEl('g', { id: 'caret-layer' });
   const lettersLayer = svgEl('g', { id: 'letters-layer' });
   const labelsLayer  = svgEl('g', { id: 'labels-layer' });
-  svg.append(cellsLayer, circlesLayer, flashLayer, caretLayer, lettersLayer, labelsLayer);
+  svg.append(cellsLayer, circlesLayer, flashLayer, markLayer, caretLayer, lettersLayer, labelsLayer);
 
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -407,8 +418,7 @@ function init() {
   buildClueList(data.down,   maps.down.order,   downCluesList,   downClueItems,   'down');
 
   // ── Event wiring ──────────────────────────────────────────────────────────
-  // The page's static elements. Logic functions above use them (focusCell calls
-  // refocus, syncUI writes the bar); they first run in Restore & focus, after this.
+  // The page's static elements, which logic functions above read once they run.
   const hiddenInput = document.getElementById('hidden-input');
   const refocus = () => hiddenInput.focus({ preventScroll: true });
 
@@ -471,9 +481,11 @@ function init() {
       // cell and apply there. Move before editing: composer.toggle doesn't
       // commit a different composing cell, so editing first would leave the
       // cell being left stuck composing.
+      // A locked cell counts as empty: Backspace steps back from anywhere in it, and
+      // deletes nothing from a locked cell it lands on (makeCellStore's isLocked).
       e.preventDefault();
-      if (cursorPos === 0) focusCell(prevCell(maps, activeCell, direction));
-      if (cursorPos > 0) {
+      if (cursorPos === 0 || isLocked(activeCell)) focusCell(prevCell(maps, activeCell, direction));
+      if (cursorPos > 0 && !isLocked(activeCell)) {
         const r = deleteBefore(getCellLetter(activeCell), cursorPos, e.altKey);
         editActiveCell(r.content, r.pos);
         syncUI();
@@ -487,6 +499,7 @@ function init() {
       // confirm and advance to the next cell's front, dropping anything past
       // the cursor as a stale guess.
       e.preventDefault();
+      // setCellLetter leaves a locked cell whole, wherever the cursor sits in it.
       const content = getCellLetter(activeCell);
       if (cursorPos < content.length) setCellLetter(activeCell, content.slice(0, cursorPos));
       focusCell(nextCell(maps, activeCell, direction), 0);
@@ -514,6 +527,13 @@ function init() {
     hiddenInput.value = '';
     if (latch.solved || !typed) return;
     timer.onFirstInput();
+    // A locked cell takes no letters: they are dropped, and the cursor steps to the next
+    // cell (docs/CROSS_TOOL_SPEC.md → "Locked cells" says why Crushword needs this).
+    if (isLocked(activeCell)) {
+      focusCell(nextCell(maps, activeCell, direction), 0);
+      saveState();
+      return;
+    }
     // Per character (typeAt), since a paste or autocomplete can deliver
     // several; whatever's left once the cursor reaches the cap is dropped.
     for (const ch of typed) {
@@ -541,6 +561,7 @@ function init() {
       composer, clearState, timer, latch, helpRecord,
       clearBoard() {
         cells.clearCells();
+        svg.classList.remove('solved');
         flashLayer.replaceChildren();
         for (const li of Object.values(acrossClueItems)) li.classList.remove('correct');
         for (const li of Object.values(downClueItems))   li.classList.remove('correct');
@@ -550,11 +571,10 @@ function init() {
     });
   }
 
-  // The help menu's check and reveal actions (shared/engine-state.mjs → makeHelpActions):
-  // one pair over any set of cells, behind every row. Its deps are all defined above;
-  // `phone` is read when a wrong check flashes, long after init has set it.
+  // The help menu's actions (makeHelpActions). `phone` is read only when a wrong check
+  // flashes, long after init has set it.
   const helpActions = makeHelpActions({
-    checker, composer, helpRecord, setCellLetter, setCorrect, saveState, syncUI, refocus,
+    checker, composer, helpRecord, setCellLetter, setMark, saveState, syncUI, refocus,
     // A typed cell is committed into the check, as moving off it would.
     beforeCheck() { if (composer.isComposing(activeCell)) composer.toggle(activeCell); },
     flashWrong(wrong) {
@@ -568,7 +588,6 @@ function init() {
     checker, hashed: data.hashed, helpActions,
     activeCell: () => activeCell,
     clueCells: activeContextCells,
-    canCheck: n => checker.canCheck(n) || (composer.isComposing(n) && !isCorrect(n)),
     onClear: resetBoard, refocus,
   });
 
@@ -588,7 +607,7 @@ function init() {
     fillList: {
       items: fillItems,
       getLetter: getCellLetter,
-      isCorrect,
+      getMark,
       onCellTap: (i, j) => { direction = fillItems[i].dir; focusCell(fillItems[i].cells[j]); },
     },
     onGridShown: () => {

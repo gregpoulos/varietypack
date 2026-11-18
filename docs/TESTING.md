@@ -39,6 +39,10 @@ cheapest layer that can catch what you changed:
 | Documentation only | `npm test` | seconds |
 | Before merging a change to page behavior, layout or `shared/` | `npm run test:e2e:mac`, then `npm run test:e2e:linux` | the slowest option |
 
+**A change whose built pages are byte-identical to `main`'s needs no e2e.** Build every
+affected example and fixture on the branch and in a `main` worktree, and `cmp` the HTML.
+Identical pages can't behave differently.
+
 Together, those two pre-merge commands run the full matrix, split by platform.
 `test:e2e:mac` runs Chromium and WebKit natively. `test:e2e:linux` runs Firefox and the
 phone projects on Linux in Docker, in the Playwright image matching the installed
@@ -103,17 +107,12 @@ Firefox on a phone by hand.
 
 ## Fixtures
 
-Fixture HTMLs live in `<tool>/test/fixtures/` and are derived from the YAMLs next
-to them; the built HTMLs are gitignored. After template changes (`engine.js`,
-`index.html`, `*.css`), rebuild from the repo root. `varietypack build` refuses
-to overwrite, so pass `-f`:
+Fixtures are the YAMLs in `<tool>/test/fixtures/`; every test builds its own HTML from
+them. To look at one in a browser, build it into a scratch directory:
 
 ```fish
-node cli.js build <tool>/test/fixtures -f
+node cli.js build <tool>/test/fixtures -o <scratch-dir>/
 ```
-
-A forgotten rebuild leaves a hand-opened fixture showing old output. E2E isn't
-affected: each e2e spec builds its own HTML into a temp directory.
 
 What makes a representative fixture varies too much between formats to have hard
 rules, so settle the target properties before writing any YAML: how many fixtures
@@ -121,6 +120,14 @@ and their cell counts; the range of entry lengths; the range of clue lengths
 (including whether any should wrap to two lines); entries per direction; any cell
 styling (such as circles); and whether to include `hashed` or `instructions`
 variants.
+
+### Helpers
+
+Shared test helpers live in three files; use them instead of copying. `test/helpers.js`
+holds the CLI and build helpers (`runCli`, `tmpDir` with exit cleanup, `puzzleDataOf`,
+`buildPuzzleFile`). `studio/test/helpers.js` holds the model-test helpers (`deepFreeze`,
+`commandRunner`). `e2e/helpers.js` holds the Playwright helpers: board solving, studio
+page setup and downloads, and `buildVariant` for a fixture edited and rebuilt.
 
 ## Reproducing a CI failure on Linux
 
@@ -220,4 +227,6 @@ something safe.
 **Verifying a pure reorder or rename in an engine.** Diff the *sorted,
 comment-stripped* statement lines (old versus new). An empty diff proves only
 that order changed; a rename-only diff proves just the rename. This is strong
-evidence where `node:test` can't reach.
+evidence where `node:test` can't reach. For comment-only edits, compare
+`esbuild.transformSync(code, { minify: true })` of the old and new file (`loader: 'css'`
+for a stylesheet): equal output proves no code changed.

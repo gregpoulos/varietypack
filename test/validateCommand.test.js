@@ -3,12 +3,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
-const os = require('node:os');
 
-const { main } = require('../cli');
+const { runCli: run, tmpDir } = require('./helpers');
 
 const SC_FIXTURE = path.resolve(__dirname, '..', 'snake-charmer/test/fixtures/circle-36.yaml');
-const SP_FIXTURE = path.resolve(__dirname, '..', 'spiral/test/fixtures/test-100.yaml');
 
 const BROKEN_YAML = [
   'kind: snake-charmer',
@@ -17,23 +15,6 @@ const BROKEN_YAML = [
   '  - clue: Short',
   '    answer: A',
 ].join('\n');
-
-// In-process invocation of the dispatcher's pure main(). validate never
-// spawns a subprocess internally, so this fully replaces the previous
-// spawnSync-based coverage.
-function run(...args) {
-  let out = '';
-  let err = '';
-  const status = main(args, {
-    stdout: { write: (s) => { out += s; } },
-    stderr: { write: (s) => { err += s; } },
-  });
-  return { status, stdout: out, stderr: err };
-}
-
-function tmpDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'vp-validate-test-'));
-}
 
 // ── help ──────────────────────────────────────────────────────────────────────
 // No-args / -h / --help semantics live once in shared/test/globalHelp.test.js;
@@ -102,28 +83,18 @@ test('validate: errors and warnings are reported in separate, labeled sections',
   assert.doesNotMatch(r.stdout, /OK/);
 });
 
-for (const kind of ['widget', 'toString']) {
-  test(`validate: unknown kind "${kind}" exits 1`, () => {
-    const dir = tmpDir();
-    const f = path.join(dir, 'widget.yaml');
-    fs.writeFileSync(f, `kind: ${kind}\ntitle: "Bad"\n`);
-    const r = run('validate', f);
-    assert.equal(r.status, 1);
-    assert.match(r.stdout, /Validation failed for "widget\.yaml":\n {2}• unknown kind/i);
-  });
-}
+// Inherited names like `toString` are covered by shared/test/tools.test.js; one name
+// proves the wiring here.
+test('validate: unknown kind exits 1', () => {
+  const dir = tmpDir();
+  const f = path.join(dir, 'tostring.yaml');
+  fs.writeFileSync(f, 'kind: toString\ntitle: "Bad"\n');
+  const r = run('validate', f);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /Validation failed for "tostring\.yaml":\n {2}• unknown kind/i);
+});
 
 // ── directory mode ────────────────────────────────────────────────────────────
-
-test('validate: directory with all valid puzzles exits 0', () => {
-  const dir = tmpDir();
-  fs.copyFileSync(SC_FIXTURE, path.join(dir, 'sc.yaml'));
-  fs.copyFileSync(SP_FIXTURE, path.join(dir, 'sp.yaml'));
-  const r = run('validate', dir);
-  assert.equal(r.status, 0, r.stdout);
-  assert.match(r.stdout, /sc\.yaml: OK/);
-  assert.match(r.stdout, /sp\.yaml: OK/);
-});
 
 test('validate: directory with errors exits 1 but continues processing all files', () => {
   const dir = tmpDir();

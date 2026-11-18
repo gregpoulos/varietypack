@@ -11,7 +11,6 @@
 
 const { test, expect } = require('@playwright/test');
 const { buildPuzzleFile } = require('../test/helpers');
-const yaml = require('js-yaml');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
@@ -19,7 +18,7 @@ const {
   TOOL_FIXTURES, LONG_CLUE, MUDDLED_CW, BAR_TEXT, buildClueVariant, dismissIntro, obstructed, LANDSCAPE,
   TABLET_LANDSCAPE,
 } = require('./mobile');
-const { solveCrushwordBoard, solveRingBoard } = require('./helpers');
+const { solveCrushwordBoard, solveRingBoard, buildVariant } = require('./helpers');
 
 const EPS = 1;
 
@@ -40,10 +39,7 @@ test.beforeAll(() => {
     ['crushword-long-title', { title: 'An exceedingly long title that could never fit on a single line of the strip' }],
     ['crushword-instructions', { instructions: 'Every answer reads in both directions.' }],
   ]) {
-    const yamlPath = path.join(tmpDir, name + '.yaml');
-    fs.writeFileSync(yamlPath, yaml.dump({ ...yaml.load(fs.readFileSync(cw.yamlPath, 'utf8')), ...extra }));
-    htmlPaths[name] = path.join(tmpDir, name + '.html');
-    buildPuzzleFile(yamlPath, htmlPaths[name]);
+    htmlPaths[name] = buildVariant(cw.yamlPath, p => ({ ...p, ...extra }), name, tmpDir);
   }
 });
 test.afterAll(() => {

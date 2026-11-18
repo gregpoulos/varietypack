@@ -25,95 +25,69 @@ function makeLatch(opts = {}) {
   return { latch, events, msgs, targets };
 }
 
-test('check does not fire when isSolved is false', () => {
-  const { latch, events } = makeLatch();
-  latch.check(false);
-  assert.strictEqual(events.length, 0);
-});
+// ── the fired event ──────────────────────────────────────────────────────────
 
-test('check fires exactly once when isSolved is true', () => {
-  const { latch, events } = makeLatch();
-  latch.check(true);
-  latch.check(true); // second call — must not fire again
-  assert.strictEqual(events.length, 1);
-});
-
-test('sealIfSolved(true) suppresses all future check() calls', () => {
-  const { latch, events } = makeLatch();
-  latch.sealIfSolved(true);
-  latch.check(true);
-  assert.strictEqual(events.length, 0);
-});
-
-test('sealIfSolved(false) does not suppress subsequent check()', () => {
-  const { latch, events } = makeLatch();
-  latch.sealIfSolved(false);
-  latch.check(true);
-  assert.strictEqual(events.length, 1);
-});
-
-test('fired CustomEvent has type varietypack:complete', () => {
-  const { latch, events } = makeLatch();
-  latch.check(true);
-  assert.strictEqual(events[0].type, 'varietypack:complete');
-});
-
-test('CustomEvent detail contains all required fields', () => {
-  const { latch, events } = makeLatch({
+test('check fires one varietypack:complete event, with every detail field read at fire time', () => {
+  let elapsed = 0;
+  let counts = { checks: 0, reveals: 0 };
+  const { latch, events, msgs } = makeLatch({
     kind: 'spiral', title: 'My Puzzle', date: '2026-01',
     getBoardHash: () => 'deadbeef',
     getSolution:  () => 'thesolution',
-    getElapsedMs: () => 42000,
+    getElapsedMs: () => elapsed,
+    getHelp:      () => counts,
   });
+  elapsed = 99999;                          // changed after the latch was built
+  counts = { checks: 5, reveals: 1 };
   latch.check(true);
+  assert.strictEqual(events.length, 1);
+  assert.strictEqual(events[0].type, 'varietypack:complete');
   const { detail } = events[0];
   assert.strictEqual(detail.kind,      'spiral');
   assert.strictEqual(detail.title,     'My Puzzle');
   assert.strictEqual(detail.date,      '2026-01');
   assert.strictEqual(detail.boardHash, 'deadbeef');
   assert.strictEqual(detail.solution,  'thesolution');
-  assert.strictEqual(detail.timeMs,    42000);
+  assert.strictEqual(detail.timeMs,    99999);
+  assert.strictEqual(detail.checks,    5);
+  assert.strictEqual(detail.reveals,   1);
+  // The posted message carries the help counts too.
+  assert.strictEqual(msgs[0].checks,  5);
+  assert.strictEqual(msgs[0].reveals, 1);
 });
 
-test('CustomEvent detail.timeMs comes from getElapsedMs at fire time', () => {
-  let elapsed = 0;
-  const { latch, events } = makeLatch({ getElapsedMs: () => elapsed });
-  elapsed = 99999;
-  latch.check(true);
-  assert.strictEqual(events[0].detail.timeMs, 99999);
-});
-
-test('postMessage payload matches detail minus solution', () => {
-  const { latch, msgs } = makeLatch({
-    kind: 'marching-bands', title: 'T', date: '2026',
-    getBoardHash: () => 'hash1',
-    getSolution:  () => 'sol',
-    getElapsedMs: () => 5000,
+test('without embedOrigin, the message goes to "*" without the solution', () => {
+  const { latch, msgs, targets } = makeLatch({
+    kind: 'marching-bands', getBoardHash: () => 'hash1', getElapsedMs: () => 5000,
   });
   latch.check(true);
   assert.strictEqual(msgs.length, 1);
-  const msg = msgs[0];
-  assert.strictEqual(msg.type,      'varietypack:complete');
-  assert.strictEqual(msg.kind,      'marching-bands');
-  assert.strictEqual(msg.boardHash, 'hash1');
-  assert.strictEqual(msg.timeMs,    5000);
-  assert.strictEqual(msg.solution,  undefined); // must not be present
+  assert.strictEqual(targets[0], '*');
+  assert.strictEqual(msgs[0].type,      'varietypack:complete');
+  assert.strictEqual(msgs[0].kind,      'marching-bands');
+  assert.strictEqual(msgs[0].boardHash, 'hash1');
+  assert.strictEqual(msgs[0].timeMs,    5000);
+  assert.ok(!('solution' in msgs[0]));
 });
 
-test('reset() allows check() to fire again after sealIfSolved sealed the latch', () => {
-  const { latch, events } = makeLatch();
-  latch.sealIfSolved(true);
-  latch.reset();
+test('with embedOrigin, posts once to that origin, including the solution', () => {
+  const { latch, msgs, targets } = makeLatch({ embedOrigin: 'https://h.example', getSolution: () => 'a.b.c' });
   latch.check(true);
-  assert.strictEqual(events.length, 1);
+  latch.check(true);
+  assert.equal(msgs.length, 1);
+  assert.equal(targets[0], 'https://h.example');
+  assert.equal(msgs[0].solution, 'a.b.c');
+  assert.equal(msgs[0].type, 'varietypack:complete');
 });
 
-test('reset() allows check() to fire again after it already fired', () => {
-  const { latch, events } = makeLatch();
-  latch.check(true);  // fires once
-  latch.reset();
-  latch.check(true);  // should fire again
-  assert.strictEqual(events.length, 2);
+test('the help counts go to the embed host too, beside the solution', () => {
+  const { latch, msgs } = makeLatch({
+    embedOrigin: 'https://host.example', getHelp: () => ({ checks: 1, reveals: 0 }),
+  });
+  latch.check(true);
+  assert.strictEqual(msgs[0].checks, 1);
+  assert.strictEqual(msgs[0].reveals, 0);
+  assert.ok('solution' in msgs[0]);
 });
 
 test('CustomEvent options: bubbles and composed are true', () => {
@@ -143,98 +117,53 @@ test('CustomEvent options: bubbles and composed are true', () => {
   }
 });
 
-test('latch.solved is false initially and true after check fires', () => {
-  const { latch } = makeLatch();
+// ── firing, sealing and resetting ────────────────────────────────────────────
+
+test('check fires once and calls onComplete once, and only when solved', () => {
+  const calls = [];
+  const { latch, events } = makeLatch({ getElapsedMs: () => 5000, onComplete: (ms) => calls.push(ms) });
+  assert.strictEqual(latch.solved, false);
+  latch.check(false);
+  assert.strictEqual(events.length, 0);
+  assert.strictEqual(calls.length, 0);
   assert.strictEqual(latch.solved, false);
   latch.check(true);
+  latch.check(true); // second call: must not fire again
+  assert.strictEqual(events.length, 1);
+  assert.deepStrictEqual(calls, [5000]);
   assert.strictEqual(latch.solved, true);
 });
 
-test('latch.solved becomes false again after reset()', () => {
-  const { latch } = makeLatch();
+test('reset re-opens a fired or sealed latch, clearing solved, and onComplete runs again', () => {
+  const calls = [];
+  const { latch, events } = makeLatch({ onComplete: (ms) => calls.push(ms) });
   latch.check(true);
   latch.reset();
   assert.strictEqual(latch.solved, false);
-});
+  latch.check(true);
+  assert.strictEqual(events.length, 2);
+  assert.strictEqual(calls.length, 2);
 
-test('onComplete is called with timeMs on first solve', () => {
-  const calls = [];
-  const { latch } = makeLatch({
-    getElapsedMs: () => 5000,
-    onComplete: (ms) => calls.push(ms),
-  });
-  latch.check(true);
-  assert.strictEqual(calls.length, 1);
-  assert.strictEqual(calls[0], 5000);
-});
-
-test('onComplete is not called a second time without reset', () => {
-  const calls = [];
-  const { latch } = makeLatch({ onComplete: (ms) => calls.push(ms) });
-  latch.check(true);
-  latch.check(true);
-  assert.strictEqual(calls.length, 1);
-});
-
-test('onComplete is called again after reset() then check(true)', () => {
-  const calls = [];
-  const { latch } = makeLatch({ onComplete: (ms) => calls.push(ms) });
-  latch.check(true);
+  latch.reset();
+  latch.sealIfSolved(true);
   latch.reset();
   latch.check(true);
-  assert.strictEqual(calls.length, 2);
+  assert.strictEqual(events.length, 3);
 });
 
-test('sealIfSolved(true) sets latch.solved without calling onComplete', () => {
+test('sealIfSolved(true) suppresses all future check() calls and sets solved without onComplete', () => {
   const calls = [];
-  const { latch } = makeLatch({ onComplete: (ms) => calls.push(ms) });
+  const { latch, events } = makeLatch({ onComplete: (ms) => calls.push(ms) });
   latch.sealIfSolved(true);
   assert.strictEqual(latch.solved, true);
+  latch.check(true);
+  assert.strictEqual(events.length, 0);
   assert.strictEqual(calls.length, 0);
 });
 
-test('latch: with embedOrigin, posts once to that origin, including the solution', () => {
-  const { latch, msgs, targets } = makeLatch({ embedOrigin: 'https://h.example', getSolution: () => 'a.b.c' });
+test('sealIfSolved(false) does not suppress subsequent check()', () => {
+  const { latch, events } = makeLatch();
+  latch.sealIfSolved(false);
   latch.check(true);
-  latch.check(true);
-  assert.equal(msgs.length, 1);
-  assert.equal(targets[0], 'https://h.example');
-  assert.equal(msgs[0].solution, 'a.b.c');
-  assert.equal(msgs[0].type, 'varietypack:complete');
-});
-
-test('latch: without embedOrigin, posts once to "*" without the solution', () => {
-  const { latch, msgs, targets } = makeLatch();
-  latch.check(true);
-  assert.equal(msgs.length, 1);
-  assert.equal(targets[0], '*');
-  assert.ok(!('solution' in msgs[0]));
-});
-
-
-test('CustomEvent detail and the posted message carry the help counts', () => {
-  const { latch, events, msgs } = makeLatch({ getHelp: () => ({ checks: 3, reveals: 2 }) });
-  latch.check(true);
-  assert.strictEqual(events[0].detail.checks, 3);
-  assert.strictEqual(events[0].detail.reveals, 2);
-  assert.strictEqual(msgs[0].checks, 3);
-  assert.strictEqual(msgs[0].reveals, 2);
-});
-
-test('the help counts go to the embed host too, beside the solution', () => {
-  const { latch, msgs } = makeLatch({
-    embedOrigin: 'https://host.example', getHelp: () => ({ checks: 1, reveals: 0 }),
-  });
-  latch.check(true);
-  assert.strictEqual(msgs[0].checks, 1);
-  assert.strictEqual(msgs[0].reveals, 0);
-  assert.ok('solution' in msgs[0]);
-});
-
-test('the help counts are read when the latch fires, not when it is built', () => {
-  let counts = { checks: 0, reveals: 0 };
-  const { latch, events } = makeLatch({ getHelp: () => counts });
-  counts = { checks: 5, reveals: 1 };
-  latch.check(true);
-  assert.strictEqual(events[0].detail.checks, 5);
+  assert.strictEqual(events.length, 1);
 });

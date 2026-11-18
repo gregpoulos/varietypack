@@ -5,19 +5,10 @@
    it — no clue-item override is needed here (see docs/CROSS_TOOL_SPEC.md ->
    "Print-mode state erasure"). */
 @media print {
-  .puzzle-main   { padding: 8px 16px; }
-  .puzzle-header { margin-bottom: 8px; }
-  .byline        { font-size: 0.8rem; }
-  #instructions  { font-size: 0.8rem; margin-bottom: 8px; }
-  .clue-section h2 { margin-bottom: 4px; }
-  .clue-item     { padding: 1px 4px; }
-  .cell-num      { fill: #555; }
-
   /* base.css's layout (grid on top, flex column; two clue columns via
      .clue-columns) is already print-appropriate, but @media print shares the
      cascade with screen styles — a narrow-viewport breakpoint could otherwise
-     leak into print. Re-declare both explicitly per docs/ARCHITECTURE.md ->
-     "Explicit display in print rules". */
+     leak into print. Re-declare both explicitly (see print-base.css). */
   .puzzle-body   { display: flex; flex-direction: column; }
   .clue-columns  { display: grid; grid-template-columns: 1fr 1fr; max-width: none; }
   .clue-section  { break-inside: avoid; }

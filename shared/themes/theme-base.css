@@ -57,6 +57,9 @@
   --theme-color-highlight-band-even:  var(--theme-color-highlight);
   --theme-color-active:               #b8d4f5;
   --theme-color-active-stroke:        #1e5799;
+  /* The active clue row or block (Marching Bands' clue groups):
+     a theme whose active shade is too strong over that much area softens it here. */
+  --theme-color-active-clue:          var(--theme-color-active);
   --theme-color-clue-hover:           #eeeeee;
   --theme-color-secondary-entry:      #f0f0f0;
   --theme-clue-radius:                2px;
@@ -65,10 +68,11 @@
   --theme-color-secondary-active:        #7aaed8;
   --theme-color-secondary-active-stroke: #3a72a8;
 
-  /* Correct */
-  --theme-color-correct-bg:     #c8e6c9;
-  --theme-color-correct-stroke: #4caf50;
-  --theme-color-correct-text:   #1a6e22;
+  /* Cell marks: a checked letter's color, the revealed flag and the wrong slash. A mark
+     never touches the cell's fill (theme-components.css → .mark-flag). */
+  --theme-color-checked-text:  #166534;
+  --theme-color-revealed-flag: #166534;
+  --theme-color-wrong-slash:   #991b1b;
 
   /* Filled clue: every cell the clue owns has content, right or wrong — like crossing it
      off by hand. Distinct from Correct above (whole board verified). Defaults are no-ops;
@@ -91,6 +95,9 @@
   --theme-color-congrats-border: #1b5e20;
   --theme-color-congrats-text:   #ffffff;
   --theme-card-radius:           10px;
+
+  /* Phone: the zoomed grid's edge shadow, where more grid lies past the view */
+  --theme-color-edge-shadow: rgba(0, 0, 0, 0.28);
 
   /* Done-wrong */
   --theme-color-wrong-bg:     #fff3e0;

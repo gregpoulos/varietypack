@@ -2,12 +2,6 @@
 
 A Crushword puzzle file is a YAML file describing a standard American crossword: a rectangular grid of open and blocked cells, with clues keyed by the grid's derived numbering, in two directions — **Across** and **Down**. Unlike Marching Bands, entry boundaries are visible to the solver (the numbering itself reveals where each entry starts), so navigation and clue lists work per-entry rather than per-row/band.
 
-Common header fields (`kind`, `title`, `author`, `date`, `instructions`),
-common entry fields (`clue`, `answer`, `styles`), markdown syntax,
-normalization, cell styles, rebus bracket grammar, muddling, themes, and
-CLI usage are all covered in `docs/AUTHORING.md` — this file covers only
-what's specific to Crushword.
-
 ## Fields
 
 | Field | Required | Type | Description |
@@ -18,7 +12,7 @@ what's specific to Crushword.
 | `across` | yes | object | Keyed by clue number (not an array) — see "Grid numbering" below |
 | `down` | yes | object | Keyed by clue number (not an array) — see "Grid numbering" below |
 
-## Rebus cells (multi-letter cells)
+## Rebus cells
 
 See `docs/AUTHORING.md` → "Rebus cells" for the bracket syntax and grammar.
 Crushword has no separate rebus mode or Rebus button — see "Solving a rebus
@@ -26,11 +20,7 @@ cell" below for how it differs from the other three tools.
 
 **Crushword's rule — a crossing Across and Down entry must bracket their shared square identically.** The build cross-checks every board cell where an across and a down slot cross, and rejects the puzzle if the across entry's cell and the down entry's cell disagree — cell for cell, not merely letter for letter split some other way.
 
-**`maxCellLetters`** (default 3) additionally bounds how many letters one bracketed cell may hold — the only tool-level cap on rebus cell width in this repo. It is checked only against source (non-muddled) puzzles.
-
-**Solving a rebus cell.** There's no separate mode to open — a solver just types a cell's letters and moves on when ready, whether that cell needs one letter or several; a thin vertical caret marks where the next keystroke will land. The Left/Right arrow keys move that caret one letter at a time within the cell before crossing into the next or previous one, so fixing a single wrong letter in the middle of a group doesn't require retyping the rest. Moving to another cell — Tab, Space, Enter, or a click elsewhere — confirms whatever's typed there, and a cell also advances on its own once it reaches `maxCellLetters`. Space advances to the next cell landing at its front, treating anything past the cursor in the cell just left as a stale guess and clearing it first. Enter (and Shift+Enter, which moves to the previous cell instead) always keeps everything typed and lands at the end of the target cell's content rather than its front. Typing inserts at the caret while a cell still has room to grow — even one already holding a single letter — so revisiting an established cell and typing adds to it rather than replacing it; only once a cell reaches `maxCellLetters` does typing at the caret overwrite in place instead (at the very end of a full cell, its last letter).
-
-Bracket grammar, error and warning conditions, and how cell counts feed the across/down length checks: see `docs/CROSS_TOOL_SPEC.md` → "Rebus cells".
+**Solving a rebus cell.** There's no separate mode to open — a solver just types a cell's letters and moves on when ready, whether that cell needs one letter or several; a thin vertical caret marks where the next keystroke will land. The Left/Right arrow keys move that caret one letter at a time within the cell before crossing into the next or previous one, so fixing a single wrong letter in the middle of a group doesn't require retyping the rest. Moving to another cell — Tab, Space, Enter, or a click elsewhere — confirms whatever's typed there, and a cell also advances on its own once it reaches `maxCellLetters`. Space advances to the next cell landing at its front, treating anything past the cursor in the cell just left as a stale guess and clearing it first. Enter (and Shift+Enter, which moves to the previous cell instead) always keeps everything typed and lands at the end of the target cell's content rather than its front. A cell confirmed by Check or filled by Reveal is locked: typing on it moves straight to the next cell, Space leaves it whole, and Backspace steps past it without deleting. Typing inserts at the caret while a cell still has room to grow — even one already holding a single letter — so revisiting an established cell and typing adds to it rather than replacing it; only once a cell reaches `maxCellLetters` does typing at the caret overwrite in place instead (at the very end of a full cell, its last letter).
 
 ## Grid numbering
 
@@ -42,8 +32,8 @@ Not every open cell necessarily has an entry in both directions — a cell whose
 
 ## Validation rules
 
-- `kind` must be exactly `"crushword"`
-- `title` must be a non-empty string
+Beyond the rules every format shares (`docs/AUTHORING.md`):
+
 - `grid` must be a non-empty array of equal-length strings containing only `.` and `#`, with at least one open cell
 - `maxCellLetters`, if given, must be a positive integer
 - `across` and `down` must each be an object keyed by clue number (arrays and non-objects are rejected)
@@ -53,9 +43,7 @@ Not every open cell necessarily has an entry in both directions — a cell whose
 - Each slot's cell count (from grid geometry) must match its entry's parsed answer cell count
 - Non-muddled only: no rebus cell may exceed `maxCellLetters` letters
 - Non-muddled only, once every earlier check is clean: at every board cell where an across and a down slot cross, the two entries' cells must be identical — a mismatch names both entries and both cell contents
-- `styles`, if present on an entry, must be an object; each value must be an array of non-negative integers within the answer's cell count
 - A circled cell must be circled on every entry that covers it (error) — its across entry and its down entry
-- Unrecognized style names produce a warning, not an error
 
 **Warnings:**
 
@@ -64,12 +52,6 @@ Not every open cell necessarily has an entry in both directions — a cell whose
 - The grid lacks 180-degree rotational symmetry — a convention, not a rule
 - The grid's open cells are not fully connected (almost always a construction mistake)
 - Non-muddled only, gated behind the same "no earlier error" condition as the cross-check above: a board cell has an across entry with no crossing down entry, or vice versa
-
-## Hashed mode
-
-See `docs/AUTHORING.md` → "Muddling and hashed builds" for what `--muddle` produces and why. Crushword's `boardHash` covers every **open** cell in row-major order (top-left to bottom-right, blocks skipped entirely — not an empty segment), each cell normalized and lowercased individually, then joined with a delimiter so a multi-letter rebus cell can't be mistaken for several single-letter cells. No partial correctness feedback is given until all cells are filled; the complete board is then hashed and compared to `boardHash`.
-
-Crushword has no tool-specific CLI flags — every option comes from the shared set documented in `docs/AUTHORING.md` → "CLI usage", or run `varietypack build --help`.
 
 ## Example
 
@@ -128,8 +110,5 @@ down:
 - Two cells — the bottom-left corner of Down[1] and the top-right corner of Down[4] — have no crossing across entry (their horizontal runs are length 1), which the validator reports as warnings, not errors
 
 ## Notes
-
-Multi-word/hyphenated answers and answer security are covered in
-`docs/AUTHORING.md`.
 
 - **Entry boundaries are visible**: Unlike Marching Bands, Crushword's numbering tells the solver exactly where each entry starts. Tab and Shift+Tab jump between entries, running through the across entries and then the down entries and wrapping, and each clue is individually clickable — there is no row/band-style grouping.

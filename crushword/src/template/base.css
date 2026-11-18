@@ -1,5 +1,3 @@
-.puzzle-main { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
-
 /* Grid on top, clues below — a flanking left/right layout doesn't work once
    cell width scales with maxCellLetters: a puzzle with any rebus capacity
    produces a grid too wide to sit beside two clue columns without one side
@@ -38,35 +36,6 @@
   gap: 0 32px;
   width: 100%;
   max-width: 700px;
-}
-
-.clue-section h2 {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding-bottom: 4px;
-  margin-bottom: 6px;
-}
-
-.clue-section ul { list-style: none; }
-
-.clue-item {
-  display: flex;
-  align-items: baseline;
-  cursor: pointer;
-  margin-bottom: 4px;
-  font-size: 0.85rem;
-  line-height: 1.35;
-  padding: 2px 6px 2px 2px;
-}
-
-.clue-num {
-  font-size: 0.7rem;
-  font-weight: bold;
-  margin-right: 4px;
-  flex-shrink: 0;
-  min-width: 1.6em;
-  text-align: right;
 }
 
 @media (max-width: 600px) {

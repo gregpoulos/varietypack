@@ -35,7 +35,7 @@ test('crossing the slop pans from the start', () => {
   g.down(1, 0, 0, 0);
   assert.deepEqual(g.move(1, 12, 0, 10), [{ type: 'pan', dx: 12, dy: 0 }]);
   assert.deepEqual(g.move(1, 15, 2, 20), [{ type: 'pan', dx: 3, dy: 2 }]);
-  assert.deepEqual(g.up(1, 15, 2, 30), [{ type: 'gestureEnd' }]);
+  assert.deepEqual(g.up(1, 15, 2, 30), [{ type: 'gestureEnd', anchor: null }]);
 });
 
 test('two fingers pinch', () => {
@@ -46,7 +46,7 @@ test('two fingers pinch', () => {
     { type: 'pinch', from: { x: 50, y: 0 }, to: { x: 100, y: 0 }, scale: 2 },
   ]);
   assert.deepEqual(g.up(2, 200, 0, 20), []);
-  assert.deepEqual(g.up(1, 0, 0, 30), [{ type: 'gestureEnd' }]);
+  assert.deepEqual(g.up(1, 0, 0, 30), [{ type: 'gestureEnd', anchor: { x: 100, y: 0 } }]);
 });
 
 test('two fingers that never move are a gesture, not a tap', () => {
@@ -54,7 +54,7 @@ test('two fingers that never move are a gesture, not a tap', () => {
   g.down(1, 0, 0, 0);
   g.down(2, 100, 0, 5);
   assert.deepEqual(g.up(2, 100, 0, 20), []);
-  assert.deepEqual(g.up(1, 0, 0, 30), [{ type: 'gestureEnd' }]);
+  assert.deepEqual(g.up(1, 0, 0, 30), [{ type: 'gestureEnd', anchor: { x: 50, y: 0 } }]);
 });
 
 test('a finger left after a pinch pans without a slop', () => {
@@ -101,7 +101,7 @@ test('a second tap that drags pans', () => {
   tapAt(g, 10, 10, 0);
   assert.deepEqual(g.down(1, 10, 10, 200), []);
   assert.deepEqual(g.move(1, 30, 10, 220), [{ type: 'pan', dx: 20, dy: 0 }]);
-  assert.deepEqual(g.up(1, 30, 10, 250), [{ type: 'gestureEnd' }]);
+  assert.deepEqual(g.up(1, 30, 10, 250), [{ type: 'gestureEnd', anchor: null }]);
 });
 
 test('cancel clears the gesture', () => {
@@ -110,7 +110,7 @@ test('cancel clears the gesture', () => {
   g.down(2, 100, 0, 5);
   g.move(2, 200, 0, 10);
   assert.deepEqual(g.cancel(1), []);
-  assert.deepEqual(g.cancel(2), [{ type: 'gestureEnd' }]);
+  assert.deepEqual(g.cancel(2), [{ type: 'gestureEnd', anchor: { x: 100, y: 0 } }]);
   g.down(1, 10, 10, 1000);
   assert.deepEqual(g.up(1, 10, 10, 1050), [{ type: 'tap', x: 10, y: 10 }]);
 });

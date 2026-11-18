@@ -32,12 +32,6 @@ test('validateCommonHeader: reports a missing or empty title', () => {
   assert.ok(runHeader({ kind: 'spiral' }).errors.some(e => e.includes('"title"')));
 });
 
-test('validateCommonHeader: rejects hashed: in source puzzles (no boardHash), accepts it in muddled', () => {
-  assert.ok(runHeader({ kind: 'spiral', title: 'Hi', hashed: true }).errors.some(e => e.includes('"hashed:"')));
-  assert.ok(runHeader({ kind: 'spiral', title: 'Hi', hashed: false }).errors.some(e => e.includes('"hashed:"')));
-  assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', hashed: true, format: 2, boardHash: 'abc' }).errors, []);
-});
-
 test('validateCommonHeader: author must be a non-empty string when present', () => {
   for (const bad of ['', '   ', 42, ['x', 'y'], { a: 1 }, null]) {
     assert.ok(runHeader({ kind: 'spiral', title: 'Hi', author: bad }).errors
@@ -62,16 +56,6 @@ test('validateCommonHeader: rejects empty/whitespace/non-string instructions, ac
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', instructions: '   ' }).errors.some(e => e.includes('"instructions"')));
   assert.ok(runHeader({ kind: 'spiral', title: 'Hi', instructions: 42 }).errors.some(e => e.includes('"instructions"')));
   assert.deepEqual(runHeader({ kind: 'spiral', title: 'Hi', instructions: 'Go' }).errors, []);
-});
-
-test('validateCommonHeader: format: is rejected in a source puzzle', () => {
-  const { errors } = runHeader({ kind: 'spiral', title: 'T', format: 2 });
-  assert.ok(errors.some(e => /format/.test(e) && /source/.test(e)));
-});
-
-test('validateCommonHeader: a muddled puzzle without format: 2 is rejected', () => {
-  const { errors } = runHeader({ kind: 'spiral', title: 'T', hashed: true, boardHash: 'abc' });
-  assert.ok(errors.some(e => /varietypack muddle/.test(e)));
 });
 
 test('validateCommonHeader: accepts a registered theme', () => {

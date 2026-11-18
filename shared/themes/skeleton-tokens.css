@@ -46,9 +46,9 @@
   --theme-color-secondary-active:        #2a1060;
   --theme-color-secondary-active-stroke: #7c3aed;
 
-  --theme-color-correct-bg:     #14532d;
-  --theme-color-correct-stroke: #16a34a;
-  --theme-color-correct-text:   #4ade80;
+  --theme-color-checked-text:  #4ade80;
+  --theme-color-revealed-flag: #4ade80;
+  --theme-color-wrong-slash:   var(--theme-color-danger);
 
   --theme-color-circle:      #6d28d9;
   --theme-color-curl:        #6d28d9;
@@ -60,6 +60,9 @@
   --theme-color-congrats-bg:     #14532d;
   --theme-color-congrats-border: #16a34a;
   --theme-color-congrats-text:   #4ade80;
+
+  /* A dark shadow vanishes on this dark ground: the edge glows in the accent instead. */
+  --theme-color-edge-shadow: rgba(139, 92, 246, 0.45);
 
   --theme-color-wrong-bg:     #3d1515;
   --theme-color-wrong-border: #dc2626;

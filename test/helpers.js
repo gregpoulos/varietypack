@@ -1,6 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { loadKnownPuzzle } = require('../shared/cli/cliTools');
 const { buildKnownPuzzle } = require('../shared/cli/writePuzzlePage');
 
@@ -22,4 +25,31 @@ function buildPuzzleFile(inputPath, outputPath, options = {}, io) {
   return buildKnownPuzzle(loaded, inputPath, outputPath, options, io);
 }
 
-module.exports = { puzzleDataOf, buildPuzzleFile };
+// In-process invocation of the dispatcher's main(): { status, stdout, stderr }.
+function runCli(...args) {
+  const { main } = require('../cli');   // loaded here so the e2e helpers, which import this file, don't load the CLI
+  let out = '';
+  let err = '';
+  const status = main(args, {
+    stdout: { write: (s) => { out += s; } },
+    stderr: { write: (s) => { err += s; } },
+  });
+  return { status, stdout: out, stderr: err };
+}
+
+// A fresh temp directory, removed when the process exits. A test that spawns a child
+// that writes here must kill the child before the test returns, or the removal can race
+// a write.
+const madeDirs = [];
+function tmpDir(prefix = 'vp-test-') {
+  if (madeDirs.length === 0) {
+    process.once('exit', () => {
+      for (const d of madeDirs) fs.rmSync(d, { recursive: true, force: true });
+    });
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  madeDirs.push(dir);
+  return dir;
+}
+
+module.exports = { puzzleDataOf, buildPuzzleFile, runCli, tmpDir };

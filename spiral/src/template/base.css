@@ -1,10 +1,3 @@
-.puzzle-main {
-  max-width: 1300px;
-  margin: 0 auto;
-  padding: 0 16px 20px;
-}
-
-
 #grid-wrap {
   display: flex;
   justify-content: center;
@@ -45,25 +38,8 @@
   }
 }
 
-.clue-section h2 {
-  font-size: 1rem;
-  font-weight: bold;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.clue-item {
-  display: flex;
-  gap: 8px;
-  cursor: pointer;
-  list-style: none;
-  padding: 2px 6px 2px 2px;
-}
-
+/* A cell range ("12–18.") is wider than a clue number. */
 .clue-range {
   min-width: 5em;
-  flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
-

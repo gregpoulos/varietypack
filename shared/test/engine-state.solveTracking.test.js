@@ -47,29 +47,42 @@ test('the help record setupSolveTracking returns is the one the completion event
 
 // ── syncSolveState ────────────────────────────────────────────────────────────
 
-// Runs syncSolveState on a board in the given state; returns the banner's hidden flag
-// and every value the latch was told.
+// Runs syncSolveState on a board in the given state; returns the banner's hidden flag,
+// every value the latch was told, and how many times the solve was painted.
 function syncOn({ filled, solved }) {
   const doneWrong = { hidden: undefined };
   const told = [];
+  let painted = 0;
   syncSolveState({
-    checker: { isBoardFilled: () => filled, isSolved: () => solved },
+    checker: {
+      isBoardFilled: () => filled, isSolved: () => solved,
+      markSolved: () => { painted++; told.push('painted'); },
+    },
     latch: { check: s => told.push(s) },
     doneWrong,
   });
-  return { bannerHidden: doneWrong.hidden, told };
+  return { bannerHidden: doneWrong.hidden, told: told.filter(t => t !== 'painted'), painted, order: told };
 }
 
 test('syncSolveState: a board with empty cells shows no banner and is not solved', () => {
-  assert.deepEqual(syncOn({ filled: false, solved: false }), { bannerHidden: true, told: [false] });
+  const r = syncOn({ filled: false, solved: false });
+  assert.deepEqual([r.bannerHidden, r.told, r.painted], [true, [false], 0]);
 });
 
 test('syncSolveState: a filled but wrong board shows the done-wrong banner', () => {
-  assert.deepEqual(syncOn({ filled: true, solved: false }), { bannerHidden: false, told: [false] });
+  const r = syncOn({ filled: true, solved: false });
+  assert.deepEqual([r.bannerHidden, r.told, r.painted], [false, [false], 0]);
 });
 
 test('syncSolveState: a solved board hides the banner and tells the latch', () => {
-  assert.deepEqual(syncOn({ filled: true, solved: true }), { bannerHidden: true, told: [true] });
+  const r = syncOn({ filled: true, solved: true });
+  assert.deepEqual([r.bannerHidden, r.told], [true, [true]]);
+});
+
+// The solve is painted where it is detected, so no path can announce a solve (the latch)
+// without painting it; painting first means the card opens over a painted board.
+test('syncSolveState: a solved board is painted before the latch hears it', () => {
+  assert.deepEqual(syncOn({ filled: true, solved: true }).order, ['painted', true]);
 });
 
 // A plain and a hashed build of one puzzle share a storage key, so a hashed page can

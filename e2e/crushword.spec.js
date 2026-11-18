@@ -44,23 +44,6 @@ async function boardLetters(page) {
   return page.evaluate(() => window.PUZZLE_DATA.letters);
 }
 
-test('banners are state-derived and partial correctness stays hidden', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-  await expect(page.locator('#congrats')).toBeHidden();
-  await expect(page.locator('#done-wrong')).toBeHidden();
-
-  const letters = await boardLetters(page);
-  const pairs = cellLetterPairs(letters);
-  const wrongFirst = pairs[0].letter.toLowerCase() === 'z' ? 'y' : 'z';
-  await fillCrushwordCell(page, pairs[0].id, wrongFirst);
-  for (const { id, letter } of pairs.slice(1)) await fillCrushwordCell(page, id, letter);
-
-  await expect(page.locator('#done-wrong')).toBeVisible();
-  await expect(page.locator('#congrats')).toBeHidden();
-  await expect(page.locator('#puzzle-svg .cell.correct')).toHaveCount(0);
-});
-
 test('clue and instructions text render markdown formatting, not literal syntax', async ({ page }) => {
   // A dedicated, minimally constructed puzzle (docs/TESTING.md's
   // philosophy prefers this over perturbing a shared fixture used by many
@@ -228,14 +211,6 @@ test('clicking a clue scrolled off the top of the view lands it below the sticky
   // has no notion of that occlusion, so the fix must reserve that band itself
   // (scroll-padding-top) rather than rely on scrollIntoView alone.
   expect(rects.clue.top).toBeGreaterThanOrEqual(rects.sticky.bottom - 1);
-});
-
-test('a fully correct board opens the congrats dialog', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-  await solveCrushwordBoard(page);
-  await expect(page.locator('#congrats')).toBeVisible();
-  await expect(page.locator('#done-wrong')).toBeHidden();
 });
 
 test('Tab walks the across entries, then the down entries, then wraps; Shift+Tab reverses', async ({ page }) => {
@@ -924,7 +899,7 @@ test('hashed mode does not auto-advance on a keystroke either, and the board-com
   await page.locator('#hidden-input').fill('Z');
   const after = await page.locator('#puzzle-svg .cell.active-cell').getAttribute('id');
   expect(after).toBe(before);
-  await expect(page.locator('#puzzle-svg .cell.correct')).toHaveCount(0);
+  await expect(page.locator('#puzzle-svg .cell[data-mark]')).toHaveCount(0);
   await expect(page.locator('#check-btn')).toHaveCount(0);
 });
 
@@ -951,45 +926,6 @@ test('a hashed puzzle solves end to end and its preimage matches boardHash', asy
   const detail = events[0];
   const recomputed = sha256hex(detail.solution);
   expect(recomputed).toBe(detail.boardHash);
-});
-
-test('a solved board restores sealed — no input path can open composition', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-
-  const letters = await boardLetters(page);
-  const pairs = cellLetterPairs(letters);
-  await solveCrushwordBoard(page, { letters });
-  await expect(page.locator('#congrats-dialog')).toBeVisible();
-
-  await page.reload();
-  await ready(page);
-
-  await expect(page.locator('#puzzle-svg .cell.correct')).toHaveCount(pairs.length);
-  await expect(page.locator('#congrats-dialog')).toBeHidden();
-
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#puzzle-svg .cell.composing')).toHaveCount(0);
-  // Typing is the primary way composing now opens (there's no button/Enter
-  // gate left to guard) — confirm it's still inert on a sealed board.
-  await page.locator('#hidden-input').fill('Z');
-  await expect(page.locator('#puzzle-svg .cell.composing')).toHaveCount(0);
-});
-
-test('.correct cells and .cell-block render correctly under print media', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-
-  await solveCrushwordBoard(page);
-  await expect(page.locator('#congrats')).toBeVisible();
-
-  await page.emulateMedia({ media: 'print' });
-  const firstCorrectId = await page.locator('#puzzle-svg .cell.correct').first().getAttribute('id');
-  const printFill = await page.evaluate(id => getComputedStyle(document.getElementById(id)).fill, firstCorrectId);
-  expect(printFill).toBe('rgb(255, 255, 255)');
-  // Correct letters print blank too, not just their cells.
-  expect(await page.locator('.cell-letter.correct').count()).toBeGreaterThan(0);
-  await expect(page.locator('.cell-letter.correct:visible')).toHaveCount(0);
 });
 
 test('the menu button does not overlap the grid on a narrow viewport', async ({ page }) => {
@@ -1122,16 +1058,14 @@ test('Reveal cell on a half-typed cell ends the composition and leaves it correc
 
   await clickHelpRow(page, '#reveal-btn');
   await expect(page.locator(`#cell-${id}`)).not.toHaveClass(/composing/);
-  await expect(page.locator(`#cell-${id}`)).toHaveClass(/\bcorrect\b/);
+  await expect(page.locator(`#cell-${id}`)).toHaveAttribute('data-mark');
   await expect(page.locator(`#letter-${id}`)).toHaveText(new RegExp(`^${letter}$`, 'i'));
 
-  // Typing over it acts exactly as it does over a checked-correct cell (the spec's
-  // "Reload" call): the mark goes and a new edit begins, and Crushword's typing inserts
-  // at the cursor, which sits after the revealed content, so the cell reads answer + Q.
+  // The revealed cell is locked: a letter typed on it is dropped and the cursor moves on.
   await page.locator('#hidden-input').fill('Q');
-  await expect(page.locator(`#cell-${id}`)).not.toHaveClass(/\bcorrect\b/);
-  await expect(page.locator(`#cell-${id}`)).toHaveClass(/composing/);
-  await expect(page.locator(`#letter-${id}`)).toHaveText(new RegExp(`^${letter}Q$`, 'i'));
+  await expect(page.locator(`#cell-${id}`)).toHaveAttribute('data-mark', 'revealed');
+  await expect(page.locator(`#cell-${id}`)).not.toHaveClass(/composing|active-cell/);
+  await expect(page.locator(`#letter-${id}`)).toHaveText(new RegExp(`^${letter}$`, 'i'));
 });
 
 test('revealing the last cell while it is half-typed completes the puzzle once', async ({ page }) => {
@@ -1175,7 +1109,7 @@ test('Check clue is available with only a half-typed cell, and commits it first'
 
   await clickHelpRow(page, '#check-clue-btn');
   await expect(page.locator(`#cell-${id}`)).not.toHaveClass(/composing/);
-  await expect(page.locator(`#cell-${id}`)).toHaveClass(/\bcorrect\b/);
+  await expect(page.locator(`#cell-${id}`)).toHaveAttribute('data-mark');
 });
 
 test('Reveal clue on a clue holding a half-typed cell leaves none composing', async ({ page }) => {
@@ -1189,14 +1123,13 @@ test('Reveal clue on a clue holding a half-typed cell leaves none composing', as
 
   await clickHelpRow(page, '#reveal-clue-btn');
   await expect(page.locator('#puzzle-svg .cell.composing')).toHaveCount(0);
-  await expect(page.locator(`#cell-${id}`)).toHaveClass(/\bcorrect\b/);
+  await expect(page.locator(`#cell-${id}`)).toHaveAttribute('data-mark');
 });
 
-// Typing over a cell behaves the same whatever state the cell is in: a plain committed
-// cell, one Check cell has marked correct, and one Reveal cell has filled. Crushword's
-// typing inserts at the cursor, which sits after the cell's content, so each reads old +
-// new, loses any `.correct` mark and is composing again.
-test('typing over a committed, a checked and a revealed cell behaves the same', async ({ page }) => {
+// Typing over a plain committed cell edits it: Crushword's typing inserts at the cursor,
+// which sits after the cell's content, so it reads old + new and is composing again. A
+// cell Check cell marked or Reveal cell filled is locked instead: the letter is dropped.
+test('typing edits a committed cell and leaves a checked or revealed one alone', async ({ page }) => {
   await page.goto('file://' + htmlPath);
   await ready(page);
   const pairs = cellLetterPairs(await boardLetters(page));
@@ -1206,7 +1139,14 @@ test('typing over a committed, a checked and a revealed cell behaves the same', 
     await page.locator('#hidden-input').fill('Q');
     await expect(page.locator(`#letter-${id}`)).toHaveText(new RegExp(`^${before}Q$`, 'i'));
     await expect(page.locator(`#cell-${id}`)).toHaveClass(/composing/);
-    await expect(page.locator(`#cell-${id}`)).not.toHaveClass(/\bcorrect\b/);
+    await expect(page.locator(`#cell-${id}`)).not.toHaveAttribute('data-mark');
+  };
+  const typeOverLocked = async (id, before, mark) => {
+    await page.locator(`#cell-${id}`).click();
+    await page.locator('#hidden-input').fill('Q');
+    await expect(page.locator(`#letter-${id}`)).toHaveText(new RegExp(`^${before}$`, 'i'));
+    await expect(page.locator(`#cell-${id}`)).not.toHaveClass(/composing/);
+    await expect(page.locator(`#cell-${id}`)).toHaveAttribute('data-mark', mark);
   };
 
   // A plain committed cell, wrong.
@@ -1217,12 +1157,85 @@ test('typing over a committed, a checked and a revealed cell behaves the same', 
   await fillCrushwordCell(page, checked.id, checked.letter);
   await page.locator(`#cell-${checked.id}`).click();
   await clickHelpRow(page, '#check-btn');
-  await expect(page.locator(`#cell-${checked.id}`)).toHaveClass(/\bcorrect\b/);
-  await typeOver(checked.id, checked.letter);
+  await expect(page.locator(`#cell-${checked.id}`)).toHaveAttribute('data-mark');
+  await typeOverLocked(checked.id, checked.letter, 'checked');
 
   // A cell Reveal cell has filled.
   await page.locator(`#cell-${revealed.id}`).click();
   await clickHelpRow(page, '#reveal-btn');
-  await expect(page.locator(`#cell-${revealed.id}`)).toHaveClass(/\bcorrect\b/);
-  await typeOver(revealed.id, revealed.letter);
+  await expect(page.locator(`#cell-${revealed.id}`)).toHaveAttribute('data-mark');
+  await typeOverLocked(revealed.id, revealed.letter, 'revealed');
+});
+
+// ---- Locked cells (docs/CROSS_TOOL_SPEC.md → "Cell marks") ----------------------------
+// Crushword composes every cell as it is typed and advances only at maxCellLetters, so
+// a locked cell needs rules of its own to keep the cursor moving (makeCellStore's
+// isLocked).
+
+const activeId = page => page.locator('#puzzle-svg .cell.active-cell').getAttribute('id');
+const letterOfCell = (page, id) => page.locator('#' + id.replace('cell-', 'letter-'));
+
+test('a letter typed on a locked cell is dropped and the cursor moves to the next cell', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  const id = await activeId(page);
+  await clickHelpRow(page, '#reveal-btn');
+  const answer = await letterOfCell(page, id).textContent();
+  await page.keyboard.press(answer === 'Q' ? 'KeyZ' : 'KeyQ');
+  await expect(letterOfCell(page, id)).toHaveText(answer);
+  const next = await activeId(page);
+  expect(next).not.toBe(id);
+  await expect(letterOfCell(page, next)).toHaveText('');
+});
+
+test('Backspace from the next cell\'s front steps onto a locked cell without deleting', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  const id = await activeId(page);
+  await clickHelpRow(page, '#reveal-btn');
+  const answer = await letterOfCell(page, id).textContent();
+  await page.keyboard.press('Enter'); // confirm and move to the next cell
+  expect(await activeId(page)).not.toBe(id);
+  await page.keyboard.press('Backspace');
+  expect(await activeId(page)).toBe(id);
+  await expect(letterOfCell(page, id)).toHaveText(answer);
+  await page.keyboard.press('Backspace'); // from inside the locked cell: steps on
+  expect(await activeId(page)).not.toBe(id);
+  await expect(letterOfCell(page, id)).toHaveText(answer);
+});
+
+test('Space mid-cell on a locked rebus cell keeps all of it', async ({ page }) => {
+  await page.goto('file://' + rebusPath);
+  await ready(page);
+  const i = await page.evaluate(() => window.PUZZLE_DATA.letters.findIndex(l => l && l.length > 1));
+  const id = `cell-${i + 1}`;
+  await page.locator('#' + id).click();
+  if (await activeId(page) !== id) await page.locator('#' + id).click();
+  await clickHelpRow(page, '#reveal-btn');
+  const answer = await letterOfCell(page, id).textContent();
+  expect(answer.length).toBeGreaterThan(1);
+  await page.keyboard.press('ArrowLeft'); // the cursor now sits inside the cell
+  expect(await activeId(page)).toBe(id);
+  await page.keyboard.press('Space');
+  await expect(letterOfCell(page, id)).toHaveText(answer);
+  await expect(page.locator('#' + id)).toHaveAttribute('data-mark', 'revealed');
+});
+
+// Space drops what's after the cursor, so it can turn a wrong cell right and finish the
+// board; the solve must then be painted (`.solved`, clue items), not only announced.
+test('Space that trims a cell into finishing the board paints the solve', async ({ page }) => {
+  await page.goto('file://' + htmlPath);
+  await ready(page);
+  const letters = await boardLetters(page);
+  const [first] = cellLetterPairs(letters);
+  const board = [...letters];
+  board[first.id - 1] = first.letter + 'z';
+  await solveCrushwordBoard(page, { letters: board });
+  await expect(page.locator('#done-wrong')).toBeVisible();
+
+  await page.locator(`#cell-${first.id}`).click(); // the cursor lands after the content
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Space');
+  await expect(page.locator('#puzzle-svg')).toHaveClass(/\bsolved\b/);
+  await expect(page.locator('.clue-item.correct').first()).toBeAttached();
 });

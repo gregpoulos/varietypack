@@ -5,6 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
+const { openStudio, openStudioFile, downloadText: download, typeBoard: type } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../spiral/src/builder');
 const { validate } = require('../spiral/src/validator');
@@ -18,10 +19,7 @@ const REBUS_40 = path.join(REPO, 'spiral/test/fixtures/rebus-40.yaml');
 
 // ---- helpers ----------------------------------------------------------------
 
-async function start(page) {
-  await page.goto(studio.url);
-  await expect(page.locator('#welcome')).toBeVisible();
-}
+const start = (page) => openStudio(page, studio.url);
 
 async function newSpiral(page, cells = 40) {
   await start(page);
@@ -31,11 +29,7 @@ async function newSpiral(page, cells = 40) {
   await expect(page.locator('#board')).toBeVisible();
 }
 
-async function openFile(page, file) {
-  await start(page);
-  await page.setInputFiles('#open-input', file);
-  await expect(page.locator('#board')).toBeVisible();
-}
+const openFile = (page, file) => openStudioFile(page, studio.url, file);
 
 // Gap lines are clicked plainly, not forced. Spiral's are diagonal, so Playwright sees
 // them as visible and waits for the click point to settle, which matters after a clue
@@ -44,15 +38,6 @@ async function openFile(page, file) {
 // Playwright calls them hidden, and their specs use clickGapLine (e2e/helpers.js).
 const cell = (page, i) => page.locator(`.sp-cell[data-index="${i}"]`);
 const letter = (page, i) => page.locator(`.sp-ltr[data-index="${i}"]`);
-async function type(page, letters) {
-  for (const ch of letters) await page.locator('#board-input').fill(ch);
-}
-
-async function download(page, selector) {
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator(selector).click()]);
-  return fs.readFileSync(await dl.path(), 'utf8');
-}
-
 // ---- tests ------------------------------------------------------------------
 
 test('a new Spiral asks for its size, then opens the structured editor', async ({ page }) => {

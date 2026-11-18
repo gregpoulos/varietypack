@@ -25,10 +25,10 @@ Usage: varietypack muddle <file.yaml> [options]
 Options:
 ${formatOptionsHelp(OPTIONS)}
 
-The muddled YAML sets hashed:true and format:2, and replaces each entry's answer: with
-length: — a CELL count (a bracketed rebus group like [HAR] counts as one cell, not three
-letters). It can only be produced from a valid puzzle and is a derived distribution format,
-not an authoring format. Building a muddled puzzle always produces a hashed (answer-obscured)
+The muddled YAML adds boardHash: and replaces each entry's answer: with length: — a
+CELL count (a bracketed rebus group like [HAR] counts as one cell, not three letters). It
+can only be produced from a valid puzzle and is a derived distribution format, not an
+authoring format. Building a muddled puzzle always produces a hashed (answer-obscured)
 HTML.
 `;
 

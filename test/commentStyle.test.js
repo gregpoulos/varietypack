@@ -108,3 +108,31 @@ test('public files do not cite private files or the private spec', () => {
   }
   assert.deepEqual(offenders, []);
 });
+
+// A citation of a doc section by name (`docs/CROSS_TOOL_SPEC.md → "Cell marks"`, or
+// `ARCHITECTURE → "…"`) breaks silently when the section is renamed, so each must name a
+// heading of that doc or the bold label opening one of its paragraphs (`**Label.**`).
+// Comment markers are dropped first, so a citation may wrap.
+const DOC_NAMES = ['CROSS_TOOL_SPEC', 'ARCHITECTURE', 'TESTING', 'AUTHORING', 'SPEC'];
+const CITATION = new RegExp(
+  `(?:([a-z-]+)/)?(?:docs/)?\\b(${DOC_NAMES.join('|')})(?:\\.md)?\\x60?\\s*(?:→|->)\\s*"([^"]+)"`, 'g');
+const headingsOf = doc => new Set(linesOf(doc).flatMap(l => {
+  const label = /^(?:#{1,6} (.+)|\*\*([^*]+?)[.:]?\*\*)/.exec(l);
+  return label ? [(label[1] ?? label[2]).replace(/`/g, '').trim()] : [];
+}));
+
+test('every citation of a doc section names a heading of that doc', () => {
+  const broken = [];
+  for (const f of withExt('.js', '.mjs', '.jsx', '.css', '.sh', '.md')) {
+    if (f === path.relative(ROOT, __filename)) continue;
+    const text = linesOf(f).map(l => l.replace(/^\s*(\/\/|#|\*|\/\*)?\s?/, '')).join(' ');
+    for (const [, tool, name, section] of text.matchAll(CITATION)) {
+      const toolDir = tool ?? f.split('/')[0];
+      const doc = name === 'SPEC' ? `${toolDir}/docs/SPEC.md` : `docs/${name}.md`;
+      if (!fs.existsSync(path.join(ROOT, doc))) continue;
+      const want = section.replace(/`/g, '').replace(/\s+/g, ' ').trim();
+      if (!headingsOf(doc).has(want)) broken.push(`${f}: ${doc} → "${want}"`);
+    }
+  }
+  assert.deepEqual(broken, []);
+});

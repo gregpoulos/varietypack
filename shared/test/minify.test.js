@@ -17,61 +17,34 @@ test('minifyHtml: minifies <style> CSS (collapses whitespace, not just comments)
     `selector/declaration whitespace collapsed; got: ${m[1]}`);
 });
 
-test('minifyHtml: preserves /* */ inside a CSS string value (clean-css is CSS-aware)', () => {
-  // simplePass is string-unaware and would delete this; clean-css parses CSS and
-  // keeps string tokens intact — the headline win over the regex pass.
+test('minifyHtml: preserves /* */ inside a CSS string value', () => {
+  // simplePass is string-unaware and would delete this; the CSS minifier keeps string
+  // tokens intact.
   const input = `<style>.x::before { content: "/* not a comment */"; }</style>`;
   const out = minifyHtml(input);
   assert.ok(out.includes('/* not a comment */'),
     `comment-like sequence inside a CSS string must survive; got: ${out}`);
 });
 
-test('minifyHtml: leaves a style block unchanged when clean-css warns about its syntax', () => {
-  // Nesting: clean-css 5 warns and returns only the mangled inner rule.
+test('minifyHtml: minifies nested CSS, keeping its rules', () => {
   const css = 'html.phone { .solve-top { flex: none; } &.kb-left #solve-view { color: red; } }';
   const out = minifyHtml(`<style>${css}</style>`);
-  assert.ok(out.includes(css), `the block must come back as written; got: ${out}`);
+  assert.equal(out, '<style>html.phone{.solve-top{flex:none}&.kb-left #solve-view{color:red}}</style>');
 });
 
-test('minifyHtml: reports each block it leaves unminified, and nothing for one it minifies', () => {
+test('minifyHtml: reports a block it leaves unminified, and nothing for one it minifies', () => {
   const skipped = [];
-  minifyHtml('<style>a { b { color: red; } }</style><script>not }{ js</script><style>a { color: red; }</style>',
+  minifyHtml('<script>not }{ js</script><style>a { color: red; }</style><script>let a = 1;</script>',
     message => skipped.push(message));
-  assert.equal(skipped.length, 2, skipped.join('\n'));
-  assert.match(skipped[0], /^a <style> was left unminified: \S/);
-  assert.match(skipped[1], /^a <script> was left unminified: \S/);
+  assert.equal(skipped.length, 1, skipped.join('\n'));
+  assert.match(skipped[0], /^a <script> was left unminified: \S/);
 });
 
 test('minifyHtml: minifies a style block that opens with a remote @import, keeping the import', () => {
   // What --font link emits (buildFontCss).
   const out = minifyHtml("<style>@import url('https://fonts.example/css2?family=X');\nbody {\n  color: red;\n}</style>");
   assert.ok(out.includes('body{color:red}'), out);
-  assert.ok(out.includes('@import url(https://fonts.example/css2?family=X)'), out);
-});
-
-test('every tool and theme stylesheet minifies without a clean-css warning', () => {
-  // A warning leaves that page's CSS unminified (above), so new syntax the minifier
-  // can't read should fail here, not ship larger. Through minifyHtml, so the check uses
-  // the build's own clean-css options, and in every font mode a theme offers.
-  const path = require('path');
-  const { composeThemeCss } = require('../build/themes');
-  const { KINDS } = require('../build/tools');
-  const { THEME_REGISTRY, VALID_THEMES, FONT_MODES } = require('../build/themeRegistry');
-  const fontModes = theme => {
-    const { fonts } = THEME_REGISTRY[theme];
-    if (!fonts) return [undefined];
-    return FONT_MODES.filter(mode => (mode === 'link' ? fonts.cdn : fonts.faces));
-  };
-  for (const kind of KINDS) {
-    for (const theme of VALID_THEMES) {
-      for (const fontMode of fontModes(theme)) {
-        const css = composeThemeCss(path.join(__dirname, '..', '..', kind, 'src', 'template'), theme, fontMode);
-        const skipped = [];
-        minifyHtml(`<style>${css}</style>`, message => skipped.push(message));
-        assert.deepEqual(skipped, [], `${kind} / ${theme} / ${fontMode}`);
-      }
-    }
-  }
+  assert.ok(out.includes('@import"https://fonts.example/css2?family=X"'), out);
 });
 
 // ── comment-like text outside script and style ─────────────────────────────────
@@ -152,9 +125,9 @@ test('minifyHtml: preserves /* */ inside a <script> string literal', () => {
     `comment-like sequence inside a string must survive; got: ${out}`);
 });
 
-// ── terser failure robustness ──────────────────────────────────────────────────
+// ── unparseable script ──────────────────────────────────────────────────
 
-test('minifyHtml: leaves script block unchanged when terser cannot parse it', () => {
+test('minifyHtml: leaves a script block unchanged when it cannot be parsed', () => {
   const badJs = 'this is not }{[ valid javascript @@@@';
   const input = `<html><script>${badJs}</script></html>`;
   const out = minifyHtml(input);

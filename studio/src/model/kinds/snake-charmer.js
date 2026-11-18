@@ -8,7 +8,7 @@
 // lap is twin(p) = (p + N) % 2N.
 //
 // Model:
-//   { kind: 'snake-charmer', header, shape: string|null, loops: number|null,
+//   { kind: 'snake-charmer', header, shape: string|null,
 //     ring: string[], cut: { starts, entries }, circles: number[] /* ring indices */,
 //     orphans: [], nextId }
 const { findCoincidentStarts } = require('../../../../snake-charmer/src/validator');
@@ -101,7 +101,6 @@ function newModel({ cells, shape = null }) {
     kind,
     header: { title: '', extra: {} },
     shape,
-    loops: null,
     ring: new Array(cells).fill(''),
     cut: { starts: [0], entries: [newEntry('e1')] },
     circles: [],
@@ -112,7 +111,6 @@ function newModel({ cells, shape = null }) {
 
 function fromYaml(puzzle) {
   if (puzzle.title !== undefined && typeof puzzle.title !== 'string') throw new StructureError('the title must be text (put numbers in quotes)');
-  if (puzzle.loops !== undefined && puzzle.loops !== 2) throw new StructureError('only two-loop puzzles are supported');
   if (puzzle.shape !== undefined && !SHAPE_NAMES.includes(puzzle.shape)) {
     throw new StructureError(`unknown shape ${JSON.stringify(puzzle.shape)}; expected one of: ${SHAPE_NAMES.join(', ')}`);
   }
@@ -152,9 +150,8 @@ function fromYaml(puzzle) {
 
   const model = {
     kind,
-    header: headerFromYaml(puzzle, ['entries', 'loops', 'shape']),
+    header: headerFromYaml(puzzle, ['entries', 'shape']),
     shape: puzzle.shape ?? null,
-    loops: puzzle.loops ?? null,
     ring,
     cut: { starts, entries: puzzle.entries.map((e, j) => entryFromYaml(e, `e${j + 1}`, lists[j])) },
     circles,
@@ -173,7 +170,6 @@ function toYaml(model) {
   return {
     kind,
     ...headerToYaml(model.header),
-    ...(model.loops !== null ? { loops: model.loops } : {}),
     ...(model.shape ? { shape: model.shape } : {}),
     entries,
   };
@@ -298,7 +294,7 @@ function isModel(m) {
   return isModelBase(m, kind)
     && isCells(m.ring) && m.ring.length > 0 && isCircles(m.circles, m.ring.length)
     && isCut(m.cut, 2 * m.ring.length)
-    && (m.shape === null || SHAPE_NAMES.includes(m.shape)) && (m.loops === null || m.loops === 2);
+    && (m.shape === null || SHAPE_NAMES.includes(m.shape));
 }
 
 module.exports = {

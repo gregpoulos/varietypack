@@ -11,6 +11,7 @@ function makeEl() {
   return {
     textContent: '',
     style: {},
+    dataset: {},
     getAttribute(name) { return { x: '10', y: '20' }[name]; },
     classList: {
       contains(c) { return classes.has(c); },
@@ -39,65 +40,132 @@ test('setCellLetter stores and shows a letter; an empty cell reads as ""', () =>
   assert.equal(letterEls[2].textContent, '');
 });
 
-test('setCorrect marks the cell and its letter together; isCorrect reads it', () => {
+test('setMark marks the cell and its letter with one value, and null clears both', () => {
   const { store, cellEls, letterEls } = harness();
-  store.setCorrect(4, true);
-  assert.ok(store.isCorrect(4));
-  assert.ok(cellEls[4].classList.contains('correct'));
-  assert.ok(letterEls[4].classList.contains('correct'));
-  store.setCorrect(4, false);
-  assert.equal(store.isCorrect(4), false);
-  assert.equal(letterEls[4].classList.contains('correct'), false);
+  store.setMark(4, 'checked');
+  assert.equal(store.getMark(4), 'checked');
+  assert.equal(cellEls[4].dataset.mark, 'checked');
+  assert.equal(letterEls[4].dataset.mark, 'checked');
+  store.setMark(4, 'revealed');
+  assert.equal(store.getMark(4), 'revealed');
+  assert.equal(letterEls[4].dataset.mark, 'revealed');
+  store.setMark(4, null);
+  assert.equal(store.getMark(4), null);
+  assert.equal('mark' in cellEls[4].dataset, false);
+  assert.equal('mark' in letterEls[4].dataset, false);
 });
 
-test('a new letter clears the cell\'s correct mark', () => {
+test('isConfirmedRight is true for checked and revealed, false when unmarked', () => {
   const { store } = harness();
-  store.setCellLetter(1, 'a');
-  store.setCorrect(1, true);
-  store.setCellLetter(1, 'b');
-  assert.equal(store.isCorrect(1), false);
+  store.setMark(1, 'checked');
+  store.setMark(2, 'revealed');
+  assert.deepEqual([1, 2, 4].map(store.isConfirmedRight), [true, true, false]);
 });
 
-test('markAllCorrect marks every cell; clearCells empties and unmarks every cell', () => {
+// The solve paints the board, not its cells (markSolved, in each engine).
+test('the store has no solve painting', () => {
   const { store } = harness();
+  assert.equal(store.markRestChecked, undefined);
+});
+
+test('clearCells empties every cell and leaves no cell or letter marked', () => {
+  const { store, cellEls, letterEls } = harness();
   store.setCellLetter(1, 'a');
-  store.setCellLetter(4, 'b');
-  store.markAllCorrect();
-  assert.deepEqual([1, 2, 4].map(store.isCorrect), [true, true, true]);
+  store.setMark(1, 'checked');
+  store.setMark(4, 'revealed');
   store.clearCells();
   assert.deepEqual([1, 2, 4].map(store.getCellLetter), ['', '', '']);
-  assert.deepEqual([1, 2, 4].map(store.isCorrect), [false, false, false]);
+  for (const n of [1, 2, 4]) {
+    assert.equal('mark' in cellEls[n].dataset, false);
+    assert.equal('mark' in letterEls[n].dataset, false);
+  }
 });
 
-test('saveFields gives letters keyed by cell id and the correct cells; restoreFields puts them back', () => {
-  const a = harness().store;
-  a.setCellLetter(1, 'a');
-  a.setCellLetter(4, 'bc');
-  a.setCorrect(4, true);
-  const saved = JSON.parse(JSON.stringify(a.saveFields())); // as localStorage round-trips it
-  assert.deepEqual(saved, { letters: { 1: 'a', 4: 'bc' }, correct: [4] });
+test('saveFields lists only marked cells, by value', () => {
+  const { store } = harness();
+  store.setCellLetter(1, 'a');
+  store.setCellLetter(4, 'bc');
+  store.setMark(1, 'checked');
+  store.setMark(4, 'revealed');
+  const saved = JSON.parse(JSON.stringify(store.saveFields())); // as localStorage round-trips it
+  assert.deepEqual(saved, { letters: { 1: 'a', 4: 'bc' }, marks: { 1: 'checked', 4: 'revealed' } });
+});
 
-  const { store: b, letterEls } = harness();
-  b.restoreFields(saved);
-  assert.deepEqual([1, 2, 4].map(b.getCellLetter), ['a', '', 'bc']);
+test('restoreFields restores marks after letters', () => {
+  const { store, letterEls } = harness();
+  store.restoreFields({ letters: { 1: 'a', 4: 'bc' }, marks: { 1: 'checked', 4: 'revealed' } });
+  assert.deepEqual([1, 2, 4].map(store.getCellLetter), ['a', '', 'bc']);
   assert.equal(letterEls[4].textContent, 'BC');
-  assert.deepEqual([1, 2, 4].map(b.isCorrect), [false, false, true]);
+  assert.deepEqual([1, 2, 4].map(store.getMark), ['checked', null, 'revealed']);
+});
+
+// A later page may save a value this one doesn't know; it must neither paint as right
+// nor count toward solved here.
+test('restoreFields skips a mark value it does not know', () => {
+  const { store } = harness();
+  store.restoreFields({ letters: { 1: 'a' }, marks: { 1: 'someday' } });
+  assert.equal(store.getMark(1), null);
+  assert.equal(store.isConfirmedRight(1), false);
+});
+
+test('restoreFields keeps a wrong mark', () => {
+  const { store } = harness();
+  store.restoreFields({ letters: { 1: 'a' }, marks: { 1: 'wrong' } });
+  assert.equal(store.getMark(1), 'wrong');
+  assert.equal(store.isMarkedWrong(1), true);
+});
+
+test('wrong is not confirmed right and not locked', () => {
+  const { store } = harness();
+  store.setCellLetter(1, 'a');
+  store.setMark(1, 'wrong');
+  assert.equal(store.isConfirmedRight(1), false);
+  assert.equal(store.isLocked(1), false);
+});
+
+test('a new letter clears wrong', () => {
+  const { store } = harness();
+  store.setCellLetter(1, 'a');
+  store.setMark(1, 'wrong');
+  store.setCellLetter(1, 'a');
+  assert.equal(store.getMark(1), null);
+  assert.equal(store.isMarkedWrong(1), false);
 });
 
 test('fitsSave accepts a save this board made, composing or not', () => {
   const { store } = harness();
   store.setCellLetter(4, 'bc');
+  store.setMark(4, 'checked');
   const saved = JSON.parse(JSON.stringify(store.saveFields())); // as localStorage round-trips it
   assert.equal(store.fitsSave({ ...saved, composing: null }), true);
   assert.equal(store.fitsSave({ ...saved, composing: 4 }), true);
 });
 
+test('fitsSave accepts a save with no marks', () => {
+  const { store } = harness();
+  assert.equal(store.fitsSave({ letters: { 1: 'a' }, composing: null }), true);
+});
+
+// restoreFields reads `letters` unguarded, so a save without them must not fit.
+test('fitsSave rejects a save with no letters object', () => {
+  const { store } = harness();
+  assert.equal(store.fitsSave({ marks: {}, composing: null }), false);
+  assert.equal(store.fitsSave({ letters: null, marks: {}, composing: null }), false);
+});
+
+// An array is an object too, but its indices are not cell ids: index 1 would mark cell 1.
+test('restoreFields does not read a marks array as a cell id map', () => {
+  const { store } = harness();
+  store.restoreFields({ letters: { 1: 'a' }, marks: ['checked', 'checked'] });
+  assert.equal(store.getMark(1), null);
+});
+
 // Cell 3 is a gap in this board, as a block is in a Crushword grid.
 test('fitsSave rejects a save that names a cell the board lacks', () => {
   const { store } = harness();
-  const fits = { letters: { 1: 'a' }, correct: [1], composing: null };
+  const fits = { letters: { 1: 'a' }, marks: { 1: 'checked' }, composing: null };
   assert.equal(store.fitsSave({ ...fits, letters: { 1: 'a', 3: 'b' } }), false, 'a letter');
-  assert.equal(store.fitsSave({ ...fits, correct: [1, 3] }), false, 'a correct mark');
+  assert.equal(store.fitsSave({ ...fits, marks: { 1: 'checked', 3: 'revealed' } }), false, 'a mark');
   assert.equal(store.fitsSave({ ...fits, composing: 3 }), false, 'the composing cell');
 });
 
@@ -107,4 +175,67 @@ test('show, when given, displays each letter in place of setLetterText', () => {
   store.setCellLetter(1, 'abc');
   store.clearCells();
   assert.deepEqual(shown, ['abc', '']);
+});
+
+// The mark layer draws each mark's shape (setupMarkLayer); the store is the one writer of
+// marks, so it is the one caller.
+test('setMark calls drawMark with the cell and value', () => {
+  const drawn = [];
+  const { store } = harness([1, 2, 4], { drawMark: (n, mark) => drawn.push([n, mark]) });
+  store.setMark(2, 'wrong');
+  store.setCellLetter(2, 'a');
+  assert.deepEqual(drawn, [[2, 'wrong'], [2, null]]);
+});
+
+test('restoreFields draws each restored mark', () => {
+  const drawn = [];
+  const { store } = harness([1, 2, 4], { drawMark: (n, mark) => { if (mark) drawn.push([n, mark]); } });
+  store.restoreFields({ letters: { 1: 'a', 4: 'b' }, marks: { 1: 'checked', 4: 'revealed' } });
+  assert.deepEqual(drawn, [[1, 'checked'], [4, 'revealed']]);
+});
+
+// The locking rule's home is the comment on isLocked in makeCellStore.
+test('isLocked is true for checked and revealed and false for none', () => {
+  const { store } = harness();
+  store.setMark(1, 'checked');
+  store.setMark(2, 'revealed');
+  assert.deepEqual([1, 2, 4].map(store.isLocked), [true, true, false]);
+  store.setMark(4, 'wrong');
+  assert.equal(store.isLocked(4), false);
+});
+
+// The lock's backstop: a key path that forgot to check isLocked can't overwrite a checked
+// or revealed cell, or unlock it by clearing its mark.
+test('setCellLetter leaves a checked or revealed cell alone', () => {
+  const { store } = harness();
+  for (const mark of ['checked', 'revealed']) {
+    store.setMark(1, null);
+    store.setCellLetter(1, 'a');
+    store.setMark(1, mark);
+    store.setCellLetter(1, 'q');
+    store.setCellLetter(1, '');
+    assert.equal(store.getCellLetter(1), 'a', mark);
+    assert.equal(store.getMark(1), mark);
+  }
+});
+
+test('setCellLetter still writes a wrong-marked cell, clearing the mark', () => {
+  const { store } = harness();
+  store.setCellLetter(1, 'x');
+  store.setMark(1, 'wrong');
+  store.setCellLetter(1, 'a');
+  assert.equal(store.getCellLetter(1), 'a');
+  assert.equal(store.getMark(1), null);
+});
+
+// Clear and Play again are the one way to empty a locked cell.
+test('clearCells empties locked cells too', () => {
+  const { store } = harness();
+  store.setCellLetter(1, 'a');
+  store.setMark(1, 'checked');
+  store.setCellLetter(2, 'b');
+  store.setMark(2, 'revealed');
+  store.clearCells();
+  assert.deepEqual([1, 2].map(store.getCellLetter), ['', '']);
+  assert.deepEqual([1, 2].map(store.getMark), [null, null]);
 });

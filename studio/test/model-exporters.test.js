@@ -49,8 +49,6 @@ test('buildExport html: a plain page that carries its letters', () => {
 test('buildExport muddled: the same file varietypack muddle writes', () => {
   const r = buildExport('muddled', sourceDoc(), { font: 'embed' });
   const out = yaml.load(r.text);
-  assert.equal(out.format, 2);
-  assert.equal(out.hashed, true);
   assert.ok(out.boardHash);
   assert.equal(r.type, 'muddled');
 });

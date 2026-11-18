@@ -7,7 +7,7 @@ import {
   clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
   scrollByKey, scrollIntoViewBelow, setupCellClicks, setupCongratsDialog,
   setupControls, setupEmbedResize, setupKeydown, setupKeysOverlay, setupRebusButton,
-  setClueHtml, setupStorage, storageKey, svgEl
+  setClueHtml, setupMarkLayer, setupStorage, storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
 import { setupPhoneLayout, stepIndex } from '../../../shared/engine-phone.mjs';
 import {
@@ -57,31 +57,36 @@ function init() {
   const CELL_IDS = [];
   for (let n = 1; n <= N * N; n++) if (n !== CENTER_N) CELL_IDS.push(n);
 
-  // Each cell's letter and correct mark (makeCellStore, shared/engine-state.mjs).
-  const cells = makeCellStore({ ids: CELL_IDS, cellEl: n => cellRects[n], letterEl: n => letterTexts[n] });
-  const { getCellLetter, setCellLetter, setCorrect, isCorrect } = cells;
+  // Each cell's letter and mark (makeCellStore, shared/engine-state.mjs).
+  const cells = makeCellStore({
+    ids: CELL_IDS, cellEl: n => cellRects[n], letterEl: n => letterTexts[n],
+    drawMark: (n, mark) => markShapes.draw(n, mark),
+  });
+  const { getCellLetter, setCellLetter, setMark, isConfirmedRight, isLocked } = cells;
 
-  // Commit is wired only at the top of focusCell — docs/CROSS_TOOL_SPEC.md → Enter /
-  // Rebus button.
+  // Commit is wired only at the top of focusCell — docs/CROSS_TOOL_SPEC.md → "Enter /
+  // Rebus button — rebus entry".
   const composer = makeComposer({
     getContent: n => getCellLetter(n),
     setContent: (n, s) => setCellLetter(n, s),
     onCommit:   () => { syncUI(); checker.checkIfFilled(); saveState(); },
     isSolved:   () => latch.solved,
+    isLocked,
   });
 
   // Board state and answer checking. Marching Bands marks no clue items in either
   // mode — its clue groups deliberately hide entry boundaries — so it is already
-  // mode-symmetric and markSolved stays cells-and-letters only.
+  // mode-symmetric and markSolved paints only the board's `.solved`.
   const checker = makeBoardChecker({
     cellIds:             CELL_IDS,
     getContent:          n => getCellLetter(n),
     isCellFilled:        n => composer.isCellFilled(n),
-    isCellMarkedCorrect: isCorrect,
+    isCellConfirmedRight: isConfirmedRight,
+    isCellMarkedWrong:   n => cells.isMarkedWrong(n),
     hashed:              !!data.hashed,
     getExpected:         n => data.letters && data.letters[n - 1],
     getBoardHash:        () => data.boardHash,
-    markSolved:          () => cells.markAllCorrect(),
+    markSolved:          () => svg.classList.add('solved'),
     syncUI:              () => syncUI(),
   });
 
@@ -135,8 +140,8 @@ function init() {
     syncUI();
   }
 
-  // One rebus toggle for Enter and #rebus-btn — docs/CROSS_TOOL_SPEC.md → Enter / Rebus
-  // button.
+  // One rebus toggle for Enter and #rebus-btn — docs/CROSS_TOOL_SPEC.md → "Enter / Rebus
+  // button — rebus entry".
   function toggleRebus() {
     composer.toggle(activeCell);
     syncUI();
@@ -149,7 +154,7 @@ function init() {
     rebusBtn.sync();
 
     // Cells: highlight the active entry and cell, and mark the composing one.
-    // Clear transient highlight classes — band-even/band-odd and correct never change
+    // Clear transient highlight classes — band-even/band-odd and the mark never change
     // here
     for (const n of CELL_IDS) {
       cellRects[n].classList.remove('active-entry', 'active-cell');
@@ -239,12 +244,17 @@ function init() {
   svg.setAttribute('height',  svgSize);
   svg.setAttribute('viewBox', `${-LABEL_W} 0 ${LABEL_W + svgSize} ${svgSize}`);
 
+  // Layer groups, painted bottom to top in the order svg.append lists them.
+  // flashLayer holds wrong-guess flash overlays (see flashWrong) above the cells.
   const cellsLayer   = svgEl('g', { id: 'cells-layer' });
   const circlesLayer = svgEl('g', { id: 'circles-layer' });
   const flashLayer   = svgEl('g', { id: 'flash-layer' });
+  // Drawn by the cell store whenever a mark changes (setupMarkLayer).
+  const markLayer    = svgEl('g', { class: 'mark-layer' });
+  const markShapes   = setupMarkLayer(markLayer, n => cellRects[n]);
   const lettersLayer = svgEl('g', { id: 'letters-layer' });
   const labelsLayer  = svgEl('g', { id: 'labels-layer' });
-  svg.append(cellsLayer, circlesLayer, flashLayer, lettersLayer, labelsLayer);
+  svg.append(cellsLayer, circlesLayer, flashLayer, markLayer, lettersLayer, labelsLayer);
   // After the groups, so it paints over the neighbor cell it points into.
   const chevronEl = svgEl('path', { id: 'direction-chevron' });
   svg.appendChild(chevronEl);
@@ -342,7 +352,7 @@ function init() {
       const groupLi = htmlEl('li', { class: 'clue-group' },
         htmlEl('ul', {}, ...group.entries.map((entry, i) =>
           htmlEl('li', { class: 'clue-item' },
-            htmlEl('span', { class: 'clue-label' },
+            htmlEl('span', { class: 'clue-num clue-label' },
               htmlEl('span', { class: 'clue-parent' }, i === 0 ? parentLabel(gi) : ''),
               htmlEl('span', { class: 'clue-letter' }, String.fromCharCode(97 + i))),
             clueTextEl(entry.clue)))));
@@ -391,8 +401,7 @@ function init() {
   const clueNav = buildNavigator();
 
   // ── Event wiring ──────────────────────────────────────────────────────────
-  // The page's static elements. Logic functions above use them (focusCell calls
-  // refocus, syncUI writes the bar); they first run in Restore & focus, after this.
+  // The page's static elements, which logic functions above read once they run.
   const hiddenInput = document.getElementById('hidden-input');
   const refocus = () => hiddenInput.focus({ preventScroll: true });
 
@@ -400,10 +409,10 @@ function init() {
   const doneWrong  = document.getElementById('done-wrong');
   const puzzleCenter = document.querySelector('.puzzle-center'); // the sticky grid box
 
-  // #rebus-btn — docs/CROSS_TOOL_SPEC.md → Enter / Rebus button.
   const rebusBtn = setupRebusButton(document.getElementById('rebus-btn'), {
     onToggle:    toggleRebus,
     isComposing: () => composer.isComposing(activeCell),
+    canCompose:  () => composer.canCompose(activeCell),
     refocus,
   });
 
@@ -460,12 +469,13 @@ function init() {
         saveState();
         return;
       }
-      if (getCellLetter(activeCell)) {
+      // A locked cell counts as empty here, so Backspace steps past it uncleared.
+      if (getCellLetter(activeCell) && !isLocked(activeCell)) {
         setCellLetter(activeCell, '');
         syncUI();
       } else {
         const prev = prevCell(activeCell);
-        setCellLetter(prev, '');
+        setCellLetter(prev, ''); // leaves a locked cell alone
         focusCell(prev);   // focusCell syncUIs and refocuses the hidden input
       }
       saveState();
@@ -474,7 +484,7 @@ function init() {
 
     if (e.key === ' ') {
       e.preventDefault();
-      setCellLetter(activeCell, '');
+      setCellLetter(activeCell, ''); // leaves a locked cell alone
       focusCell(nextCell(activeCell));
       saveState();
       return;
@@ -508,8 +518,8 @@ function init() {
     if (composer.typeLetter(activeCell, typed)) focusCell(nextCell(activeCell));
     else syncUI();
 
-    // Advance first, then check (docs/CROSS_TOOL_SPEC.md → Hashed-mode feedback
-    // timing).
+    // Advance first, then check (docs/CROSS_TOOL_SPEC.md → "Hashed-mode feedback
+    // timing").
     checker.checkIfFilled();
     saveState();
   });
@@ -525,6 +535,7 @@ function init() {
       composer, clearState, timer, latch, helpRecord,
       clearBoard() {
         cells.clearCells();
+        svg.classList.remove('solved');
         flashLayer.replaceChildren();
         mode = 'row';
       },
@@ -532,11 +543,10 @@ function init() {
     });
   }
 
-  // The help menu's check and reveal actions (shared/engine-state.mjs → makeHelpActions):
-  // one pair over any set of cells, behind every row. Its deps are all defined above;
-  // `phone` is read when a wrong check flashes, long after init has set it.
+  // The help menu's actions (makeHelpActions). `phone` is read only when a wrong check
+  // flashes, long after init has set it.
   const helpActions = makeHelpActions({
-    checker, composer, helpRecord, setCellLetter, setCorrect, saveState, syncUI, refocus,
+    checker, composer, helpRecord, setCellLetter, setMark, saveState, syncUI, refocus,
     flashWrong(wrong) {
       for (const n of wrong) flashWrong(cellRects[n], flashLayer);
     },
@@ -590,9 +600,8 @@ function init() {
   }
 
   // ── Restore & focus ───────────────────────────────────────────────────────
-  // Structurally a no-op here — markSolved paints exactly what applyState
-  // restored, and MB marks no clue items — but the epilogue stays identical across
-  // all four engines so the shared restore contract has one shape, not two.
+  // The same epilogue as every engine, so the shared restore contract has one shape:
+  // here the repaint puts back only the board's `.solved`, as MB marks no clue items.
   const resumeCell = restoreAndSeal({ restoreState, checker, latch, composer });
   // Resume on the restored composing cell (docs/CROSS_TOOL_SPEC.md → "Composition is
   // saved state").

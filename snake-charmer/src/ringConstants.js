@@ -6,4 +6,7 @@ const W_CELL = 36;
 const H_CELL = 36;
 const SVG_PAD_V = 4; // tight vertical margin; must stay > max stroke-width / 2
 
-module.exports = { W_CELL, H_CELL, SVG_PAD_V };
+// The answers run round the ring twice, so their cells total LOOPS × the ring size.
+const LOOPS = 2;
+
+module.exports = { W_CELL, H_CELL, SVG_PAD_V, LOOPS };

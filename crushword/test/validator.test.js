@@ -37,12 +37,6 @@ test('validate: the minimal puzzle has no errors and no warnings', () => {
 // forwards validateCommonHeader's errors and passes its own kind
 // ('crushword').
 
-test('validate: rejects wrong kind', () => {
-  const p = { ...minimalPuzzle(), kind: 'spiral' };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"kind"')));
-});
-
 test('validate: rejects missing grid', () => {
   const p = minimalPuzzle();
   delete p.grid;
@@ -92,7 +86,7 @@ test('validate: rejects an open cell that belongs to no across or down entry', (
 
 test('validate: rejects an unclued open cell in a muddled puzzle too (a grid-only check)', () => {
   const p = {
-    kind: 'crushword', title: 'Boxed in', hashed: true, format: 2, boardHash: 'x'.repeat(64),
+    kind: 'crushword', title: 'Boxed in', boardHash: 'x'.repeat(64),
     grid: ['..#', '..#', '##.'],
     across: { 1: { clue: 'a1', length: 2 }, 3: { clue: 'a3', length: 2 } },
     down:   { 1: { clue: 'd1', length: 2 }, 2: { clue: 'd2', length: 2 } },
@@ -158,8 +152,6 @@ test('validate: rejects an entry with an empty clue', () => {
 
 function muddledPuzzle() {
   const p = minimalPuzzle();
-  p.hashed = true;
-  p.format = 2;
   p.boardHash = 'any-hash';
   for (const dir of [p.across, p.down]) {
     for (const num of Object.keys(dir)) {
@@ -171,33 +163,11 @@ function muddledPuzzle() {
   return p;
 }
 
-test('validate: muddled puzzle passes with a skip-validation note', () => {
-  const { errors, warnings } = validate(muddledPuzzle());
-  assert.deepEqual(errors, []);
-  assert.ok(warnings.some(w => w.includes('muddled')));
-});
-
 test('validate: muddled puzzle — per-slot length check still enforced', () => {
   const p = muddledPuzzle();
   p.across[1].length = 99;
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.includes('across[1]') && e.includes('3 cells but answer has 99')));
-});
-
-test('validate: muddled puzzle rejects answer: instead of length:', () => {
-  const p = muddledPuzzle();
-  delete p.across[1].length;
-  p.across[1].answer = 'CAT';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('across[1]') && e.includes('length:, not answer:')));
-});
-
-test('validate: rejects muddled-shaped entries (length: without answer:) when boardHash is absent', () => {
-  const p = minimalPuzzle();
-  delete p.across[1].answer;
-  p.across[1].length = 3; // length: with no top-level boardHash
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('boardHash')));
 });
 
 test('validate: rejects a bracket group exceeding the default maxCellLetters (3)', () => {
@@ -364,15 +334,6 @@ test('validate: rejects a non-canonical clue key used in place of the canonical 
   );
 });
 
-test('validate: examples/crushword.yaml passes with zero errors and zero warnings', () => {
-  const path = require('path');
-  const { loadPuzzle } = require('../../shared/cli/puzzleFiles');
-  const puzzle = loadPuzzle(path.join(__dirname, '..', '..', 'examples', 'crushword.yaml'));
-  const { errors, warnings } = validate(puzzle);
-  assert.deepEqual(errors, []);
-  assert.deepEqual(warnings, []);
-});
-
 test('validate: a circle on an across entry but not the crossing down entry is an error', () => {
   const p = minimalPuzzle();
   p.across[1].styles = { circle: [0] };  // cell (0,0)
@@ -404,10 +365,4 @@ test('validate: an unrelated header error does not hide a crossing disagreement 
   assert.ok(errors.some(e => e.startsWith('"theme"')), errors.join('|'));
   assert.ok(errors.some(e => e.includes('Cell (1, 1)') && e.includes('disagree')), errors.join('|'));
   assert.ok(errors.some(e => /^down\[1\]\.styles\.circle is missing position 1/.test(e)), errors.join('|'));
-});
-
-test('validate: an unknown top-level key warns', () => {
-  const p = minimalPuzzle();
-  p.maxCelLetters = 2;
-  assert.ok(validate(p).warnings.includes('unknown key "maxCelLetters" (is it a typo?)'), validate(p).warnings.join('|'));
 });

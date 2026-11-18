@@ -152,6 +152,23 @@ html.phone #ring-svg,
 html.phone #spiral-svg,
 html.phone #puzzle-svg { width: 100%; height: 100%; max-width: none; }
 html.phone #ring-container { margin-top: 0; min-width: 0; }
+
+/* The zoomed grid's edge shadows (addEdgeShadows in engine-phone.mjs): a strip inside
+   the grid's SVG along each side beyond which more grid lies (#grid-pane[data-more],
+   from attachSvgZoom's onEdges). They fade rather than hide, since they change as the
+   view moves. Colors in theme-components.css. */
+.edge-shadows { pointer-events: none; }
+.edge-shadow {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+html.phone #grid-pane[data-more~="top"]    .edge-shadow[data-side="top"],
+html.phone #grid-pane[data-more~="bottom"] .edge-shadow[data-side="bottom"],
+html.phone #grid-pane[data-more~="left"]   .edge-shadow[data-side="left"],
+html.phone #grid-pane[data-more~="right"]  .edge-shadow[data-side="right"] { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .edge-shadow { transition: none; }
+}
 html.phone #grid-wrap { display: block; }
 
 /* Not overscroll-behavior: contain. Until the solver scrolls the view flush, the pane
@@ -190,6 +207,7 @@ html.phone .list-cell {
   overflow: hidden;
   container-type: inline-size;
   cursor: pointer;
+  position: relative; /* anchors a mark's ::after (theme-components.css) */
 }
 html.phone .list-letter {
   font-size: min(55cqw, calc(100cqw / (var(--len, 1) + 0.2)));

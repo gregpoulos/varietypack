@@ -1,5 +1,3 @@
-.puzzle-main { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
-
 .puzzle-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) min-content minmax(0, 1fr);
@@ -30,33 +28,13 @@
 
 .cell-letter { font-size: 14px; dominant-baseline: central; }
 
-
-.clue-section h2 {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding-bottom: 4px;
-  margin-bottom: 6px;
-}
-
-.clue-section ul { list-style: none; }
-
 .clue-group {
   border-radius: var(--theme-clue-radius);
   cursor: pointer;
 }
 
-.clue-item {
-  display: flex;
-  align-items: baseline;
-}
-
+/* A .clue-num holding the row or band (.clue-parent) and the entry's letter. */
 .clue-label {
-  font-size: 0.7rem;
-  font-weight: bold;
-  letter-spacing: 0.04em;
-  margin-right: 4px;
-  flex-shrink: 0;
   display: flex;
   align-items: baseline;
 }
@@ -66,7 +44,6 @@
   min-width: 1.4em;
   text-align: right;
   margin-right: 0.2em;
-  text-transform: uppercase;
 }
 
 /* Stacked, the sticky grid pins over the clues as they scroll rather than beside them,
@@ -76,5 +53,7 @@
   .puzzle-body { display: block; }
   .puzzle-center { align-items: stretch; top: 0; padding-top: 16px; z-index: 1; }
   #grid-wrap { justify-content: center; }
+  /* Only when stacked: in the wide layout's min-content column, a percentage max-width
+     can give the SVG zero min-content width and collapse it. */
   #puzzle-svg { max-width: 100%; height: auto; }
 }

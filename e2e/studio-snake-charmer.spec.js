@@ -5,6 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
+const { openStudio, openStudioFile, downloadText: download } = require('./helpers');
 const { clickGapLine } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../snake-charmer/src/builder');
@@ -19,10 +20,7 @@ const fixture = (name) => path.join(REPO, 'snake-charmer/test/fixtures', name);
 
 // ---- helpers ----------------------------------------------------------------
 
-async function start(page) {
-  await page.goto(studio.url);
-  await expect(page.locator('#welcome')).toBeVisible();
-}
+const start = (page) => openStudio(page, studio.url);
 
 async function openSizePrompt(page) {
   await start(page);
@@ -37,11 +35,7 @@ async function newRing(page, cells = 16) {
   await expect(page.locator('#board')).toBeVisible();
 }
 
-async function openFile(page, file) {
-  await start(page);
-  await page.setInputFiles('#open-input', file);
-  await expect(page.locator('#board')).toBeVisible();
-}
+const openFile = (page, file) => openStudioFile(page, studio.url, file);
 
 const cell = (page, k) => page.locator(`.rc[data-k="${k}"]`);
 const letter = (page, k) => page.locator(`.rl[data-k="${k}"]`);
@@ -51,11 +45,6 @@ const lap = (page, n) => page.locator(`#lap-toggle [data-lap="${n}"]`);
 async function fillRing(page, letters) {
   await page.locator('#sequence-field').fill(letters);
   await page.locator('#sequence-field').press('Enter');
-}
-
-async function download(page, selector) {
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator(selector).click()]);
-  return fs.readFileSync(await dl.path(), 'utf8');
 }
 
 // ---- tests ------------------------------------------------------------------

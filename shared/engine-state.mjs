@@ -1,13 +1,9 @@
 import { sha256hex } from './sha256hex.mjs';
 import { joinCells } from './boardString.mjs';
 
-// Shared browser-engine game state: the solve-tracking cores every puzzle tool's
-// engine.js builds on — the active-solve timer, the one-shot completion latch,
-// multi-letter (rebus) composition, and board-state/answer checking. Unlike
-// engine-chrome.mjs, nothing here creates page elements: every DOM touch goes through
-// an accessor or element the engine supplies, which is what lets node:test drive
-// these with plain closures and mocks. Each engine imports what it needs and
-// shared/build/engineBundle.js bundles it into the page script.
+// The game state every engine shares: cells and marks, composition, checking, the
+// timer and completion latch, and saving. Nothing here creates page elements; every DOM
+// touch goes through an accessor the engine supplies, so node:test can drive it all.
 
 // The default clock is performance.now(), not Date.now(): only durations are kept, and
 // unlike the wall clock it never jumps when the computer's clock is changed mid-solve.
@@ -80,8 +76,8 @@ function makeHelpRecord() {
   let checks = 0;
   let reveals = 0;
 
-  // A save written before the record existed has no `help`, and a hand-edited one may
-  // hold anything: only a non-negative integer counts, everything else reads as zero.
+  // A hand-edited save may hold anything: only a non-negative integer counts, everything
+  // else reads as zero.
   const asCount = v => (Number.isInteger(v) && v >= 0 ? v : 0);
 
   return {
@@ -186,11 +182,15 @@ function makeSavePayload({ cells, helpRecord, timer, composer }) {
 }
 
 // The board's solve state, for syncUI: the done-wrong banner shows only on a filled
-// board that isn't solved, and the latch hears whether it is solved (it decides whether
-// that is news). DOM-coupled, tested via mocks.
+// board that isn't solved, a solved board is painted (markSolved, idempotent), and the
+// latch hears whether it is solved (it decides whether that is news). Painting here,
+// where the solve is detected, means no path can announce a solve without painting it;
+// painting first means the congrats card opens over a painted board. DOM-coupled,
+// tested via mocks.
 function syncSolveState({ checker, latch, doneWrong }) {
   const solved = checker.isSolved();
   doneWrong.hidden = !(checker.isBoardFilled() && !solved);
+  if (solved) checker.markSolved();
   latch.check(solved);
 }
 
@@ -220,56 +220,111 @@ function setLetterText(el, text) {
   for (const c of LEN_CLASSES) el.classList.toggle(c, c === want);
 }
 
-// One engine's cells: each one's letter and correct mark, and the save's view of them.
-// `ids` lists every cell that holds a letter (Marching Bands' center and Crushword's
-// blocks are left out); `cellEl(n)` and `letterEl(n)` return its elements, accessors so
-// the store can be made before the SVG is built; `show(el, text)` displays a letter
-// (Crushword's also fits a long one to its cell). setCellLetter is the only writer of a
-// cell's letter.
-function makeCellStore({ ids, cellEl, letterEl, show = setLetterText }) {
+// A cell's mark: what is known about its content. One value per cell, held in
+// `data-mark` on the cell and its letter; absent means unmarked.
+//   checked  → confirmed right by a Check. The solve marks no cell; it paints the board
+//              (each engine's markSolved).
+//   revealed → confirmed right by a Reveal, whether it wrote the answer or found the
+//              cell already holding it: the solver asked for the answer either way.
+//   wrong    → a Check found the content wrong; it stays until the cell is edited.
+// The first two count as right (isConfirmedRight, RIGHT_MARKS); `wrong` does not. A
+// save's other values are ignored on restore, so a mark a later page adds can neither
+// paint as right nor count as anything here.
+const RIGHT_MARKS = new Set(['checked', 'revealed']);
+const KNOWN_MARKS = new Set([...RIGHT_MARKS, 'wrong']);
+
+// Writes `mark` (null for none) to one element's data-mark: the one writer, so the
+// grid's cells and letters (makeCellStore) and the phone list's mirror can't drift.
+function applyMark(el, mark) {
+  if (mark) el.dataset.mark = mark;
+  else delete el.dataset.mark;
+}
+
+// One engine's cells: each one's letter and mark, and the save's view of them. `ids`
+// lists every cell that holds a letter (Marching Bands' center and Crushword's blocks are
+// left out); `cellEl(n)` and `letterEl(n)` return its elements, accessors so the store
+// can be made before the SVG is built; `show(el, text)` displays a letter (Crushword's
+// also fits a long one to its cell); `drawMark(n, mark)` draws or removes the mark's
+// shape (the engine's setupMarkLayer), called for every mark written, null included.
+// setCellLetter is the only writer of a cell's letter.
+function makeCellStore({ ids, cellEl, letterEl, show = setLetterText, drawMark = () => {} }) {
   const letters = new Map();
   const known = new Set(ids);
 
-  // Marks (or unmarks) cell n's correct state on its cell and letter elements
-  // together, so the two can never drift out of sync.
-  function setCorrect(n, on) {
-    cellEl(n).classList.toggle('correct', on);
-    letterEl(n).classList.toggle('correct', on);
+  // Sets (or, with null, clears) cell n's mark on its cell and letter elements together,
+  // so the two can never drift out of sync.
+  function setMark(n, mark) {
+    for (const el of [cellEl(n), letterEl(n)]) applyMark(el, mark);
+    drawMark(n, mark);
   }
 
-  function isCorrect(n) { return cellEl(n).classList.contains('correct'); }
+  function getMark(n) { return cellEl(n).dataset.mark || null; }
+
+  function isConfirmedRight(n) { return RIGHT_MARKS.has(getMark(n)); }
+
+  function isMarkedWrong(n) { return getMark(n) === 'wrong'; }
+
+  // A locked cell is confirmed right, and keystrokes can't change it: it behaves like any
+  // filled cell, except that a typed letter, Space and Backspace leave its content alone
+  // while the cursor moves as if the key had landed (Backspace treats it as empty, so it
+  // steps past), and composition (Enter, the Rebus button) refuses it. Only Clear and
+  // Play again empty it. Each engine's key paths consult this for where the cursor goes,
+  // the composer refuses it, and setCellLetter won't write it.
+  function isLocked(n) { return isConfirmedRight(n); }
 
   function getCellLetter(n) { return letters.get(n) || ''; }
 
-  // A new letter hasn't been checked, so it clears the cell's correct mark.
+  // A new letter hasn't been confirmed, so it clears the cell's mark. A locked cell is
+  // left alone: the lock's backstop, so a key path that forgot isLocked can neither
+  // overwrite a checked or revealed cell nor unlock it. Only clearCells empties one.
   function setCellLetter(n, letter) {
+    if (isLocked(n)) return;
     if (letter) letters.set(n, letter);
     else letters.delete(n);
     show(letterEl(n), letter);
-    setCorrect(n, false);
+    setMark(n, null);
+  }
+
+  // The save's `marks` (cell id → value) as [id, mark] pairs; none unless it is a map.
+  function savedMarks(saved) {
+    const { marks } = saved;
+    if (marks === null || typeof marks !== 'object' || Array.isArray(marks)) return [];
+    return Object.entries(marks).map(([k, mark]) => [Number(k), mark]);
   }
 
   return {
-    getCellLetter, setCellLetter, setCorrect, isCorrect,
-    markAllCorrect() { for (const n of ids) setCorrect(n, true); },
-    clearCells()     { for (const n of ids) setCellLetter(n, ''); },
-    // The save's `letters` (an object keyed by cell id) and `correct` (cell ids).
-    saveFields() {
-      return { letters: Object.fromEntries(letters), correct: ids.filter(n => isCorrect(n)) };
+    getCellLetter, setCellLetter, setMark, getMark, isConfirmedRight, isMarkedWrong, isLocked,
+    // Clear and Play again: unmark first, so locked cells empty too.
+    clearCells() {
+      for (const n of ids) {
+        setMark(n, null);
+        setCellLetter(n, '');
+      }
     },
-    // Whether every cell a save names (its letters, correct marks and composing cell) is
-    // one of this board's: setupStorage's `fits`. Two boards can share a storageKey, and
+    // The save's `letters` (an object keyed by cell id) and `marks` (cell id → value,
+    // marked cells only).
+    saveFields() {
+      const marks = {};
+      for (const n of ids) {
+        const mark = getMark(n);
+        if (mark) marks[n] = mark;
+      }
+      return { letters: Object.fromEntries(letters), marks };
+    },
+    // Whether every cell a save names (its letters, marks and composing cell) is one of
+    // this board's: setupStorage's `fits`. Two boards can share a storageKey, and
     // restoring the other's save would write to cells that don't exist here.
     fitsSave(saved) {
       const composing = saved.composing;
-      return Object.keys(saved.letters).every(k => known.has(Number(k)))
-        && saved.correct.every(n => known.has(n))
+      return saved.letters !== null && typeof saved.letters === 'object'
+        && Object.keys(saved.letters).every(k => known.has(Number(k)))
+        && savedMarks(saved).every(([n]) => known.has(n))
         && (composing === null || composing === undefined || known.has(composing));
     },
-    // saveFields' inverse. Letters first: each one clears its cell's correct mark.
+    // saveFields' inverse. Letters first: each one clears its cell's mark.
     restoreFields(saved) {
       for (const [k, letter] of Object.entries(saved.letters)) setCellLetter(Number(k), letter);
-      for (const n of saved.correct) setCorrect(n, true);
+      for (const [n, mark] of savedMarks(saved)) if (KNOWN_MARKS.has(mark)) setMark(n, mark);
     },
   };
 }
@@ -282,7 +337,7 @@ function makeCellStore({ ids, cellEl, letterEl, show = setLetterText }) {
 const MAX_COMPOSE_LEN = 12;
 
 // Composing (multi-letter / rebus) cell state. At most one cell composes at a time and,
-// by the focusCell invariant (see docs/CROSS_TOOL_SPEC.md → Focus management), it is
+// by the focusCell invariant (see docs/CROSS_TOOL_SPEC.md → "Focus management"), it is
 // always the active cell. A cell counts as *filled* only when it holds content AND is
 // not composing: that exclusion is what stops a mid-composition prefix from being read
 // as a solved board and sealing the one-way completion latch early. The composer
@@ -297,7 +352,8 @@ const MAX_COMPOSE_LEN = 12;
 //                      and calls neither, passes none
 //   onCommit()       → runs after a commit: syncUI + the mode-appropriate check + save
 //   isSolved()       → latch.solved; a solved board never opens composition
-function makeComposer({ getContent, setContent, onCommit, isSolved }) {
+//   isLocked(n)      → the cell store's isLocked; a locked cell never composes
+function makeComposer({ getContent, setContent, onCommit, isSolved, isLocked = () => false }) {
   let composingId = null;
 
   function isComposing(n) { return composingId !== null && n === composingId; }
@@ -319,8 +375,10 @@ function makeComposer({ getContent, setContent, onCommit, isSolved }) {
     if (composingId !== null && composingId !== n) commit();
   }
 
-  // Returns true when the caller should advance the cursor.
+  // Returns true when the caller should advance the cursor. A locked cell takes no letter
+  // but the cursor still moves on, as if it had landed.
   function typeLetter(n, text) {
+    if (isLocked(n)) return true;
     if (isComposing(n)) {
       setContent(n, (getContent(n) + text).slice(0, MAX_COMPOSE_LEN));
       return false;
@@ -345,12 +403,16 @@ function makeComposer({ getContent, setContent, onCommit, isSolved }) {
   // Toggles composition on n. Beginning keeps any existing content, so a cell holding H
   // grows into HAR without retyping and no input is ever destroyed. Every way into
   // composition (Enter, the Rebus button, Crushword's keystrokes) ends here, so this is
-  // the one place a solved board refuses it.
+  // the one place a solved board, or a locked cell, refuses it.
   function toggle(n) {
     if (isComposing(n)) { commit(); return; }
-    if (isSolved()) return;
+    if (!canCompose(n)) return;
     composingId = n;
   }
+
+  // Whether composition may open on n: not on a solved board or a locked cell. The Rebus
+  // button reads it for its disabled state.
+  function canCompose(n) { return !isSolved() && !isLocked(n); }
 
   // Drops state without firing onCommit — see resetAndRefocus for why.
   function reset() {
@@ -364,18 +426,15 @@ function makeComposer({ getContent, setContent, onCommit, isSolved }) {
   // toward isBoardFilled, and can be adjudicated as an answer the solver never submitted.
   function getComposing() { return composingId; }
 
-  // `n` comes straight from the parsed save, so it may be undefined (a save written
-  // before this field existed) or null. Only a real cell id reopens composition — an
-  // absent field is treated as "not composing" rather than bumping the schema `v`,
-  // matching how `activeMs`'s addition was handled.
+  // `n` is the save's `composing`: a cell id, or null (or absent) for none.
   function restore(n) {
     if (n === null || n === undefined) return;
     composingId = n;
   }
 
   return {
-    isCellFilled, isComposing, typeLetter, backspace, toggle, commitIfMoved, reset,
-    getComposing, restore,
+    isCellFilled, isComposing, canCompose, typeLetter, backspace, toggle, commitIfMoved,
+    reset, getComposing, restore,
   };
 }
 
@@ -386,20 +445,28 @@ function makeComposer({ getContent, setContent, onCommit, isSolved }) {
 //   cellIds             → cell ids in canonical traversal order (the board-string order)
 //   getContent(n)       → the cell's current string
 //   isCellFilled(n)     → composer.isCellFilled — content present AND not composing
-//   isCellMarkedCorrect(n) → reads the tool's own correct marker (class or dataset)
+//   isCellConfirmedRight(n) → whether cell n's mark says right (the cell store's
+//                         isConfirmedRight)
+//   isCellMarkedWrong(n) → whether cell n carries a wrong mark (the cell store's
+//                         isMarkedWrong)
+//   checkComposing      → Check may take a composing cell holding content (Crushword,
+//                         whose every typed cell composes until committed, and whose
+//                         beforeCheck commits it into the check); default false
 //   hashed              → picks the evidence source, nothing else
 //   getExpected(n)      → the cell's answer string (non-hashed builds only)
 //   getBoardHash()      → the stored board hash
-//   markSolved()        → paint the solved board (cells, letters, and clue items if the
-//                         tool marks them)
+//   markSolved()        → paint the solved board: `.solved` on the board SVG, and clue
+//                         items if the tool marks them. It marks no cell, and must be
+//                         idempotent: syncSolveState repaints on every syncUI of a solved
+//                         board.
 //   syncUI()            → the engine's syncUI
 //
 // One checkIfFilled() serves both modes. That is what keeps them symmetric by
 // construction rather than by two hand-maintained copies: the guard, the syncUI calls
 // and markSolved() are shared, and `hashed` chooses only how correctness is evidenced.
 function makeBoardChecker({
-  cellIds, getContent, isCellFilled, isCellMarkedCorrect,
-  hashed, getExpected, getBoardHash, markSolved, syncUI,
+  cellIds, getContent, isCellFilled, isCellConfirmedRight, isCellMarkedWrong = () => false,
+  checkComposing = false, hashed, getExpected, getBoardHash, markSolved, syncUI,
 }) {
   function isBoardFilled() { return cellIds.every(n => isCellFilled(n)); }
 
@@ -409,7 +476,11 @@ function makeBoardChecker({
   // — see docs/CROSS_TOOL_SPEC.md → "Active-clue banner".
   function isEntryFilled(cells) { return cells.every(n => isCellFilled(n)); }
 
-  function isSolved() { return cellIds.every(n => isCellMarkedCorrect(n)); }
+  // Solved means the board's content is filled and correct, whatever its marks: the
+  // solve marks no cell, and a checked cell can sit beside a wrong one. "Filled" excludes
+  // a composing cell, so a half-typed rebus can't solve the board (or fire the latch from
+  // syncSolveState); filled is tested first, so a hashed page hashes only a full board.
+  function isSolved() { return isBoardFilled() && boardIsCorrect(); }
 
   // Normalize each cell, then join — never normalize a joined string. Cells are stored
   // normalized (lowercase), so they join as they are. joinCells inserts CELL_DELIM so a
@@ -419,20 +490,23 @@ function makeBoardChecker({
   }
 
   // Check Cell (non-hashed builds): the one place that decides whether a cell may be
-  // checked, so Check applies .correct only to a filled cell by construction (Reveal gets
-  // there by making its cell filled first, see revealCells). canCheck also drives the
-  // button's disabled state. checkCell returns
-  // null when the cell can't be checked (empty, composing, or already correct — no
-  // re-save), else whether its content is right; the engine does its own marking.
-  function canCheck(n) { return isCellFilled(n) && !isCellMarkedCorrect(n); }
+  // checked, so Check marks only a filled cell by construction. canCheck also drives the
+  // button's disabled state. checkCell returns null when the cell can't be checked
+  // (empty, composing unless checkComposing, already confirmed right, or marked wrong —
+  // unchanged since its check, as any edit clears the mark), else whether its content is
+  // right; the engine does its own marking.
+  function canCheck(n) {
+    const hasContent = checkComposing ? getContent(n) !== '' : isCellFilled(n);
+    return hasContent && !isCellConfirmedRight(n) && !isCellMarkedWrong(n);
+  }
 
   function checkCell(n) {
     return canCheck(n) ? getContent(n) === getExpected(n) : null;
   }
 
   // Check Clue and Check Puzzle: checkCell over a set of cells in one pass. A cell that
-  // cannot be checked (empty, composing, already correct) is skipped, so a set with
-  // nothing checkable returns two empty lists. The engine marks `right` correct and
+  // cannot be checked (empty, composing, already confirmed right) is skipped, so a set
+  // with nothing checkable returns two empty lists. The engine marks `right` checked and
   // flashes `wrong`; neither is marked here, as checkCell marks nothing.
   function checkCells(ids) {
     const right = [];
@@ -447,9 +521,10 @@ function makeBoardChecker({
     return { right, wrong };
   }
 
-  // Reveal Cell may act on any cell not already marked correct: empty, wrong or composing
-  // (revealCells ends the composition). The button's disabled state comes from this.
-  function canReveal(n) { return !isCellMarkedCorrect(n); }
+  // Reveal Cell may act on any cell not already confirmed right: empty, wrong or
+  // composing (revealCells ends the composition). The button's disabled state comes from
+  // this.
+  function canReveal(n) { return !isCellConfirmedRight(n); }
 
   function boardIsCorrect() {
     return hashed
@@ -467,38 +542,44 @@ function makeBoardChecker({
     syncUI();
   }
 
-  // Restore-time repaint, called once after restoreState(): the auto-save payload records
-  // cell correctness only, so this re-runs markSolved() to put the rest of the solved
-  // painting back. Mark-driven — it repaints from marks already established and does not
-  // re-adjudicate the answers. It must not call syncUI() (which reaches latch.check()),
-  // so it stays safe under any restore ordering; pinned by engine-state.checker.test.js.
-  // Call order: docs/CROSS_TOOL_SPEC.md → "localStorage key format" → Timing contract.
+  // Restore-time repaint, called once after restoreState(): the auto-save payload holds
+  // no solved flag, so this re-adjudicates the restored content (isSolved) and re-runs
+  // markSolved() on a solved board. It must not call syncUI() (which reaches
+  // latch.check()), so it stays safe under any restore ordering; pinned by
+  // engine-state.checker.test.js.
+  // Called by restoreAndSeal, which fixes the order.
   function repaintIfSolved() { if (isSolved()) markSolved(); }
 
   return {
-    isBoardFilled, isEntryFilled, isSolved, getSolution, canCheck, checkCell, checkCells,
-    canReveal, getExpected, cellIds, checkIfFilled, repaintIfSolved,
+    isBoardFilled, isEntryFilled, isSolved, markSolved, getSolution, canCheck, checkCell,
+    checkCells,
+    canReveal, getContent, getExpected, cellIds, checkIfFilled, repaintIfSolved,
   };
 }
 
-// Reveal Cell, Clue and Puzzle: fills each cell of `ids` that `canReveal` accepts with
-// its answer (`getExpected(n)`) and marks it correct, whatever it held. The order is the
-// point. Composition ends first, without onCommit: committing would adjudicate the
-// half-typed prefix as an answer and could complete or wrong-flag the board before the
-// reveal lands. And a cell the composer still held would end up `.correct` and composing
-// at once, so the next keystroke would append to the revealed answer. Only a composing
-// cell that is itself revealed loses its composition: one already marked correct can be
-// composing too (Enter opens composition on it), and a reveal that leaves that cell alone
-// must leave it composing. Each write comes before its mark because the writer clears the
-// correct mark. The caller then counts the reveal, runs the completion path
-// (checkIfFilled, syncUI) and only then saves; `makeHelpActions` says why.
-function revealCells({ ids, composer, getExpected, canReveal, setCellLetter, setCorrect }) {
+// Reveal Cell, Clue and Puzzle, over each cell of `ids` that `canReveal` accepts. Each
+// is marked revealed. A cell whose content already equals its answer (`getExpected(n)`)
+// keeps its letter; any other gets its answer written. There is no "filled" condition:
+// Crushword composes every cell as it is typed, so a just-typed right letter is
+// composing when Reveal arrives, and it must come out unrewritten there as in the other
+// tools.
+//
+// The order is the point. Composition ends first, without onCommit: committing would
+// adjudicate the half-typed prefix as an answer and could complete or wrong-flag the
+// board before the reveal lands, and comparing content commits nothing (a prefix simply
+// differs from the answer and is revealed). A cell the composer still held would end up
+// marked and composing at once, so the next keystroke would append to it. Only a
+// composing cell that is itself revealed loses its composition here. Each write comes
+// before its mark because the writer clears the mark. The caller then counts the reveal,
+// runs the completion path (checkIfFilled, syncUI) and only then saves; `makeHelpActions`
+// says why.
+function revealCells({ ids, composer, getContent, getExpected, canReveal, setCellLetter, setMark }) {
   const composing = composer.getComposing();
   if (composing !== null && ids.includes(composing) && canReveal(composing)) composer.reset();
   for (const n of ids) {
     if (!canReveal(n)) continue;
-    setCellLetter(n, getExpected(n));
-    setCorrect(n, true);
+    if (getContent(n) !== getExpected(n)) setCellLetter(n, getExpected(n));
+    setMark(n, 'revealed');
   }
 }
 
@@ -507,37 +588,31 @@ function revealCells({ ids, composer, getExpected, canReveal, setCellLetter, set
 // calls over a set of cells: checkSet(ids) and revealSet(ids).
 //
 // The order in each is the point: count, the completion path (checkIfFilled, which paints
-// a board these cells finished), and only then save. A save before it stores a finished
-// board as unsolved: it reloads with the done-wrong banner and the completion latch open,
-// so the next keystroke fires a second varietypack:complete.
+// `.solved` and the clues on a board these cells finished), and only then save, so the
+// save holds every mark the action made. Solved-ness itself comes from content, so a save
+// can't unsolve a board.
 //
 // The engine supplies what differs:
 //   flashWrong(wrong) → flash the wrong cells (and the phone list's); `wrong` is cell ids
 //   beforeCheck()     → runs before a check, so Crushword can commit a typed cell into it
 //   afterReveal()     → ends a reveal; the default syncs and refocuses, and Crushword's
 //                       lands its cursor after the revealed content instead
-// A set with nothing to check or reveal counts nothing, writes nothing and only
-// refocuses: the button's disabled state is UX only, so the action guards itself.
+// A set with nothing to check or reveal, or a solved board, counts nothing, writes
+// nothing and only refocuses: the buttons' disabled state is UX only, so the action
+// guards itself.
 function makeHelpActions({
-  checker, composer, helpRecord, setCellLetter, setCorrect, saveState, syncUI, refocus,
+  checker, composer, helpRecord, setCellLetter, setMark, saveState, syncUI, refocus,
   flashWrong, beforeCheck = () => {}, afterReveal = () => { syncUI(); refocus(); },
 }) {
-  // These actions are the only way to mark other cells while one cell composes. A
-  // composing cell still marked correct holds exactly the content that was marked, since
-  // any edit clears the mark, so ending its composition discards nothing. It must end
-  // when the marks complete the board: checkIfFilled returns early on a composing cell,
-  // so the completion path (markSolved, painting the clues) would never run.
-  function endCompositionIfSolved() {
-    if (checker.isSolved()) composer.reset();
-  }
-
   function checkSet(ids) {
+    // After beforeCheck: the commit it makes can itself solve the board.
     beforeCheck();
+    if (checker.isSolved()) { refocus(); return; }
     const { right, wrong } = checker.checkCells(ids);
     if (right.length + wrong.length === 0) { refocus(); return; }
     helpRecord.countCheck();
-    for (const n of right) setCorrect(n, true);
-    endCompositionIfSolved();
+    for (const n of right) setMark(n, 'checked');
+    for (const n of wrong) setMark(n, 'wrong');
     checker.checkIfFilled();
     saveState();
     flashWrong(wrong);
@@ -546,13 +621,12 @@ function makeHelpActions({
   }
 
   function revealSet(ids) {
-    if (!ids.some(checker.canReveal)) { refocus(); return; }
+    if (checker.isSolved() || !ids.some(checker.canReveal)) { refocus(); return; }
     revealCells({
-      ids, composer, getExpected: checker.getExpected, canReveal: checker.canReveal,
-      setCellLetter, setCorrect,
+      ids, composer, getContent: checker.getContent, getExpected: checker.getExpected,
+      canReveal: checker.canReveal, setCellLetter, setMark,
     });
     helpRecord.countReveal();
-    endCompositionIfSolved();
     checker.checkIfFilled();
     saveState();
     afterReveal();
@@ -579,7 +653,7 @@ function restoreAndSeal({ restoreState, checker, latch, composer }) {
 // removes — and commitIfMoved can't stand in for it, being a no-op when the reset target
 // is the composing cell. focusInitial() runs last, so syncUI re-derives every highlight
 // and the done-wrong banner from the fully reset board. `clearBoard` is the engine's own
-// teardown: letters, correct marks, flash overlays, navigation sub-mode.
+// teardown: letters, cell marks, flash overlays, navigation sub-mode.
 function resetAndRefocus({ composer, clearBoard, clearState, timer, latch, helpRecord, focusInitial }) {
   composer.reset();
   clearBoard();
@@ -610,7 +684,8 @@ function stepToUnfilled(order, from, dir, cellsOf, isFilled) {
 }
 
 export {
-  setupTimer, makeHelpRecord, makeCompletionLatch, makeComposer, setLetterText, letterLenClass, makeCellStore,
+  setupTimer, makeHelpRecord, makeCompletionLatch, makeComposer, setLetterText, letterLenClass, applyMark,
+  makeCellStore,
   makeBoardChecker, revealCells, makeHelpActions, stepToUnfilled,
   setupSolveTracking, makeSavePayload, syncSolveState, restoreAndSeal, resetAndRefocus,
 };

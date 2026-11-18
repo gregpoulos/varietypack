@@ -41,6 +41,27 @@ test('a save the board says does not fit starts fresh', () => {
   assert.equal(saveThenRestore(PUZZLE, PUZZLE, { fits: () => false }), null);
 });
 
+// Restores whatever payload is stored raw under the puzzle's key, or null.
+function restoreRaw(payload, fits = () => true) {
+  const key = storageKey('cw', PUZZLE);
+  localStorage.setItem(key, JSON.stringify(payload));
+  let restored = null;
+  setupStorage(key, { getState: () => ({}), applyState: s => { restored = s; }, fits }).restoreState();
+  return restored;
+}
+
+test('a save is written as version 2', () => {
+  const key = storageKey('cw', PUZZLE);
+  setupStorage(key, { getState: () => ({ letters: {} }), applyState: () => {}, fits: () => true }).saveState();
+  assert.equal(JSON.parse(localStorage.getItem(key)).v, 2);
+});
+
+// An older page meets a newer save this way: the version check must come before `fits`,
+// which may not understand the newer payload.
+test('a save of an unknown version starts fresh without asking fits', () => {
+  assert.equal(restoreRaw({ v: 3 }, () => { throw new Error('fits called'); }), null);
+});
+
 test('clearState removes the save', () => {
   const key = storageKey('cw', PUZZLE);
   const storage = setupStorage(key, { getState: () => ({ letters: {} }), applyState: () => {}, fits: () => true });

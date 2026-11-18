@@ -29,7 +29,9 @@ function computeCells(totalCells, geometry = geometryFor(totalCells)) {
   }
 
   const TOTAL_ANGLE = 2 * Math.PI * N_TURNS;
-  const BAND        = (R_MAX - R_HOLE) / (N_TURNS + 1);
+  // N_TURNS + 1 bands fit between the hole and the rim, so the pitch per turn equals the
+  // band width and adjacent arms just touch; dividing by N_TURNS makes them overlap.
+  const BAND       = (R_MAX - R_HOLE) / (N_TURNS + 1);
   const R_CEN_MAX   = R_MAX  - BAND / 2;
   const R_CEN_MIN   = R_HOLE + BAND / 2;
   const k           = (R_CEN_MAX - R_CEN_MIN) / TOTAL_ANGLE;

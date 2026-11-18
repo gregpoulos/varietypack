@@ -12,6 +12,8 @@ const { loadPuzzle } = require('../shared/cli/puzzleFiles');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { KINDS, hooksFor } = require('../shared/build/tools');
 const { normalize } = require('../shared/normalize.mjs');
+const { SHAPE_NAMES } = require('../snake-charmer/src/layout');
+const { geometryFor } = require('../spiral/src/layout.mjs');
 const { puzzleDataOf } = require('./helpers');
 
 const EXAMPLES = path.join(__dirname, '..', 'examples');
@@ -29,6 +31,35 @@ function walk(value, only, found = { keys: new Set(), strings: [] }, key) {
   return found;
 }
 
+// What each tool's own fields in a plain page's PUZZLE_DATA must hold, built from its
+// example. A tool's builder copies fields into the page data by name, so a field it
+// forgets is missing here.
+const TOOL_FIELDS = {
+  'snake-charmer': data => {
+    assert.equal(data.loops, 2);
+    assert.ok(Number.isInteger(data.ring.N));
+    assert.ok(SHAPE_NAMES.includes(data.shape), data.shape);
+    assert.equal(data.letters.length, data.ring.N);
+  },
+  'spiral': data => {
+    const total = data.inward.reduce((sum, e) => sum + e.length, 0);
+    assert.equal(data.cells.length, total);
+    assert.deepEqual(data.geometry, geometryFor(data.cells.length));
+    assert.equal(data.letters.length, data.cells.length);
+  },
+  'marching-bands': data => {
+    assert.equal(data.rows.length, data.size);
+    assert.equal(data.bands.length, Math.floor(data.size / 2));
+    assert.equal(data.letters.length, data.size * data.size);
+  },
+  'crushword': data => {
+    assert.ok(data.grid.length > 0);
+    assert.ok(Object.keys(data.across).length > 0 && Object.keys(data.down).length > 0);
+    assert.equal(data.maxCellLetters, 3);
+    assert.equal(data.letters.length, data.grid.length * data.grid[0].length);
+  },
+};
+
 for (const kind of KINDS) {
   const HOOKS = hooksFor(kind);
   const puzzle = loadPuzzle(path.join(EXAMPLES, `${kind}.yaml`));
@@ -44,6 +75,10 @@ for (const kind of KINDS) {
     const data = dataOf(false);
     assert.ok(Array.isArray(data.letters));
     assert.match(data.boardHash, /^[0-9a-f]{64}$/);
+  });
+
+  test(`[${kind}] a plain page ships its own fields`, () => {
+    TOOL_FIELDS[kind](dataOf(false));
   });
 
   test(`[${kind}] a hashed page ships the same board hash and no answers`, () => {

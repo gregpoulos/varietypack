@@ -95,7 +95,7 @@ a { color: var(--theme-color-link); }
    Bands highlights its .clue-group instead, below). :where() keeps :hover at the same
    specificity as the state rules, so the state rules that follow win by source order. */
 :where(.tool-snake-charmer, .tool-spiral, .tool-crushword) .clue-item:hover { background: var(--theme-color-clue-hover); }
-.clue-item.active-clue     { background: var(--theme-color-active); }
+.clue-item.active-clue     { background: var(--theme-color-active-clue); }
 .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
 .clue-item.filled .clue-text { text-decoration: var(--theme-clue-filled-decoration); opacity: var(--theme-clue-filled-opacity); }
 
@@ -152,8 +152,9 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 .menu-toggle:hover { background: var(--theme-color-clue-hover); }
 
 /* Rebus button — the pointer route into multi-letter entry, mirroring the Enter key.
-   Deliberately has no disabled or per-cell state: it looks identical on every square,
-   in every build, which is what keeps it from signalling which cells are rebus.
+   It is disabled only where composition is refused whatever the cell's capacity (see
+   setupRebusButton in shared/engine-chrome.mjs); otherwise it looks identical on every
+   square, in every build, which keeps it from signalling which cells are rebus.
    Composition-in-progress is shown on the cell itself (.cell.active-cell.composing
    below), so the button carries only its label — whose width is reserved in
    shared/base.css so the Rebus→Done swap does not reflow #controls. */
@@ -165,7 +166,7 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
   border-color:   var(--theme-color-btn2-border);
   letter-spacing: var(--theme-button-tracking);
 }
-#rebus-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+#rebus-btn:hover:not(:disabled) { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
 /* Puzzle toggle (direction / mode / loop) */
 .puzzle-toggle { border: 1px solid var(--theme-color-btn2-border); }
@@ -185,8 +186,6 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 .cell              { fill: var(--theme-color-cell-bg); stroke: var(--theme-color-cell-stroke); stroke-width: 0.5; }
 .cell.active-entry { fill: var(--theme-color-highlight); }
 .cell.active-cell  { fill: var(--theme-color-active); stroke: var(--theme-color-active-stroke); stroke-width: 1.5; }
-.cell.correct      { fill: var(--theme-color-correct-bg); stroke: var(--theme-color-correct-stroke); stroke-width: 0.5; }
-.cell.correct.active-cell { stroke: var(--theme-color-active-stroke); stroke-width: 1.5; }
 
 .style-circle { fill: none; stroke: var(--theme-color-circle); stroke-width: 1; }
 
@@ -194,7 +193,14 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
    presentation attributes; a CSS font-size overrides them silently. The other tools
    size them in their own template base.css. */
 .cell-letter         { font-family: var(--theme-font-cell); fill: var(--theme-color-cell-text); }
-.cell-letter.correct { fill: var(--theme-color-correct-text); }
+/* A mark never changes the cell's fill, which belongs to the cursor and the highlights:
+   a checked cell colors its letter, and the flag and slash are shapes in .mark-layer
+   (setupMarkLayer, shared/engine-chrome.mjs). */
+.cell-letter[data-mark="checked"] { fill: var(--theme-color-checked-text); }
+.mark-shape { pointer-events: none; }
+.mark-flag  { fill: var(--theme-color-revealed-flag); }
+/* Screen pixels, not user units: each tool's viewBox scales its cells differently. */
+.mark-slash { stroke: var(--theme-color-wrong-slash); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 
 /* The direction chevron (Spiral, Marching Bands); each tool sets its stroke width, which
@@ -388,6 +394,8 @@ html.phone #clues-btn {
   letter-spacing: var(--theme-button-tracking);
 }
 html.phone #solve-bar  { border-top: 1px solid var(--theme-color-bar-border); }
+/* The zoomed grid's edge shadows: darkest at the side, fading inward. */
+html.phone .edge-shadow-stop { stop-color: var(--theme-color-edge-shadow); }
 html.phone .bar-step   { background: transparent; color: var(--theme-color-muted); }
 html.phone .nav-label  { color: var(--theme-color-title); }
 html.phone .nav-count  { color: var(--theme-color-muted); }
@@ -415,15 +423,29 @@ html.phone .clue-item .list-cell.list-cursor {
   border-color: var(--theme-color-active-stroke);
   box-shadow:   inset 0 0 0 1px var(--theme-color-active-stroke);
 }
-/* A checked cell keeps its correct fill under the active clue's row, as in the grid; the
-   cursor changes only its outline. This follows the cursor rule above, which it ties
-   with on specificity. */
-html.phone .clue-item .list-cell.correct {
-  background:   var(--theme-color-correct-bg);
-  border-color: var(--theme-color-correct-stroke);
-  color:        var(--theme-color-correct-text);
+/* A list cell shows its grid cell's mark the same way: a checked letter's color, the
+   revealed flag as a corner triangle and the wrong slash (an HTML box, so CSS draws
+   them). */
+html.phone .clue-item .list-cell[data-mark="checked"] { color: var(--theme-color-checked-text); }
+html.phone .clue-item .list-cell[data-mark="revealed"]::after {
+  content:        '';
+  position:       absolute;
+  inset:          0;
+  background:     var(--theme-color-revealed-flag);
+  clip-path:      polygon(70% 0, 100% 0, 100% 30%);
+  pointer-events: none;
 }
-html.phone .clue-item .list-cell.correct.list-cursor { border-color: var(--theme-color-active-stroke); }
+html.phone .clue-item .list-cell[data-mark="wrong"]::after {
+  content:        '';
+  position:       absolute;
+  inset:          0;
+  /* Toward the bottom-right, so the midline runs bottom-left to top-right, as on
+     the grid. */
+  background:     linear-gradient(to bottom right, transparent calc(50% - 1px),
+                    var(--theme-color-wrong-slash) calc(50% - 1px),
+                    var(--theme-color-wrong-slash) calc(50% + 1px), transparent calc(50% + 1px));
+  pointer-events: none;
+}
 /* A cell composing a rebus dashes its outline, as in the grid (the inset shadow would
    fill the dashes in, so it goes). */
 html.phone .clue-item .list-cell.list-cursor.composing {
@@ -463,13 +485,6 @@ html.phone .clue-item .list-cell.list-cursor.composing {
   stroke:       var(--theme-color-secondary-active-stroke);
   stroke-width: 1.5;
 }
-/* A checked cell stays green under the secondary highlight. The two rules above beat the
-   unnamespaced .cell.correct on specificity; these tie with them and follow. */
-.tool-snake-charmer .cell.correct.secondary-entry {
-  fill:   var(--theme-color-correct-bg);
-  stroke: var(--theme-color-correct-stroke);
-}
-.tool-snake-charmer .cell.correct.active-cell.secondary-entry { stroke: var(--theme-color-active-stroke); }
 
 /* Marching Bands — band fills are unnamespaced to keep :where() specificity
    below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive.
@@ -479,14 +494,11 @@ html.phone .clue-item .list-cell.list-cursor.composing {
 .cell:where(.band-even) { fill: var(--theme-color-band-even); }
 .cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
 .cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
-/* A checked cell keeps its correct fill under the highlight, as .cell.correct does on an
-   odd band by following .cell.active-entry; the rule above outranks that one. */
-.cell.band-even.correct.active-entry { fill: var(--theme-color-correct-bg); }
 .tool-marching-bands .band-label  { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 .tool-marching-bands .row-label   { font-family: var(--theme-font-cell); fill: var(--theme-color-text); }
 .tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
 .tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
-.tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
+.tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active-clue); }
 .tool-marching-bands .clue-group.secondary-entry { background: var(--theme-color-secondary-entry); }
 .tool-marching-bands #direction-chevron { stroke-width: 1.6; }
 

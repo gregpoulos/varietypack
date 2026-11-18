@@ -4,9 +4,8 @@ const { test } = require('node:test');
 const assert   = require('node:assert/strict');
 const mb       = require('../src/model/kinds/marching-bands');
 const { StructureError } = require('../src/model/errors');
+const { commandRunner } = require('./helpers');
 const { bandCells } = require('../../marching-bands/src/layout.mjs');
-
-function deepFreeze(o) { Object.values(o).forEach(v => { if (v && typeof v === 'object') deepFreeze(v); }); return Object.freeze(o); }
 
 // A 5×5 puzzle (the validator's own minimal one): the center cell is a block.
 //   r0: A B C D E   r1: F G H I J   r2: K L # M N   r3: O P Q R S   r4: T U V W X
@@ -25,7 +24,7 @@ const puzzle = () => ({
   ],
 });
 const imp = (p = puzzle()) => mb.fromYaml(p);
-const run = (model, name, ...args) => mb.commands[name](deepFreeze(structuredClone(model)), ...args);
+const run = commandRunner(mb);
 
 test('isCenter: only the middle cell of an odd grid', () => {
   assert.equal(mb.isCenter(5, 13), true);

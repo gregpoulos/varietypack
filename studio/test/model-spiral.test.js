@@ -4,9 +4,8 @@ const { test } = require('node:test');
 const assert   = require('node:assert/strict');
 const spiral   = require('../src/model/kinds/spiral');
 const { StructureError } = require('../src/model/errors');
+const { commandRunner } = require('./helpers');
 const { cutIndices, gapToCutIndex, entryLabel } = spiral;
-
-function deepFreeze(o) { Object.values(o).forEach(v => { if (v && typeof v === 'object') deepFreeze(v); }); return Object.freeze(o); }
 
 // 9 cells: inward ROTI | DEREK, outward (center first) KERE | DITOR.
 const puzzle = () => ({
@@ -15,7 +14,7 @@ const puzzle = () => ({
   outward: [{ clue: 'o1', answer: 'KERE' }, { clue: 'o2', answer: 'DITOR' }],
 });
 const imp = (p = puzzle()) => spiral.fromYaml(p);
-const run = (model, name, ...args) => spiral.commands[name](deepFreeze(structuredClone(model)), ...args);
+const run = commandRunner(spiral);
 
 // ── import ──────────────────────────────────────────────────────────────────
 
@@ -391,15 +390,6 @@ test('insertCell and deleteCell use the given index, not a diff of the letters',
   assert.deepEqual(deleted.circles, [4]);
 });
 
-test('isModel: starts and entries must line up in both cuts', () => {
-  const { model } = imp();
-  assert.equal(spiral.isModel(model), true);
-  const short = { ...model, cuts: { ...model.cuts, inward: { ...model.cuts.inward, entries: model.cuts.inward.entries.slice(1) } } };
-  assert.equal(spiral.isModel(short), false);
-  const off = { ...model, cuts: { ...model.cuts, outward: { ...model.cuts.outward, starts: [2, 4] } } };
-  assert.equal(spiral.isModel(off), false);
-});
-
 test('attachOrphan with an entry that no longer exists changes nothing', () => {
   const { model } = imp();
   const orphaned = run(model, 'toggleBreak', 'outward', 4);
@@ -409,6 +399,12 @@ test('attachOrphan with an entry that no longer exists changes nothing', () => {
 
 test('isModel looks inside: cells, starts, entries and circles must be sound', () => {
   const { model } = imp();
+  assert.equal(spiral.isModel(model), true);
+  // The starts and entries of both cuts must line up.
+  const short = { ...model, cuts: { ...model.cuts, inward: { ...model.cuts.inward, entries: model.cuts.inward.entries.slice(1) } } };
+  assert.equal(spiral.isModel(short), false);
+  const off = { ...model, cuts: { ...model.cuts, outward: { ...model.cuts.outward, starts: [2, 4] } } };
+  assert.equal(spiral.isModel(off), false);
   const bad = (patch) => assert.equal(spiral.isModel({ ...model, ...patch }), false, JSON.stringify(patch).slice(0, 60));
   bad({ cells: [null, ...model.cells.slice(1)] });
   bad({ cells: ['A', ...model.cells.slice(1)] });

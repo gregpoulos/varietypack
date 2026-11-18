@@ -42,16 +42,17 @@ test('rowCells: the rows together cover every cell but the center, once, in orde
 
 // ── bandCells ────────────────────────────────────────────────────────────────
 
-test('bandCells: band 0 N=5 has correct count', () => {
-  assert.equal(bandCells(0, 5).length, 16); // 4*(5-1)
-});
-
-test('bandCells: band 1 N=5 has correct count', () => {
-  assert.equal(bandCells(1, 5).length, 8); // 4*(5-3)
-});
-
-test('bandCells: band 0 N=7 has correct count', () => {
-  assert.equal(bandCells(0, 7).length, 24); // 4*(7-1)
+test('bandCells: the bands and the center cover every cell exactly once', () => {
+  for (const N of [3, 4, 5, 7]) {
+    const seen = [];
+    for (let k = 0; k < Math.floor(N / 2); k++) {
+      const cells = bandCells(k, N);
+      assert.equal(cells.length, 4 * (N - 1 - 2 * k), `N=${N} band ${k} count`);
+      seen.push(...cells);
+    }
+    if (N % 2 === 1) seen.push(centerN(N));
+    assert.deepEqual([...seen].sort((a, b) => a - b), Array.from({ length: N * N }, (_, i) => i + 1), `N=${N}`);
+  }
 });
 
 test('bandCells: band 0 N=5 clockwise order — top edge first', () => {
@@ -80,23 +81,12 @@ test('bandCells: band 1 N=5 clockwise order', () => {
 
 // ── centerFlatIndex / centerN ────────────────────────────────────────────────
 
-test('centerFlatIndex: N=5 → index 12 (0-indexed)', () => {
-  // row 3, col 3: (3-1)*5 + (3-1) = 12
-  assert.equal(centerFlatIndex(5), 12);
-});
-
-test('centerFlatIndex: N=7 → index 24 (0-indexed)', () => {
-  // row 4, col 4: (4-1)*7 + (4-1) = 24
-  assert.equal(centerFlatIndex(7), 24);
-});
-
-test('centerN: N=5 → cell ID 13 (1-indexed)', () => {
-  // n = (3-1)*5 + 3 = 13
-  assert.equal(centerN(5), 13);
-});
-
-test('centerN: N=7 → cell ID 25 (1-indexed)', () => {
-  assert.equal(centerN(7), 25);
+test('centerFlatIndex and centerN: the center cell of an odd grid', () => {
+  // N=5: row 3, col 3 → flat (3-1)*5 + (3-1) = 12, cell ID 13. N=7: row 4, col 4.
+  for (const [N, flat, id] of [[5, 12, 13], [7, 24, 25]]) {
+    assert.equal(centerFlatIndex(N), flat, `N=${N}`);
+    assert.equal(centerN(N), id, `N=${N}`);
+  }
 });
 
 // ── bandCells additional edge cases ──────────────────────────────────────────
@@ -127,10 +117,6 @@ test('bandCells: all cells in each band have correct bandIndexOf', () => {
         `band ${k}: cell ${n} (row ${row}, col ${col}) has wrong bandIndexOf`);
     }
   }
-});
-
-test('bandCells: N=3 band 0 has 8 cells', () => {
-  assert.equal(bandCells(0, 3).length, 8); // 4*(3-1)=8
 });
 
 test('bandCells: N=3 center cell is single-element band', () => {

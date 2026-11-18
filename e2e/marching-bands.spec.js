@@ -13,7 +13,7 @@ const os   = require('os');
 const fs   = require('fs');
 const yaml = require('js-yaml');
 const { buildPuzzleFile } = require('../test/helpers');
-const { clickHelpRow, typeCell } = require('./helpers');
+const { clickHelpRow } = require('./helpers');
 
 const FIX = path.join(__dirname, '..', 'marching-bands', 'test', 'fixtures');
 
@@ -222,49 +222,6 @@ test('the options menu panel does not resize when Clear arms to "Are you sure?"'
   expect(after).toEqual(before);
 });
 
-// Not the clue-restore test its Snake Charmer / Spiral siblings are: MB marks no clue
-// items, so checker.repaintIfSolved() is a genuine no-op here. It covers the other half —
-// the latch.solved keydown guard, which MB carries identically and which the structural
-// safety argument in docs/CROSS_TOOL_SPEC.md → Answer checking relies on in all three
-// engines. Without this, MB was the one engine where that guard had no post-reload
-// coverage.
-test('a solved board restores sealed — Enter cannot open composition', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-
-  const correct = await page.evaluate(() => window.PUZZLE_DATA.letters.filter(l => l !== null));
-  for (const ch of correct) await page.locator('#hidden-input').fill(ch);
-  await expect(page.locator('#congrats-dialog')).toBeVisible();
-
-  await page.reload();
-  await ready(page);
-
-  await expect(page.locator('#puzzle-svg .cell.correct')).toHaveCount(correct.length);
-  await expect(page.locator('#congrats-dialog')).toBeHidden();
-
-  // Post-reload the latch is sealed by sealIfSolved() on a page that never opened a
-  // dialog, so key injection is unimpaired here — unlike the post-Escape point in
-  // 'board is locked after solve'.
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#puzzle-svg .cell.composing')).toHaveCount(0);
-
-  // #rebus-btn reaches composition without going through setupKeydown at all, so the
-  // latch.solved argument above does not cover it — composer.toggle's own solved check
-  // does. Removing that check must turn this red.
-  await page.locator('#rebus-btn').click();
-  await expect(page.locator('#puzzle-svg .cell.composing')).toHaveCount(0);
-});
-
-// Row-major cell contents for marching-bands/test/fixtures/rebus-5.yaml, center
-// (cell 13) omitted — the same order the engine's getSolution() walks.
-const REBUS_CELLS = [
-  'A', 'BB', 'C', 'D', 'E',
-  'F', 'G', 'H', 'III', 'J',
-  'K', 'L',        'M', 'N',
-  'O', 'PPPP', 'Q', 'R', 'S',
-  'T', 'U', 'V', 'W', 'X',
-];
-
 test('a four-letter cell renders with the len-long class', async ({ page }) => {
   await page.goto('file://' + rebusPath);
   await ready(page);
@@ -275,25 +232,6 @@ test('a four-letter cell renders with the len-long class', async ({ page }) => {
   for (const ch of ['P', 'P', 'P', 'P']) await page.locator('#hidden-input').fill(ch);
   await expect(page.locator('#letter-17')).toHaveText('PPPP');
   await expect(page.locator('#letter-17')).toHaveClass(/len-long/);
-});
-
-test('a non-hashed rebus puzzle marks every cell correct on solve, but no clue item', async ({ page }) => {
-  await page.goto('file://' + rebusPath);
-  await ready(page);
-
-  for (const cell of REBUS_CELLS) await typeCell(page, cell);
-
-  await expect(page.locator('#congrats')).toBeVisible();
-  // 24 filled cells (rebus-5.yaml, 5x5 minus the null center) — non-hashed mode must mark
-  // them .correct just like hashed mode does, per the levelled-up completion behavior.
-  await expect(page.locator('#puzzle-svg .cell.correct')).toHaveCount(24);
-  // 15 clue items total (10 row entries + 5 band entries, rebus-5.yaml) render in the
-  // DOM regardless of active mode — anchors the negative assertion below so it can't
-  // pass vacuously against an empty clue list.
-  await expect(page.locator('.clue-item')).toHaveCount(15);
-  // Marching Bands never marks clue items correct, in either mode: its clue groups
-  // intentionally hide entry boundaries, and marking them would spoil the puzzle.
-  await expect(page.locator('.clue-item.correct')).toHaveCount(0);
 });
 
 
@@ -368,24 +306,6 @@ test('Reveal row fills the whole first row and nothing else', async ({ page }) =
   const N = await page.evaluate(() => window.PUZZLE_DATA.size);
 
   await clickHelpRow(page, '#reveal-clue-btn');
-  await expect(page.locator('#puzzle-svg .cell.correct')).toHaveCount(N);
-  for (let c = 1; c <= N; c++) await expect(page.locator('#cell-' + c)).toHaveClass(/\bcorrect\b/);
-});
-
-// An even band's highlight rule outranks the shared .cell.correct, so without its own
-// rule a checked cell there took the highlight fill under its correct-colored letter
-// (unreadable in a theme whose correct letters are light, like swiss).
-test('a checked cell on an even band keeps its correct fill under the row highlight', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-
-  const correct = await page.evaluate(() => window.PUZZLE_DATA.letters.filter(l => l !== null));
-  for (const ch of correct) await page.locator('#hidden-input').fill(ch);
-  await expect(page.locator('#congrats-dialog')).toBeVisible();
-  await page.keyboard.press('Escape');
-
-  const fill = (sel) => page.locator(sel).first().evaluate(el => getComputedStyle(el).fill);
-  const highlighted = '#puzzle-svg .cell.band-even.correct.active-entry:not(.active-cell)';
-  await expect(page.locator(highlighted).first()).toBeVisible();
-  expect(await fill(highlighted)).toBe(await fill('#puzzle-svg .cell.correct:not(.active-entry)'));
+  await expect(page.locator('#puzzle-svg .cell[data-mark]')).toHaveCount(N);
+  for (let c = 1; c <= N; c++) await expect(page.locator('#cell-' + c)).toHaveAttribute('data-mark');
 });

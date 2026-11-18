@@ -2,13 +2,9 @@
 
 const { test } = require('node:test');
 const assert   = require('node:assert/strict');
+const { deepFreeze } = require('./helpers');
 const { newDoc, puzzleText } = require('../src/model/doc');
 const { initialState, reduce, canExport, previewHtml, previewIsStale, problemsLabel } = require('../src/model/app');
-
-function deepFreeze(o) {
-  Object.values(o).forEach(v => { if (v && typeof v === 'object') deepFreeze(v); });
-  return Object.freeze(o);
-}
 
 const doc = newDoc({ id: 'a', now: 1, kind: null, yaml: 'kind: spiral\n' });
 const clean = { parseError: null, kind: 'spiral', muddled: false, theme: null, title: 'T', html: '<p>ok</p>', errors: [], warnings: [], notes: [] };

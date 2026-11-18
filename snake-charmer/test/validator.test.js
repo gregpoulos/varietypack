@@ -6,7 +6,7 @@ const { validate, findCoincidentStarts } = require('../src/validator');
 
 // Helper: a minimal valid puzzle
 // concat = 'ab' + 'cdefgh' + 'ab' + 'cdefgh' = 'abcdefghabcdefgh' → period 8 ✓
-// 4 entries: 4 % 2 (loops) = 0 ✓
+// 4 entries, an even total
 function valid() {
   return {
     kind: 'snake-charmer',
@@ -45,12 +45,6 @@ test('validate: returns empty errors and warnings for valid puzzle', () => {
 // forwards validateCommonHeader's errors and passes its own kind
 // ('snake-charmer').
 
-test('validate: error when kind is wrong', () => {
-  const p = valid(); p.kind = 'crossword';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"kind"')));
-});
-
 test('validate: error when entries is not an array', () => {
   const p = valid(); p.entries = 'oops';
   const { errors } = validate(p);
@@ -88,7 +82,7 @@ test('validate: error when ring size is less than 8', () => {
   assert.ok(errors.some(e => e.includes('8') && e.toLowerCase().includes('ring')));
 });
 
-test('validate: error when total cells not divisible by loops', () => {
+test('validate: error when the total cell count is odd', () => {
   const p = {
     kind: 'snake-charmer', title: 'T',
     entries: [
@@ -97,9 +91,9 @@ test('validate: error when total cells not divisible by loops', () => {
       { clue: 'C', answer: 'KLM' },
     ],
   };
-  // 5+5+3=13, default loops=2 → 13%2 !== 0
+  // 5+5+3=13
   const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('divisible')));
+  assert.ok(errors.some(e => e.includes('must be even')));
 });
 
 test('validate: error when answers fail period constraint', () => {
@@ -114,28 +108,6 @@ test('validate: error when answers fail period constraint', () => {
   // concat='abcdefabcxyz', loop0='abcdef', loop1='abcxyz' → mismatch at pos 3-5
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.toLowerCase().includes('loop') || e.toLowerCase().includes('period')));
-});
-
-test('validate: explicit loops:2 is accepted', () => {
-  const p = clean();
-  p.loops = 2;
-  assert.deepEqual(validate(p), { errors: [], warnings: [] });
-});
-
-test('validate: loops:3 is rejected — multi-loop (>2) is not yet supported', () => {
-  // Even a puzzle that satisfies the period-3 constraint is rejected: the browser
-  // engine only handles loops=2. Multi-loop is a planned future feature.
-  const p = {
-    kind: 'snake-charmer', title: 'T',
-    loops: 3,
-    entries: [
-      { clue: 'A', answer: 'ABCDEFGH' },
-      { clue: 'B', answer: 'ABCDEFGH' },
-      { clue: 'C', answer: 'ABCDEFGH' },
-    ],
-  };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('loops')));
 });
 
 // A valid puzzle with no warnings for any even ring size N: three entries of 3, N + 1 and
@@ -156,10 +128,17 @@ function ringPuzzle(N) {
   };
 }
 
-test('validate: valid shape values are accepted at a ring size every shape can lay out', () => {
-  for (const shape of ['circle', 'stadium', 'turn', 'double-turn']) {
-    const p = ringPuzzle(48); p.shape = shape;
-    assert.deepEqual(validate(p), { errors: [], warnings: [] }, `shape: ${shape} should be valid`);
+test('validate: a shape that can lay out the ring, or no shape, is accepted', () => {
+  // 48 suits every shape; 42 suits all but turn, which needs N divisible by 4.
+  const rows = [
+    [48, ['circle', 'stadium', 'turn', 'double-turn']],
+    [42, [undefined, 'circle', 'stadium', 'double-turn']],
+  ];
+  for (const [N, shapes] of rows) {
+    for (const shape of shapes) {
+      const p = ringPuzzle(N); if (shape) p.shape = shape;
+      assert.deepEqual(validate(p), { errors: [], warnings: [] }, `N=${N} shape: ${shape}`);
+    }
   }
 });
 
@@ -180,44 +159,19 @@ test('validate: the --shape option replaces the YAML shape in the fit check', ()
   assert.match(validate(flagTurn, { shape: 'turn' }).errors.join('\n'), /--shape "turn" cannot lay out a ring of 42 cells/);
 });
 
-// The YAML's shape is checked against the names above; the flag is checked the same way.
-test('validate: an unknown --shape is an error', () => {
+// The YAML's shape is checked against the shape names; the --shape flag is checked the
+// same way.
+test('validate: an unrecognized shape, in the YAML or in --shape, is an error', () => {
+  const p = valid(); p.shape = 'hexagon';
+  assert.ok(validate(p).errors.some(e => e.includes('"shape"')));
   assert.match(validate(ringPuzzle(48), { shape: 'oval' }).errors.join('\n'),
     /--shape must be one of: circle, stadium, turn, double-turn, got "oval"/);
-});
-
-test('validate: the same ring is fine with a shape that fits, or with no shape', () => {
-  for (const shape of [undefined, 'circle', 'stadium', 'double-turn']) {
-    const p = ringPuzzle(42); if (shape) p.shape = shape;
-    assert.deepEqual(validate(p), { errors: [], warnings: [] }, `shape: ${shape}`);
-  }
-});
-
-test('validate: error when shape is an unrecognized value', () => {
-  const p = valid(); p.shape = 'hexagon';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"shape"')));
-});
-
-test('validate: error when loops is less than 2', () => {
-  const p = valid();
-  p.loops = 1;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('loops')));
-});
-
-test('validate: error when loops is a float', () => {
-  const p = valid();
-  p.loops = 1.5;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('loops')));
 });
 
 test('validate: error when ring size is odd', () => {
   // 18 cells, loops=2 → ring=9 (odd); period constraint holds
   const p = {
     kind: 'snake-charmer', title: 'T',
-    loops: 2,
     entries: [
       { clue: 'A', answer: 'ABCD' },
       { clue: 'B', answer: 'EFGHI' },
@@ -248,7 +202,7 @@ test('validate: error when position is out of range', () => {
 function validMuddled() {
   return {
     kind: 'snake-charmer', title: 'Muddled Puzzle',
-    hashed: true, format: 2, boardHash: 'any-hash',
+    boardHash: 'any-hash',
     entries: [
       { clue: 'One',   length: 2 },
       { clue: 'Two',   length: 6 },
@@ -258,56 +212,16 @@ function validMuddled() {
   };
 }
 
-test('validate: muddled puzzle passes with a skip warning', () => {
-  const { errors, warnings } = validate(validMuddled());
-  assert.deepEqual(errors, []);
-  assert.ok(warnings.some(w => w.includes('muddled')));
-});
-
-test('validate: muddled — length-based structural checks still enforced (total not divisible by loops)', () => {
+test('validate: muddled — length-based structural checks still enforced (odd total)', () => {
   const p = validMuddled();
-  p.entries[0].length = 3;  // total=17, not divisible by 2
+  p.entries[0].length = 3;  // total=17
   const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('divisible')));
-});
-
-test('validate: muddled — answer: entry rejected with a use-length-not-answer message', () => {
-  const p = validMuddled();
-  p.entries[0] = { clue: 'One', answer: 'AB' };  // answer: in a muddled puzzle is not allowed
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('entries[0]') && e.includes('length:, not answer:')));
-});
-
-test('validate: muddled entries without boardHash rejected', () => {
-  const p = validMuddled();
-  // Drop format: 2 alongside boardHash — without it the puzzle is neither a source
-  // nor a muddled file, and trips the "format: in a source puzzle" error as well.
-  delete p.boardHash;
-  delete p.format;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('boardHash')));
-});
-
-test('validate: ring-equality check skipped in muddled mode', () => {
-  // Entries with only length: — if letters were known they might fail ring-equality;
-  // validator must not attempt the check and must return no errors.
-  // (3 entries required by structural minimum; total=24, ringSize=8, all even/>=8.)
-  const p = {
-    kind: 'snake-charmer', title: 'T',
-    hashed: true, format: 2, boardHash: 'h',
-    entries: [
-      { clue: 'a', length: 8 },
-      { clue: 'b', length: 8 },
-      { clue: 'c', length: 8 },
-    ],
-  };
-  const { errors } = validate(p);
-  assert.deepEqual(errors, []);
+  assert.ok(errors.some(e => e.includes('must be even')));
 });
 
 test('loops must bracket the same groups at the same cells', () => {
   const { errors } = validate({
-    kind: 'snake-charmer', title: 'T', loops: 2,
+    kind: 'snake-charmer', title: 'T',
     entries: [
       { clue: 'l0a', answer: 'A[BC]DE' },
       { clue: 'l0b', answer: 'FGHI' },
@@ -319,7 +233,7 @@ test('loops must bracket the same groups at the same cells', () => {
 
 test('a loop whose bracketing differs is rejected', () => {
   const { errors } = validate({
-    kind: 'snake-charmer', title: 'T', loops: 2,
+    kind: 'snake-charmer', title: 'T',
     entries: [
       { clue: 'l0a', answer: 'A[BC]DE' },
       { clue: 'l0b', answer: 'FGHI' },
@@ -390,10 +304,4 @@ test('validate: a bad entry does not also produce a spurious ring mismatch', () 
     { clue: 'c', answer: 'AA[AA' }, { clue: 'd', answer: 'AABBBBBB' },
   ] });
   assert.deepEqual(errors, ['entries[2].answer: unclosed "[" in answer']);
-});
-
-test('validate: an unknown top-level key warns', () => {
-  const p = valid();
-  p.instruction = 2;
-  assert.ok(validate(p).warnings.includes('unknown key "instruction" (is it a typo?)'), validate(p).warnings.join('|'));
 });

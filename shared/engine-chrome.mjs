@@ -1,13 +1,8 @@
-// Shared browser-engine "chrome": the UI-surround logic that is identical across every
-// puzzle tool's engine.js — byline, instructions, the options menu and its two-click
-// Clear button, the Rebus button, scroll-key forwarding, the localStorage
-// save/restore/clear scaffolding, the shared keydown guard wrapper, the
-// keyboard-shortcuts overlay, and the congrats dialog on solve. The solve-tracking cores
-// (timer, completion latch, composer, board checker) live in engine-state.mjs; the
-// tool-specific cores (SVG rendering, navigation, syncUI, per-cell answer checking) stay
-// in each engine. Each engine imports what it needs and calls these from inside its own
-// init(); shared/build/engineBundle.js bundles them into the page script. node:test
-// requires the ones tested via mocks (shared/test/engine-chrome.*.test.js).
+// The page chrome every engine shares: the elements around the board (menus, dialogs,
+// buttons, the clue bar), key and click wiring, and storage. Game state is
+// engine-state.mjs's; the board itself and navigation stay in each engine.
+
+import { flagCornerIndex, flagPolygon, pathCorners, rectCorners, slashLine } from './markShapes.mjs';
 
 // Browser-only: create an SVG-namespaced element and apply an attribute map (setAttribute
 // coerces each value to a string). Every engine builds SVG nodes this way.
@@ -131,24 +126,26 @@ function setupArmedButton(btn, onConfirmed, refocus) {
 // otherwise the only way into composition. Some Android IMEs report keyCode 229 / key
 // 'Unidentified' for composition-routed keys, leaving rebus cells unreachable there.
 //
-// Never disabled, never hidden, identical in hashed and non-hashed builds. That is the
-// spoiler rule from docs/CROSS_TOOL_SPEC.md → Enter — rebus entry: nothing in the UI may
-// vary as a function of a cell's capacity. #check-btn, in the help menu, *is* toggled
-// per-cell — do not copy it here.
-//
-// A solved board needs no guard here: composer.toggle refuses composition once the board
-// is solved, whichever way it is reached.
+// Never hidden, identical in hashed and non-hashed builds, and never disabled as a
+// function of a cell's capacity. That is the spoiler rule from docs/CROSS_TOOL_SPEC.md →
+// "Enter / Rebus button — rebus entry". It is disabled only where composition is refused
+// whatever the cell's capacity (a locked cell, a solved board), which the solver already
+// sees; while composing it stays enabled, since Done commits. composer.toggle enforces
+// the refusal itself, so the disabled state is UX only.
 //
 //   onToggle()    → the engine's toggleRebus (composer.toggle, then syncUI)
 //   isComposing() → composer.isComposing(activeCell)
+//   canCompose()  → composer.canCompose(activeCell)
 //   refocus()     → restore hidden-input focus (optional)
-function setupRebusButton(btn, { onToggle, isComposing, refocus }) {
+function setupRebusButton(btn, { onToggle, isComposing, canCompose = () => true, refocus }) {
   // Idempotent: sync() runs from every syncUI(), i.e. on every keystroke and cursor move,
   // and assigning textContent replaces the text node even when the string is unchanged.
   // The guard also makes the extra sync() in the click handler free.
   function sync() {
-    const want = isComposing() ? 'Done' : 'Rebus';
+    const composing = isComposing();
+    const want = composing ? 'Done' : 'Rebus';
     if (btn.textContent !== want) btn.textContent = want;
+    btn.disabled = !composing && !canCompose();
   }
 
   // Focus-on-click is a `mousedown` default action, so canceling mousedown keeps focus
@@ -169,7 +166,7 @@ function setupRebusButton(btn, { onToggle, isComposing, refocus }) {
     if (e && (e.metaKey || e.ctrlKey)) return;
     onToggle();
     sync();
-    // See docs/CROSS_TOOL_SPEC.md → Focus management; parking focus on the button would
+    // See docs/CROSS_TOOL_SPEC.md → "Focus management"; parking focus on the button would
     // also leave setupKeydown's BUTTON guard set.
     if (refocus) refocus();
   });
@@ -277,19 +274,65 @@ function flashWrong(cellEl, flashLayer) {
   setTimeout(() => flashEl.remove(), FLASH_WRONG_MS);
 }
 
-// The auto-save payload's schema version. A rebuilt page with unchanged answers keeps its
-// storageKey, so a newer engine can meet an older save: bump this when the payload's
-// shape changes incompatibly, and restoreState ignores older saves. A new optional field
-// needs no bump if restore treats its absence as the old behavior (as activeMs and
-// composing do).
-const SAVE_VERSION = 1;
+// The shapes marking a cell's mark, drawn into `layer` (a <g class="mark-layer"> each
+// engine stacks above its cells and below its letters): a flag for `revealed`, a slash
+// for `wrong`; `checked` (the letter's color, in CSS) and null draw nothing. Each shape
+// is a <g class="mark-shape mark-<value>"> clipped to a copy of the cell (as flashWrong
+// copies it), so a curved cell's flag keeps its curved edges; the geometry is
+// shared/markShapes.mjs. `cellEl(n)` returns cell n's <rect> or <path>. Returns { draw(n,
+// mark) }, which replaces cell n's shape, for makeCellStore's drawMark. Browser-only.
+function setupMarkLayer(layer, cellEl) {
+  const shapes = new Map();
+
+  function cornersOf(el) {
+    if (el.tagName.toLowerCase() === 'rect') {
+      const a = name => Number(el.getAttribute(name));
+      return rectCorners(a('x'), a('y'), a('width'), a('height'));
+    }
+    return pathCorners(el.getAttribute('d'));
+  }
+
+  function draw(n, mark) {
+    shapes.get(n)?.remove();
+    shapes.delete(n);
+    if (mark !== 'revealed' && mark !== 'wrong') return;
+    const cell = cellEl(n);
+    const corners = cornersOf(cell);
+    const corner = flagCornerIndex(corners);
+    const clipId = `mark-clip-${n}`;
+    const outline = cell.cloneNode(false);
+    outline.removeAttribute('id');
+    outline.removeAttribute('class');
+    const clip = svgEl('clipPath', { id: clipId });
+    clip.appendChild(outline);
+    let shape;
+    if (mark === 'revealed') {
+      const points = flagPolygon(corners, corner).map(p => p.join(',')).join(' ');
+      shape = svgEl('polygon', { class: 'mark-flag', points });
+    } else {
+      const [[x1, y1], [x2, y2]] = slashLine(corners, corner);
+      shape = svgEl('line', { class: 'mark-slash', x1, y1, x2, y2 });
+    }
+    const g = svgEl('g', { class: `mark-shape mark-${mark}`, 'clip-path': `url(#${clipId})` });
+    g.append(clip, shape);
+    layer.appendChild(g);
+    shapes.set(n, g);
+  }
+
+  return { draw };
+}
+
+// The auto-save payload's schema version. Restore ignores a save of any other version, so
+// bump it when the payload's shape changes incompatibly; a new optional field whose
+// absence restores as the old behavior needs no bump.
+const SAVE_VERSION = 2;
 
 // localStorage save/restore/clear under the puzzle's storageKey. The tool supplies the
-// payload (its letters and correct cells from makeCellStore, plus timer and composer):
+// payload (its letters and cell marks from makeCellStore, plus timer and composer):
 //   getState()        → the tool's payload, saved under { v: SAVE_VERSION, ... }
 //   fits(saved)       → whether a saved payload is for this board (makeCellStore's
 //                       fitsSave)
-//   applyState(saved) → applies a saved payload whose version matches and that fits
+//   applyState(saved) → applies a saved payload of this version that fits
 // hasSave() says whether there is such a payload to apply.
 // Storage errors (a private window, a full quota) are swallowed: the puzzle still works,
 // it just doesn't save.
@@ -374,10 +417,10 @@ function setupKeydown(handler, { keysOverlay, refocus }) {
 }
 
 // Routes a click on any board cell to handler(n), where n is the cell's number from its
-// `cell-{n}` id (docs/CROSS_TOOL_SPEC.md → SVG element IDs). One listener on the <svg>
-// serves every cell, so building the board attaches no behavior. Letters, numbers,
-// circles and the chevron are `pointer-events: none`, so a click lands on the .cell
-// beneath them; anything else (the background, a black square) is ignored.
+// `cell-{n}` id (docs/CROSS_TOOL_SPEC.md → "Engine bootstrap & structure"). One listener
+// on the <svg> serves every cell, so building the board attaches no behavior. Letters,
+// numbers, circles and the chevron are `pointer-events: none`, so a click lands on the
+// .cell beneath them; anything else (the background, a black square) is ignored.
 function setupCellClicks(svg, handler) {
   svg.addEventListener('click', e => {
     const cell = e.target.closest('.cell');
@@ -726,15 +769,13 @@ function boolPref(prefKey, fallback, storage) {
 // `clueNoun()` is the word in their labels, "clue" unless the tool never names a single
 // entry (Marching Bands: "row" or "band"); the labels are re-read on every syncHelp. The
 // puzzle rows act on `checker.cellIds`. A row is enabled while its cells can be checked
-// or revealed; `canCheck(n)` defaults to the checker's, and only Crushword, whose every
-// typed cell is composing until committed, passes its own. Reveal always asks the
-// checker.
+// or revealed, as the checker's canCheck and canReveal say.
 // Returns { syncHelp(), helpMenu }: syncHelp is for syncUI and enables the help rows only
-// while they apply (it does nothing in a hashed build); `helpMenu` is { btn, panel } for
-// setupPhoneLayout to move into its top bar, or null.
+// while they apply, never on a solved board (it does nothing in a hashed build);
+// `helpMenu` is { btn, panel } for setupPhoneLayout to move into its top bar, or null.
 function setupControls({
   checker, hashed, helpActions, activeCell, clueCells, clueNoun = () => 'clue',
-  canCheck = n => checker.canCheck(n), onClear, refocus,
+  onClear, refocus,
 }) {
   const { clearBtn, close, onClosed } = setupOptionsMenu(refocus);
   const clear = setupArmedButton(clearBtn, () => { onClear(); close(); }, refocus);
@@ -743,6 +784,7 @@ function setupControls({
   if (hashed) return { syncHelp() {}, helpMenu: null };
 
   // One row per button: the cells it acts on, and the label (the clue rows' noun varies).
+  const canCheck = n => checker.canCheck(n);
   const canReveal = n => checker.canReveal(n);
   const rows = [
     { id: 'check-btn',         label: () => 'Check cell',            cells: () => [activeCell()],
@@ -777,9 +819,11 @@ function setupControls({
   const setLabel = (btn, text) => { if (btn.textContent !== text) btn.textContent = text; };
   return {
     syncHelp() {
+      // A solved board takes no help (makeHelpActions guards the actions too).
+      const solved = checker.isSolved();
       for (const row of rows) {
         setLabel(row.btn, row.label());
-        row.btn.disabled = !row.cells().some(row.can);
+        row.btn.disabled = solved || !row.cells().some(row.can);
       }
     },
     helpMenu,
@@ -814,6 +858,7 @@ export {
   svgEl, htmlEl, setClueHtml, clueTextEl, onClueClick, renderByline, renderInstructions, setupArmedButton, setupRebusButton,
   setupPopupMenu, nextMenuItem, isKeyboardFocus, HELP_BTN_ID, MENU_BTN_ID,
   scrollByKey, setupClueBar, scrollIntoViewBelow, storageKey, setupStorage, flashWrong, FLASH_WRONG_MS,
+  setupMarkLayer,
   setupKeydown, setupCellClicks, setupCongratsDialog, setupKeysOverlay, setupOptionsMenu,
   menuToggle, boolPref, setupControls, setupHelpMenu, setupEmbedResize, PHONE_CLASS,
 };

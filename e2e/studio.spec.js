@@ -7,6 +7,7 @@ const path = require('path');
 const yaml = require('js-yaml');
 const { buildPage } = require('../studio/build');
 const { startServer } = require('./studio-server');
+const { openStudio } = require('./helpers');
 
 let server, dir;
 
@@ -35,10 +36,7 @@ const fixture = (rel) => path.join(REPO, rel);
 
 // ---- helpers ----------------------------------------------------------------
 
-async function start(page) {
-  await page.goto(server.url);
-  await expect(page.locator('#welcome')).toBeVisible();
-}
+const start = (page) => openStudio(page, server.url);
 
 async function openTemplate(page, kind = 'spiral') {
   await page.locator(`#welcome [data-template="${kind}"]`).click();

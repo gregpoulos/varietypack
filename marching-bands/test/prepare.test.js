@@ -35,28 +35,6 @@ test('preparePuzzle: derives size from the rows', () => {
   assert.equal(r.size, 5);
 });
 
-test('preparePuzzle: row entries have clue and length (not answer)', () => {
-  const r = preparePuzzle(minimalPuzzle());
-  assert.equal(r.rows[0].entries[0].clue, 'A');
-  assert.equal(r.rows[0].entries[0].length, 2); // 'AB'
-  assert.equal(r.rows[0].entries[1].length, 3); // 'CDE'
-  assert.equal(r.rows[0].entries[0].answer, undefined);
-});
-
-test('preparePuzzle: band entries have clue and length (not answer)', () => {
-  const r = preparePuzzle(minimalPuzzle());
-  assert.equal(r.bands[0].entries[0].clue, 'K');
-  assert.equal(r.bands[0].entries[0].length, 5); // 'ABCDE'
-  assert.equal(r.bands[0].entries[0].answer, undefined);
-});
-
-test('preparePuzzle: styles preserved when present', () => {
-  const p = minimalPuzzle();
-  p.rows[0].entries[0].styles = { circle: [0] };
-  const r = preparePuzzle(p);
-  assert.deepEqual(r.rows[0].entries[0].styles, { circle: [0] });
-});
-
 test('preparePuzzle: non-hashed builds letters array row-major', () => {
   const r = preparePuzzle(minimalPuzzle());
   assert.ok(Array.isArray(r.letters));

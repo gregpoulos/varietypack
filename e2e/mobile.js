@@ -6,10 +6,9 @@
 // names are Playwright `devices` descriptors.
 
 const path = require('path');
-const fs = require('fs');
-const yaml = require('js-yaml');
 const { devices } = require('@playwright/test');
 const { buildPuzzleFile } = require('../test/helpers');
+const { buildVariant } = require('./helpers');
 
 // The smallest current iPhone (WebKit) and a large Android (Chromium) — the width
 // extremes a layout has to survive, one per mobile engine Playwright can emulate.
@@ -80,11 +79,7 @@ function buildClueVariant(fixture, text, name, tmpDir) {
     return Object.fromEntries(Object.entries(v).map(([k, x]) =>
       [k, k === 'clue' ? `${text} (${++n})` : withClues(x)]));
   };
-  const yamlPath = path.join(tmpDir, name + '.yaml');
-  fs.writeFileSync(yamlPath, yaml.dump(withClues(yaml.load(fs.readFileSync(fixture.yamlPath, 'utf8')))));
-  const htmlPath = path.join(tmpDir, name + '.html');
-  buildPuzzleFile(yamlPath, htmlPath);
-  return htmlPath;
+  return buildVariant(fixture.yamlPath, withClues, name, tmpDir);
 }
 
 // Visible buttons and grid cells whose center is on screen but not the topmost element

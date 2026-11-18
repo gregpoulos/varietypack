@@ -85,9 +85,37 @@ body.has-clue-bar {
   margin: 0 auto;
 }
 
+/* The page column and the clue lists look the same in every tool, so their sizes live
+   here and not in a tool's base.css (docs/ARCHITECTURE.md → "Tool stylesheets"). */
+.puzzle-main { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
+
+.clue-section h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.clue-section :is(ul, ol) { list-style: none; }
+
 .clue-item {
+  display: flex;
+  align-items: baseline;
+  cursor: pointer;
+  margin-bottom: 4px;
+  padding: 2px 6px 2px 2px;
   font-size: 0.875rem;
-  padding: 2px 6px;
+  line-height: 1.4;
+}
+
+/* The number, label or cell range ahead of a clue's text. */
+.clue-num {
+  flex-shrink: 0;
+  min-width: 1.6em;
+  margin-right: 4px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  text-align: right;
 }
 
 .cell        { cursor: pointer; }
@@ -145,6 +173,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 #reveal-puzzle-btn::after { content: 'Reveal puzzle\A Are you sure?'; white-space: pre; }
 #rebus-btn::after { content: 'Rebus'; }
 
+/* Fixed, not absolute: a fixed element is always inside the viewport, so focusing it
+   never scrolls the page. */
 #hidden-input {
   position: fixed;
   left: -9999px;
@@ -276,13 +306,6 @@ html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wron
 
 }
 @layer tool {
-.puzzle-main {
-  max-width: 1300px;
-  margin: 0 auto;
-  padding: 0 16px 20px;
-}
-
-
 #grid-wrap {
   display: flex;
   justify-content: center;
@@ -323,28 +346,11 @@ html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wron
   }
 }
 
-.clue-section h2 {
-  font-size: 1rem;
-  font-weight: bold;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.clue-item {
-  display: flex;
-  gap: 8px;
-  cursor: pointer;
-  list-style: none;
-  padding: 2px 6px 2px 2px;
-}
-
+/* A cell range ("12–18.") is wider than a clue number. */
 .clue-range {
   min-width: 5em;
-  flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
-
 
 }
 @layer theme {
@@ -407,6 +413,9 @@ html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wron
   --theme-color-highlight-band-even:  var(--theme-color-highlight);
   --theme-color-active:               #b8d4f5;
   --theme-color-active-stroke:        #1e5799;
+  /* The active clue row or block (Marching Bands' clue groups):
+     a theme whose active shade is too strong over that much area softens it here. */
+  --theme-color-active-clue:          var(--theme-color-active);
   --theme-color-clue-hover:           #eeeeee;
   --theme-color-secondary-entry:      #f0f0f0;
   --theme-clue-radius:                2px;
@@ -415,10 +424,11 @@ html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wron
   --theme-color-secondary-active:        #7aaed8;
   --theme-color-secondary-active-stroke: #3a72a8;
 
-  /* Correct */
-  --theme-color-correct-bg:     #c8e6c9;
-  --theme-color-correct-stroke: #4caf50;
-  --theme-color-correct-text:   #1a6e22;
+  /* Cell marks: a checked letter's color, the revealed flag and the wrong slash. A mark
+     never touches the cell's fill (theme-components.css → .mark-flag). */
+  --theme-color-checked-text:  #166534;
+  --theme-color-revealed-flag: #166534;
+  --theme-color-wrong-slash:   #991b1b;
 
   /* Filled clue: every cell the clue owns has content, right or wrong — like crossing it
      off by hand. Distinct from Correct above (whole board verified). Defaults are no-ops;
@@ -441,6 +451,9 @@ html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wron
   --theme-color-congrats-border: #1b5e20;
   --theme-color-congrats-text:   #ffffff;
   --theme-card-radius:           10px;
+
+  /* Phone: the zoomed grid's edge shadow, where more grid lies past the view */
+  --theme-color-edge-shadow: rgba(0, 0, 0, 0.28);
 
   /* Done-wrong */
   --theme-color-wrong-bg:     #fff3e0;
@@ -581,7 +594,7 @@ a { color: var(--theme-color-link); }
    Bands highlights its .clue-group instead, below). :where() keeps :hover at the same
    specificity as the state rules, so the state rules that follow win by source order. */
 :where(.tool-snake-charmer, .tool-spiral, .tool-crushword) .clue-item:hover { background: var(--theme-color-clue-hover); }
-.clue-item.active-clue     { background: var(--theme-color-active); }
+.clue-item.active-clue     { background: var(--theme-color-active-clue); }
 .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
 .clue-item.filled .clue-text { text-decoration: var(--theme-clue-filled-decoration); opacity: var(--theme-clue-filled-opacity); }
 
@@ -638,8 +651,9 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 .menu-toggle:hover { background: var(--theme-color-clue-hover); }
 
 /* Rebus button — the pointer route into multi-letter entry, mirroring the Enter key.
-   Deliberately has no disabled or per-cell state: it looks identical on every square,
-   in every build, which is what keeps it from signalling which cells are rebus.
+   It is disabled only where composition is refused whatever the cell's capacity (see
+   setupRebusButton in shared/engine-chrome.mjs); otherwise it looks identical on every
+   square, in every build, which keeps it from signalling which cells are rebus.
    Composition-in-progress is shown on the cell itself (.cell.active-cell.composing
    below), so the button carries only its label — whose width is reserved in
    shared/base.css so the Rebus→Done swap does not reflow #controls. */
@@ -651,7 +665,7 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
   border-color:   var(--theme-color-btn2-border);
   letter-spacing: var(--theme-button-tracking);
 }
-#rebus-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+#rebus-btn:hover:not(:disabled) { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
 
 /* Puzzle toggle (direction / mode / loop) */
 .puzzle-toggle { border: 1px solid var(--theme-color-btn2-border); }
@@ -671,8 +685,6 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 .cell              { fill: var(--theme-color-cell-bg); stroke: var(--theme-color-cell-stroke); stroke-width: 0.5; }
 .cell.active-entry { fill: var(--theme-color-highlight); }
 .cell.active-cell  { fill: var(--theme-color-active); stroke: var(--theme-color-active-stroke); stroke-width: 1.5; }
-.cell.correct      { fill: var(--theme-color-correct-bg); stroke: var(--theme-color-correct-stroke); stroke-width: 0.5; }
-.cell.correct.active-cell { stroke: var(--theme-color-active-stroke); stroke-width: 1.5; }
 
 .style-circle { fill: none; stroke: var(--theme-color-circle); stroke-width: 1; }
 
@@ -680,7 +692,14 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
    presentation attributes; a CSS font-size overrides them silently. The other tools
    size them in their own template base.css. */
 .cell-letter         { font-family: var(--theme-font-cell); fill: var(--theme-color-cell-text); }
-.cell-letter.correct { fill: var(--theme-color-correct-text); }
+/* A mark never changes the cell's fill, which belongs to the cursor and the highlights:
+   a checked cell colors its letter, and the flag and slash are shapes in .mark-layer
+   (setupMarkLayer, shared/engine-chrome.mjs). */
+.cell-letter[data-mark="checked"] { fill: var(--theme-color-checked-text); }
+.mark-shape { pointer-events: none; }
+.mark-flag  { fill: var(--theme-color-revealed-flag); }
+/* Screen pixels, not user units: each tool's viewBox scales its cells differently. */
+.mark-slash { stroke: var(--theme-color-wrong-slash); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 
 /* The direction chevron (Spiral, Marching Bands); each tool sets its stroke width, which
@@ -874,6 +893,8 @@ html.phone #clues-btn {
   letter-spacing: var(--theme-button-tracking);
 }
 html.phone #solve-bar  { border-top: 1px solid var(--theme-color-bar-border); }
+/* The zoomed grid's edge shadows: darkest at the side, fading inward. */
+html.phone .edge-shadow-stop { stop-color: var(--theme-color-edge-shadow); }
 html.phone .bar-step   { background: transparent; color: var(--theme-color-muted); }
 html.phone .nav-label  { color: var(--theme-color-title); }
 html.phone .nav-count  { color: var(--theme-color-muted); }
@@ -901,15 +922,29 @@ html.phone .clue-item .list-cell.list-cursor {
   border-color: var(--theme-color-active-stroke);
   box-shadow:   inset 0 0 0 1px var(--theme-color-active-stroke);
 }
-/* A checked cell keeps its correct fill under the active clue's row, as in the grid; the
-   cursor changes only its outline. This follows the cursor rule above, which it ties
-   with on specificity. */
-html.phone .clue-item .list-cell.correct {
-  background:   var(--theme-color-correct-bg);
-  border-color: var(--theme-color-correct-stroke);
-  color:        var(--theme-color-correct-text);
+/* A list cell shows its grid cell's mark the same way: a checked letter's color, the
+   revealed flag as a corner triangle and the wrong slash (an HTML box, so CSS draws
+   them). */
+html.phone .clue-item .list-cell[data-mark="checked"] { color: var(--theme-color-checked-text); }
+html.phone .clue-item .list-cell[data-mark="revealed"]::after {
+  content:        '';
+  position:       absolute;
+  inset:          0;
+  background:     var(--theme-color-revealed-flag);
+  clip-path:      polygon(70% 0, 100% 0, 100% 30%);
+  pointer-events: none;
 }
-html.phone .clue-item .list-cell.correct.list-cursor { border-color: var(--theme-color-active-stroke); }
+html.phone .clue-item .list-cell[data-mark="wrong"]::after {
+  content:        '';
+  position:       absolute;
+  inset:          0;
+  /* Toward the bottom-right, so the midline runs bottom-left to top-right, as on
+     the grid. */
+  background:     linear-gradient(to bottom right, transparent calc(50% - 1px),
+                    var(--theme-color-wrong-slash) calc(50% - 1px),
+                    var(--theme-color-wrong-slash) calc(50% + 1px), transparent calc(50% + 1px));
+  pointer-events: none;
+}
 /* A cell composing a rebus dashes its outline, as in the grid (the inset shadow would
    fill the dashes in, so it goes). */
 html.phone .clue-item .list-cell.list-cursor.composing {
@@ -949,13 +984,6 @@ html.phone .clue-item .list-cell.list-cursor.composing {
   stroke:       var(--theme-color-secondary-active-stroke);
   stroke-width: 1.5;
 }
-/* A checked cell stays green under the secondary highlight. The two rules above beat the
-   unnamespaced .cell.correct on specificity; these tie with them and follow. */
-.tool-snake-charmer .cell.correct.secondary-entry {
-  fill:   var(--theme-color-correct-bg);
-  stroke: var(--theme-color-correct-stroke);
-}
-.tool-snake-charmer .cell.correct.active-cell.secondary-entry { stroke: var(--theme-color-active-stroke); }
 
 /* Marching Bands — band fills are unnamespaced to keep :where() specificity
    below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive.
@@ -965,14 +993,11 @@ html.phone .clue-item .list-cell.list-cursor.composing {
 .cell:where(.band-even) { fill: var(--theme-color-band-even); }
 .cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
 .cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
-/* A checked cell keeps its correct fill under the highlight, as .cell.correct does on an
-   odd band by following .cell.active-entry; the rule above outranks that one. */
-.cell.band-even.correct.active-entry { fill: var(--theme-color-correct-bg); }
 .tool-marching-bands .band-label  { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
 .tool-marching-bands .row-label   { font-family: var(--theme-font-cell); fill: var(--theme-color-text); }
 .tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
 .tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
-.tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active); }
+.tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active-clue); }
 .tool-marching-bands .clue-group.secondary-entry { background: var(--theme-color-secondary-entry); }
 .tool-marching-bands #direction-chevron { stroke-width: 1.6; }
 
@@ -1151,6 +1176,23 @@ html.phone #ring-svg,
 html.phone #spiral-svg,
 html.phone #puzzle-svg { width: 100%; height: 100%; max-width: none; }
 html.phone #ring-container { margin-top: 0; min-width: 0; }
+
+/* The zoomed grid's edge shadows (addEdgeShadows in engine-phone.mjs): a strip inside
+   the grid's SVG along each side beyond which more grid lies (#grid-pane[data-more],
+   from attachSvgZoom's onEdges). They fade rather than hide, since they change as the
+   view moves. Colors in theme-components.css. */
+.edge-shadows { pointer-events: none; }
+.edge-shadow {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+html.phone #grid-pane[data-more~="top"]    .edge-shadow[data-side="top"],
+html.phone #grid-pane[data-more~="bottom"] .edge-shadow[data-side="bottom"],
+html.phone #grid-pane[data-more~="left"]   .edge-shadow[data-side="left"],
+html.phone #grid-pane[data-more~="right"]  .edge-shadow[data-side="right"] { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .edge-shadow { transition: none; }
+}
 html.phone #grid-wrap { display: block; }
 
 /* Not overscroll-behavior: contain. Until the solver scrolls the view flush, the pane
@@ -1189,6 +1231,7 @@ html.phone .list-cell {
   overflow: hidden;
   container-type: inline-size;
   cursor: pointer;
+  position: relative; /* anchors a mark's ::after (theme-components.css) */
 }
 html.phone .list-letter {
   font-size: min(55cqw, calc(100cqw / (var(--len, 1) + 0.2)));
@@ -1429,7 +1472,11 @@ html.phone .kb-spacer { flex: 7 1 0; }
    it are the `print` cascade layer, the last one (composeThemeCss), so every rule here
    wins over any screen rule whatever its selector, with no !important: a theme that
    adds a more specific highlight rule can't defeat the print reset. Between this file
-   and a tool's print.css the usual rules hold (specificity, then order). */
+   and a tool's print.css the usual rules hold (specificity, then order).
+
+   A screen rule still applies in print unless a print rule overrides it, so a print
+   rule that relies on a container being flex or grid must declare that display itself:
+   a narrow-screen breakpoint may have set display: block on it. */
 @media print {
   /* Hide interaction chrome */
   #active-clue-bar,
@@ -1445,20 +1492,30 @@ html.phone .kb-spacer { flex: 7 1 0; }
   #direction-chevron,
   .solve-top,
   #solve-bar,
+  .edge-shadows,
   #drawn-kb { display: none; }
 
   body { padding-top: 0; }
   h1.title { font-size: 1.4rem; }
 
+  /* A tighter page than on screen, the same in every tool */
+  .puzzle-main     { padding: 8px 16px; }
+  .puzzle-header   { margin-bottom: 8px; }
+  .byline          { font-size: 0.8rem; }
+  #instructions    { font-size: 0.8rem; margin-bottom: 8px; }
+  .clue-section h2 { margin-bottom: 4px; }
+  .clue-item       { margin-bottom: 0; padding: 1px 4px; break-inside: avoid; }
+  .cell-num        { fill: #555; }
+
   /* Cell state → plain ink on white */
   .cell,
   .cell.active-entry,
   .cell.active-cell,
-  .cell.correct,
   .cell.secondary-entry { fill: #fff; stroke: #999; stroke-width: 1; stroke-dasharray: none; }
 
-  /* Entered letters → blank: a printout is always the unsolved puzzle */
-  .cell-letter { display: none; }
+  /* Entered letters and their marks → blank: a printout is always the unsolved puzzle */
+  .cell-letter,
+  .mark-layer { display: none; }
   /* ...and the phone list view's cell rows (setupFillList), which repeat them */
   .list-cells { display: none; }
 
@@ -1473,7 +1530,8 @@ html.phone .kb-spacer { flex: 7 1 0; }
 
   /* The phone layout prints its own arrangement: the page's gutter is on the header and
      instructions (phone.css), and .puzzle-body is empty there. The html.phone prefix is
-     what outranks each tool's print.css, which shares this layer and sets both. */
+     what outranks the .puzzle-main rule above and each tool's print.css, which shares
+     this layer and sets .puzzle-body. */
   html.phone .puzzle-main { padding: 0; }
   html.phone .puzzle-body { display: none; }
 }
@@ -1481,14 +1539,6 @@ html.phone .kb-spacer { flex: 7 1 0; }
 /* Shared print resets live in shared/themes/print-base.css (just before this file,
    in the same cascade layer). Only spiral-specific print rules belong here. */
 @media print {
-  .puzzle-main   { padding: 8px 16px; }
-  .puzzle-header { margin-bottom: 8px; }
-  .byline        { font-size: 0.8rem; }
-  #instructions  { font-size: 0.8rem; margin-bottom: 8px; }
-  .clue-section h2 { margin-bottom: 4px; }
-  .clue-item     { padding: 1px 4px; }
-  .cell-num      { fill: #555; }
-
   .puzzle-body {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -2834,6 +2884,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
   function syncSolveState({ checker, latch, doneWrong }) {
     const solved = checker.isSolved();
     doneWrong.hidden = !(checker.isBoardFilled() && !solved);
+    if (solved) checker.markSolved();
     latch.check(solved);
   }
   var LEN_CLASSES = ["len-2", "len-3", "len-long"];
@@ -2850,56 +2901,88 @@ html.phone .kb-spacer { flex: 7 1 0; }
     const want = letterLenClass(text);
     for (const c of LEN_CLASSES) el.classList.toggle(c, c === want);
   }
-  function makeCellStore({ ids, cellEl, letterEl, show = setLetterText }) {
+  var RIGHT_MARKS = /* @__PURE__ */ new Set(["checked", "revealed"]);
+  var KNOWN_MARKS = /* @__PURE__ */ new Set([...RIGHT_MARKS, "wrong"]);
+  function applyMark(el, mark) {
+    if (mark) el.dataset.mark = mark;
+    else delete el.dataset.mark;
+  }
+  function makeCellStore({ ids, cellEl, letterEl, show = setLetterText, drawMark = () => {
+  } }) {
     const letters = /* @__PURE__ */ new Map();
     const known = new Set(ids);
-    function setCorrect(n, on) {
-      cellEl(n).classList.toggle("correct", on);
-      letterEl(n).classList.toggle("correct", on);
+    function setMark(n, mark) {
+      for (const el of [cellEl(n), letterEl(n)]) applyMark(el, mark);
+      drawMark(n, mark);
     }
-    function isCorrect(n) {
-      return cellEl(n).classList.contains("correct");
+    function getMark(n) {
+      return cellEl(n).dataset.mark || null;
+    }
+    function isConfirmedRight(n) {
+      return RIGHT_MARKS.has(getMark(n));
+    }
+    function isMarkedWrong(n) {
+      return getMark(n) === "wrong";
+    }
+    function isLocked(n) {
+      return isConfirmedRight(n);
     }
     function getCellLetter(n) {
       return letters.get(n) || "";
     }
     function setCellLetter(n, letter) {
+      if (isLocked(n)) return;
       if (letter) letters.set(n, letter);
       else letters.delete(n);
       show(letterEl(n), letter);
-      setCorrect(n, false);
+      setMark(n, null);
+    }
+    function savedMarks(saved) {
+      const { marks } = saved;
+      if (marks === null || typeof marks !== "object" || Array.isArray(marks)) return [];
+      return Object.entries(marks).map(([k, mark]) => [Number(k), mark]);
     }
     return {
       getCellLetter,
       setCellLetter,
-      setCorrect,
-      isCorrect,
-      markAllCorrect() {
-        for (const n of ids) setCorrect(n, true);
-      },
+      setMark,
+      getMark,
+      isConfirmedRight,
+      isMarkedWrong,
+      isLocked,
+      // Clear and Play again: unmark first, so locked cells empty too.
       clearCells() {
-        for (const n of ids) setCellLetter(n, "");
+        for (const n of ids) {
+          setMark(n, null);
+          setCellLetter(n, "");
+        }
       },
-      // The save's `letters` (an object keyed by cell id) and `correct` (cell ids).
+      // The save's `letters` (an object keyed by cell id) and `marks` (cell id → value,
+      // marked cells only).
       saveFields() {
-        return { letters: Object.fromEntries(letters), correct: ids.filter((n) => isCorrect(n)) };
+        const marks = {};
+        for (const n of ids) {
+          const mark = getMark(n);
+          if (mark) marks[n] = mark;
+        }
+        return { letters: Object.fromEntries(letters), marks };
       },
-      // Whether every cell a save names (its letters, correct marks and composing cell) is
-      // one of this board's: setupStorage's `fits`. Two boards can share a storageKey, and
+      // Whether every cell a save names (its letters, marks and composing cell) is one of
+      // this board's: setupStorage's `fits`. Two boards can share a storageKey, and
       // restoring the other's save would write to cells that don't exist here.
       fitsSave(saved) {
         const composing = saved.composing;
-        return Object.keys(saved.letters).every((k) => known.has(Number(k))) && saved.correct.every((n) => known.has(n)) && (composing === null || composing === void 0 || known.has(composing));
+        return saved.letters !== null && typeof saved.letters === "object" && Object.keys(saved.letters).every((k) => known.has(Number(k))) && savedMarks(saved).every(([n]) => known.has(n)) && (composing === null || composing === void 0 || known.has(composing));
       },
-      // saveFields' inverse. Letters first: each one clears its cell's correct mark.
+      // saveFields' inverse. Letters first: each one clears its cell's mark.
       restoreFields(saved) {
         for (const [k, letter] of Object.entries(saved.letters)) setCellLetter(Number(k), letter);
-        for (const n of saved.correct) setCorrect(n, true);
+        for (const [n, mark] of savedMarks(saved)) if (KNOWN_MARKS.has(mark)) setMark(n, mark);
       }
     };
   }
   var MAX_COMPOSE_LEN = 12;
-  function makeComposer({ getContent, setContent, onCommit, isSolved }) {
+  function makeComposer({ getContent, setContent, onCommit, isSolved, isLocked = () => false }) {
     let composingId = null;
     function isComposing(n) {
       return composingId !== null && n === composingId;
@@ -2916,6 +2999,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       if (composingId !== null && composingId !== n) commit();
     }
     function typeLetter(n, text) {
+      if (isLocked(n)) return true;
       if (isComposing(n)) {
         setContent(n, (getContent(n) + text).slice(0, MAX_COMPOSE_LEN));
         return false;
@@ -2935,8 +3019,11 @@ html.phone .kb-spacer { flex: 7 1 0; }
         commit();
         return;
       }
-      if (isSolved()) return;
+      if (!canCompose(n)) return;
       composingId = n;
+    }
+    function canCompose(n) {
+      return !isSolved() && !isLocked(n);
     }
     function reset() {
       composingId = null;
@@ -2951,6 +3038,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     return {
       isCellFilled,
       isComposing,
+      canCompose,
       typeLetter,
       backspace,
       toggle,
@@ -2964,7 +3052,9 @@ html.phone .kb-spacer { flex: 7 1 0; }
     cellIds,
     getContent,
     isCellFilled,
-    isCellMarkedCorrect,
+    isCellConfirmedRight,
+    isCellMarkedWrong = () => false,
+    checkComposing = false,
     hashed,
     getExpected,
     getBoardHash,
@@ -2978,13 +3068,14 @@ html.phone .kb-spacer { flex: 7 1 0; }
       return cells.every((n) => isCellFilled(n));
     }
     function isSolved() {
-      return cellIds.every((n) => isCellMarkedCorrect(n));
+      return isBoardFilled() && boardIsCorrect();
     }
     function getSolution() {
       return joinCells(cellIds.map((n) => getContent(n)));
     }
     function canCheck(n) {
-      return isCellFilled(n) && !isCellMarkedCorrect(n);
+      const hasContent = checkComposing ? getContent(n) !== "" : isCellFilled(n);
+      return hasContent && !isCellConfirmedRight(n) && !isCellMarkedWrong(n);
     }
     function checkCell(n) {
       return canCheck(n) ? getContent(n) === getExpected(n) : null;
@@ -3000,7 +3091,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       return { right, wrong };
     }
     function canReveal(n) {
-      return !isCellMarkedCorrect(n);
+      return !isCellConfirmedRight(n);
     }
     function boardIsCorrect() {
       return hashed ? sha256hex(getSolution()) === getBoardHash() : cellIds.every((n) => getContent(n) === getExpected(n));
@@ -3021,24 +3112,26 @@ html.phone .kb-spacer { flex: 7 1 0; }
       isBoardFilled,
       isEntryFilled,
       isSolved,
+      markSolved,
       getSolution,
       canCheck,
       checkCell,
       checkCells,
       canReveal,
+      getContent,
       getExpected,
       cellIds,
       checkIfFilled,
       repaintIfSolved
     };
   }
-  function revealCells({ ids, composer, getExpected, canReveal, setCellLetter, setCorrect }) {
+  function revealCells({ ids, composer, getContent, getExpected, canReveal, setCellLetter, setMark }) {
     const composing = composer.getComposing();
     if (composing !== null && ids.includes(composing) && canReveal(composing)) composer.reset();
     for (const n of ids) {
       if (!canReveal(n)) continue;
-      setCellLetter(n, getExpected(n));
-      setCorrect(n, true);
+      if (getContent(n) !== getExpected(n)) setCellLetter(n, getExpected(n));
+      setMark(n, "revealed");
     }
   }
   function makeHelpActions({
@@ -3046,7 +3139,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     composer,
     helpRecord,
     setCellLetter,
-    setCorrect,
+    setMark,
     saveState,
     syncUI,
     refocus,
@@ -3058,19 +3151,20 @@ html.phone .kb-spacer { flex: 7 1 0; }
       refocus();
     }
   }) {
-    function endCompositionIfSolved() {
-      if (checker.isSolved()) composer.reset();
-    }
     function checkSet(ids) {
       beforeCheck();
+      if (checker.isSolved()) {
+        refocus();
+        return;
+      }
       const { right, wrong } = checker.checkCells(ids);
       if (right.length + wrong.length === 0) {
         refocus();
         return;
       }
       helpRecord.countCheck();
-      for (const n of right) setCorrect(n, true);
-      endCompositionIfSolved();
+      for (const n of right) setMark(n, "checked");
+      for (const n of wrong) setMark(n, "wrong");
       checker.checkIfFilled();
       saveState();
       flashWrong2(wrong);
@@ -3078,20 +3172,20 @@ html.phone .kb-spacer { flex: 7 1 0; }
       refocus();
     }
     function revealSet(ids) {
-      if (!ids.some(checker.canReveal)) {
+      if (checker.isSolved() || !ids.some(checker.canReveal)) {
         refocus();
         return;
       }
       revealCells({
         ids,
         composer,
+        getContent: checker.getContent,
         getExpected: checker.getExpected,
         canReveal: checker.canReveal,
         setCellLetter,
-        setCorrect
+        setMark
       });
       helpRecord.countReveal();
-      endCompositionIfSolved();
       checker.checkIfFilled();
       saveState();
       afterReveal();
@@ -3123,6 +3217,80 @@ html.phone .kb-spacer { flex: 7 1 0; }
     }
     const entry = order[((at + dir) % n + n) % n];
     return { entry, cell: cellsOf(entry)[0] };
+  }
+
+  // shared/markShapes.mjs
+  var CORNER_TIE_FRAC = 0.02;
+  function pathCorners(d) {
+    const tokens = d.match(/[A-Za-z]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/g) || [];
+    const corners = [];
+    let i = 0;
+    const num = () => {
+      const v = Number(tokens[i++]);
+      if (!Number.isFinite(v)) throw new Error(`pathCorners: expected a number in "${d}"`);
+      return v;
+    };
+    while (i < tokens.length) {
+      const cmd = tokens[i++];
+      if (cmd === "Z") continue;
+      if (cmd === "M" || cmd === "L") corners.push([num(), num()]);
+      else if (cmd === "A") {
+        i += 5;
+        corners.push([num(), num()]);
+      } else throw new Error(`pathCorners: unsupported command "${cmd}" in "${d}"`);
+    }
+    const [first, last] = [corners[0], corners[corners.length - 1]];
+    if (corners.length > 1 && first[0] === last[0] && first[1] === last[1]) corners.pop();
+    return corners;
+  }
+  function rectCorners(x, y, w, h) {
+    return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  }
+  function sizeOf(corners) {
+    let size = 0;
+    for (const a of corners) for (const b of corners) size = Math.max(size, Math.hypot(a[0] - b[0], a[1] - b[1]));
+    return size;
+  }
+  function flagCornerIndex(corners) {
+    const score = ([x, y]) => x - y;
+    const best = Math.max(...corners.map(score));
+    const tie = CORNER_TIE_FRAC * sizeOf(corners);
+    let pick = -1;
+    corners.forEach((c, i) => {
+      if (score(c) < best - tie) return;
+      const p = corners[pick];
+      if (pick === -1 || c[1] < p[1] || c[1] === p[1] && c[0] > p[0]) pick = i;
+    });
+    return pick;
+  }
+  function flagPolygon(corners, i, frac = 0.3) {
+    const len = corners.length;
+    const c = corners[i];
+    const a = corners[(i - 1 + len) % len];
+    const b = corners[(i + 1) % len];
+    const dist = (u, v) => Math.hypot(u[0] - v[0], u[1] - v[1]);
+    const leg = frac * Math.min(dist(a, c), dist(b, c));
+    const toward = (u) => {
+      const l = dist(u, c);
+      return [c[0] + (u[0] - c[0]) * leg / l, c[1] + (u[1] - c[1]) * leg / l];
+    };
+    const p = toward(a);
+    const q = toward(b);
+    let n = [-(q[1] - p[1]), q[0] - p[0]];
+    const nl = Math.hypot(n[0], n[1]);
+    n = [n[0] / nl, n[1] / nl];
+    if (n[0] * (c[0] - p[0]) + n[1] * (c[1] - p[1]) < 0) n = [-n[0], -n[1]];
+    const m = sizeOf(corners);
+    const out = ([x, y]) => [x + n[0] * m, y + n[1] * m];
+    return [p, q, out(q), out(p)];
+  }
+  function slashLine(corners, i) {
+    const c = corners[i];
+    let far = c;
+    for (const p of corners) {
+      if (Math.hypot(p[0] - c[0], p[1] - c[1]) > Math.hypot(far[0] - c[0], far[1] - c[1])) far = p;
+    }
+    return [c, far];
   }
 
   // shared/engine-chrome.mjs
@@ -3198,10 +3366,12 @@ html.phone .kb-spacer { flex: 7 1 0; }
     });
     return { disarm };
   }
-  function setupRebusButton(btn, { onToggle, isComposing, refocus }) {
+  function setupRebusButton(btn, { onToggle, isComposing, canCompose = () => true, refocus }) {
     function sync() {
-      const want = isComposing() ? "Done" : "Rebus";
+      const composing = isComposing();
+      const want = composing ? "Done" : "Rebus";
       if (btn.textContent !== want) btn.textContent = want;
+      btn.disabled = !composing && !canCompose();
     }
     btn.addEventListener("mousedown", (e) => e.preventDefault());
     btn.addEventListener("click", (e) => {
@@ -3259,7 +3429,44 @@ html.phone .kb-spacer { flex: 7 1 0; }
     flashLayer.appendChild(flashEl);
     setTimeout(() => flashEl.remove(), FLASH_WRONG_MS);
   }
-  var SAVE_VERSION = 1;
+  function setupMarkLayer(layer, cellEl) {
+    const shapes = /* @__PURE__ */ new Map();
+    function cornersOf(el) {
+      if (el.tagName.toLowerCase() === "rect") {
+        const a = (name) => Number(el.getAttribute(name));
+        return rectCorners(a("x"), a("y"), a("width"), a("height"));
+      }
+      return pathCorners(el.getAttribute("d"));
+    }
+    function draw(n, mark) {
+      shapes.get(n)?.remove();
+      shapes.delete(n);
+      if (mark !== "revealed" && mark !== "wrong") return;
+      const cell = cellEl(n);
+      const corners = cornersOf(cell);
+      const corner = flagCornerIndex(corners);
+      const clipId = `mark-clip-${n}`;
+      const outline = cell.cloneNode(false);
+      outline.removeAttribute("id");
+      outline.removeAttribute("class");
+      const clip = svgEl("clipPath", { id: clipId });
+      clip.appendChild(outline);
+      let shape;
+      if (mark === "revealed") {
+        const points = flagPolygon(corners, corner).map((p) => p.join(",")).join(" ");
+        shape = svgEl("polygon", { class: "mark-flag", points });
+      } else {
+        const [[x1, y1], [x2, y2]] = slashLine(corners, corner);
+        shape = svgEl("line", { class: "mark-slash", x1, y1, x2, y2 });
+      }
+      const g = svgEl("g", { class: `mark-shape mark-${mark}`, "clip-path": `url(#${clipId})` });
+      g.append(clip, shape);
+      layer.appendChild(g);
+      shapes.set(n, g);
+    }
+    return { draw };
+  }
+  var SAVE_VERSION = 2;
   function setupStorage(key, { getState, fits, applyState }) {
     function saveState() {
       try {
@@ -3611,7 +3818,6 @@ html.phone .kb-spacer { flex: 7 1 0; }
     activeCell,
     clueCells,
     clueNoun = () => "clue",
-    canCheck = (n) => checker.canCheck(n),
     onClear,
     refocus
   }) {
@@ -3623,6 +3829,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     onClosed(clear.disarm);
     if (hashed) return { syncHelp() {
     }, helpMenu: null };
+    const canCheck = (n) => checker.canCheck(n);
     const canReveal = (n) => checker.canReveal(n);
     const rows = [
       {
@@ -3693,9 +3900,10 @@ html.phone .kb-spacer { flex: 7 1 0; }
     };
     return {
       syncHelp() {
+        const solved = checker.isSolved();
         for (const row of rows) {
           setLabel(row.btn, row.label());
-          row.btn.disabled = !row.cells().some(row.can);
+          row.btn.disabled = solved || !row.cells().some(row.can);
         }
       },
       helpMenu
@@ -3726,6 +3934,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     let lastTap = null;
     let prevDist = 0;
     let prevMid = { x: 0, y: 0 };
+    let anchor = null;
     function pair() {
       const [a, b] = [...pointers.values()];
       return {
@@ -3737,6 +3946,12 @@ html.phone .kb-spacer { flex: 7 1 0; }
       gesture = false;
       double = false;
       lastTap = null;
+      anchor = null;
+    }
+    function endGesture() {
+      const end = { type: "gestureEnd", anchor };
+      endSequence();
+      return [end];
     }
     function down(id, x, y, t) {
       if (pointers.has(id) || pointers.size >= 2) return [];
@@ -3756,6 +3971,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       for (const other of pointers.values()) other.panning = true;
       pointers.set(id, p);
       ({ dist: prevDist, mid: prevMid } = pair());
+      anchor = prevMid;
       return [];
     }
     function move(id, x, y) {
@@ -3773,6 +3989,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
         };
         prevDist = dist;
         prevMid = mid;
+        anchor = mid;
         return [action2];
       }
       if (!p.panning) {
@@ -3792,10 +4009,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       if (wasPair) {
         return [];
       }
-      if (gesture) {
-        endSequence();
-        return [{ type: "gestureEnd" }];
-      }
+      if (gesture) return endGesture();
       if (double) {
         endSequence();
         return [{ type: "doubleTap", x, y }];
@@ -3807,9 +4021,9 @@ html.phone .kb-spacer { flex: 7 1 0; }
       if (!pointers.has(id)) return [];
       pointers.delete(id);
       if (pointers.size > 0) return [];
-      const wasGesture = gesture;
+      if (gesture) return endGesture();
       endSequence();
-      return wasGesture ? [{ type: "gestureEnd" }] : [];
+      return [];
     }
     function forget() {
       lastTap = null;
@@ -3829,19 +4043,26 @@ html.phone .kb-spacer { flex: 7 1 0; }
     const k = fitScale(frame) * view.zoom;
     return { width: frame.pane.width / k, height: frame.pane.height / k };
   }
-  function clampAxis(center, visible, start, extent) {
-    if (visible >= extent) return start + extent / 2;
-    return Math.min(Math.max(center, start + visible / 2), start + extent - visible / 2);
+  function axisRange(visible, start, extent, extra) {
+    if (visible >= extent) return { fits: true, lo: start + extent / 2, hi: start + extent / 2 };
+    const pad = Math.min(extra, (extent - visible) / 2);
+    return { fits: false, lo: start - pad + visible / 2, hi: start + extent + pad - visible / 2 };
   }
-  function clampView(view, frame) {
-    const zoom = Math.min(Math.max(view.zoom, 1), frame.maxZoom);
+  function limitsAt(zoom, frame) {
     const size = visibleSize({ zoom }, frame);
+    const k = fitScale(frame) * zoom;
+    const extra = Math.max(frame.bleed || 0, (frame.marginPx || 0) / k);
     const { base } = frame;
     return {
-      zoom,
-      cx: clampAxis(view.cx, size.width, base.x, base.width),
-      cy: clampAxis(view.cy, size.height, base.y, base.height)
+      x: axisRange(size.width, base.x, base.width, extra),
+      y: axisRange(size.height, base.y, base.height, extra)
     };
+  }
+  var clampTo = (value, range) => Math.min(Math.max(value, range.lo), range.hi);
+  function clampView(view, frame) {
+    const zoom = Math.min(Math.max(view.zoom, 1), frame.maxZoom);
+    const lim = limitsAt(zoom, frame);
+    return { zoom, cx: clampTo(view.cx, lim.x), cy: clampTo(view.cy, lim.y) };
   }
   function viewBoxOf(view, frame) {
     const size = visibleSize(view, frame);
@@ -3852,23 +4073,20 @@ html.phone .kb-spacer { flex: 7 1 0; }
       height: size.height
     };
   }
-  function zoomAround(view, frame, { from, to, zoom }) {
-    const next = Math.min(Math.max(zoom, 1), frame.maxZoom);
+  function zoomAround(view, frame, { from, to, zoom }, { clamp = true } = {}) {
+    const next = clamp ? Math.min(Math.max(zoom, 1), frame.maxZoom) : zoom;
     const fit = fitScale(frame);
     const kOld = fit * view.zoom;
     const kNew = fit * next;
     const box = viewBoxOf(view, frame);
     const px = box.x + from.x / kOld;
     const py = box.y + from.y / kOld;
-    return clampView({
+    const moved = {
       zoom: next,
       cx: px - to.x / kNew + frame.pane.width / (2 * kNew),
       cy: py - to.y / kNew + frame.pane.height / (2 * kNew)
-    }, frame);
-  }
-  function panBy(view, frame, dx, dy) {
-    const k = fitScale(frame) * view.zoom;
-    return clampView({ zoom: view.zoom, cx: view.cx - dx / k, cy: view.cy - dy / k }, frame);
+    };
+    return clamp ? clampView(moved, frame) : moved;
   }
   function revealAxis(center, visible, start, extent, margin) {
     const m = Math.max(0, Math.min(margin, (visible - extent) / 2));
@@ -3889,43 +4107,236 @@ html.phone .kb-spacer { flex: 7 1 0; }
       cy: view.cy + revealAxis(view.cy, size.height, ry.y, ry.height, margin)
     }, frame);
   }
+  var RUBBER_C = 0.55;
+  function rubberBand(excess, dim, c = RUBBER_C) {
+    if (dim <= 0) return 0;
+    const x = Math.abs(excess);
+    return Math.sign(excess) * (1 - 1 / (x * c / dim + 1)) * dim;
+  }
+  var UNBAND_MAX = 0.999;
+  function unrubberBand(shown, dim, c = RUBBER_C) {
+    if (dim <= 0) return 0;
+    const b = Math.min(Math.abs(shown), dim * UNBAND_MAX);
+    return Math.sign(shown) * (b / (1 - b / dim)) / c;
+  }
+  function bandOutside(value, lo, hi, scale, band) {
+    if (value < lo) return lo + band((value - lo) * scale) / scale;
+    if (value > hi) return hi + band((value - hi) * scale) / scale;
+    return value;
+  }
+  function stretchView(raw, frame) {
+    const zoom = Math.exp(bandOutside(
+      Math.log(raw.zoom),
+      0,
+      Math.log(frame.maxZoom),
+      1,
+      (e) => rubberBand(e, frame.zoomStretch || 0)
+    ));
+    return stretchCenter(raw, zoom, frame, rubberBand);
+  }
+  function unstretchView(shown, frame) {
+    const zoom = Math.exp(bandOutside(
+      Math.log(shown.zoom),
+      0,
+      Math.log(frame.maxZoom),
+      1,
+      (e) => unrubberBand(e, frame.zoomStretch || 0)
+    ));
+    return { ...stretchCenter(shown, shown.zoom, frame, unrubberBand), zoom };
+  }
+  function followFingers(raw, frame, { from, to, scale }) {
+    const zoom = raw.zoom * scale;
+    const shown = stretchView(raw, frame);
+    const shownZoom = stretchView({ ...raw, zoom }, frame).zoom;
+    const moved = zoomAround(shown, frame, { from, to, zoom: shownZoom }, { clamp: false });
+    return { zoom, cx: raw.cx + moved.cx - shown.cx, cy: raw.cy + moved.cy - shown.cy };
+  }
+  function stretchCenter(view, zoom, frame, band) {
+    const lim = limitsAt(zoom, frame);
+    const k = fitScale(frame) * zoom;
+    const axis = (c, range, dim) => bandOutside(c, range.lo, range.hi, k, (e) => band(e, dim));
+    return {
+      zoom,
+      cx: axis(view.cx, lim.x, frame.pane.width),
+      cy: axis(view.cy, lim.y, frame.pane.height)
+    };
+  }
+  var EDGE_EPS = 0.5;
+  function edgesOf(view, frame) {
+    if (view.zoom <= 1) return { top: false, right: false, bottom: false, left: false };
+    const box = viewBoxOf(view, frame);
+    const { base } = frame;
+    return {
+      top: box.y > base.y + EDGE_EPS,
+      right: box.x + box.width < base.x + base.width - EDGE_EPS,
+      bottom: box.y + box.height < base.y + base.height - EDGE_EPS,
+      left: box.x > base.x + EDGE_EPS
+    };
+  }
+
+  // shared/svg-zoom-motion.mjs
+  var SPRING_OMEGA = 22;
+  var MAX_DT = 1 / 30;
+  var SETTLE_PX = 0.25;
+  var SETTLE_LZ = 1e-3;
+  var FRAME = 1 / 60;
+  function springStep(x, v, target, dt, omega = SPRING_OMEGA) {
+    const x0 = x - target;
+    const b = v + omega * x0;
+    const decay = Math.exp(-omega * dt);
+    return {
+      x: target + (x0 + b * dt) * decay,
+      v: (v - omega * b * dt) * decay
+    };
+  }
+  function screenOf(p, view, frame) {
+    const k = fitScale(frame) * view.zoom;
+    const box = viewBoxOf(view, frame);
+    return { x: (p.x - box.x) * k, y: (p.y - box.y) * k };
+  }
+  function viewFrom(zoom, p, s, frame) {
+    const k = fitScale(frame) * zoom;
+    return {
+      zoom,
+      cx: p.x - s.x / k + frame.pane.width / (2 * k),
+      cy: p.y - s.y / k + frame.pane.height / (2 * k)
+    };
+  }
+  function startMotion(view, frame, anchorPx) {
+    const a = anchorPx || { x: frame.pane.width / 2, y: frame.pane.height / 2 };
+    const k = fitScale(frame) * view.zoom;
+    const box = viewBoxOf(view, frame);
+    return {
+      p: { x: box.x + a.x / k, y: box.y + a.y / k },
+      lz: Math.log(view.zoom),
+      sx: a.x,
+      sy: a.y,
+      vlz: 0,
+      vsx: 0,
+      vsy: 0
+    };
+  }
+  function stepMotion(motion, target, frame, dt) {
+    const t = Math.min(Math.max(dt, 0), MAX_DT);
+    const goalLz = Math.log(target.zoom);
+    const goal = screenOf(motion.p, target, frame);
+    const lz = springStep(motion.lz, motion.vlz, goalLz, t);
+    const sx = springStep(motion.sx, motion.vsx, goal.x, t);
+    const sy = springStep(motion.sy, motion.vsy, goal.y, t);
+    const still = (c, to, eps) => Math.abs(c.x - to) < eps && Math.abs(c.v) * FRAME < eps;
+    if (still(lz, goalLz, SETTLE_LZ) && still(sx, goal.x, SETTLE_PX) && still(sy, goal.y, SETTLE_PX)) {
+      return {
+        motion: { p: motion.p, lz: goalLz, sx: goal.x, sy: goal.y, vlz: 0, vsx: 0, vsy: 0 },
+        view: { ...target },
+        settled: true
+      };
+    }
+    const next = { p: motion.p, lz: lz.x, sx: sx.x, sy: sy.x, vlz: lz.v, vsx: sx.v, vsy: sy.v };
+    return { motion: next, view: viewFrom(Math.exp(lz.x), motion.p, { x: sx.x, y: sy.x }, frame), settled: false };
+  }
 
   // shared/svg-zoom.mjs
   var STRAY_CLICK_MS = 400;
   var DOUBLE_TAP_MS = 300;
   var DOUBLE_TAP_PX = 15;
   var TAP_SLOP_PX = 10;
-  function attachSvgZoom(svg, { pane, maxZoom = 5, doubleTapZoom = 2.5, win = window }) {
+  var EDGE_BLEED = 2;
+  function attachSvgZoom(svg, {
+    pane,
+    maxZoom = 5,
+    doubleTapZoom = 2.5,
+    marginPx = 0,
+    zoomStretch = 0,
+    onEdges = () => {
+    },
+    onView = () => {
+    },
+    win = window
+  }) {
     const original = svg.getAttribute("viewBox");
     const baseVal = svg.viewBox.baseVal;
     const inert = { reveal() {
     }, refresh() {
-    }, reset() {
     }, zoomed: () => false, destroy() {
     } };
     if (!original || !baseVal || baseVal.width <= 0 || baseVal.height <= 0) return inert;
     const frame = {
       base: { x: baseVal.x, y: baseVal.y, width: baseVal.width, height: baseVal.height },
       pane: { width: 0, height: 0 },
-      maxZoom
+      maxZoom,
+      bleed: EDGE_BLEED,
+      marginPx,
+      zoomStretch
     };
-    let view = initialView(frame);
+    let current = initialView(frame);
+    let target = current;
+    let motion = null;
+    let raw = null;
+    let frameId = null;
+    let lastTime = null;
     let measured = false;
     let printing = false;
+    let lastEdges = "";
     const ownOverflow = svg.style.overflow;
+    const noEdges = { top: false, right: false, bottom: false, left: false };
+    const sameView = (a, b) => a.zoom === b.zoom && a.cx === b.cx && a.cy === b.cy;
+    const whole = initialView(frame);
     function apply() {
       if (!measured) return;
-      if (printing || view.zoom === 1) {
+      if (printing || sameView(current, whole)) {
         svg.setAttribute("viewBox", original);
         svg.style.overflow = ownOverflow;
-        return;
+      } else {
+        const b = viewBoxOf(current, frame);
+        svg.setAttribute("viewBox", `${b.x} ${b.y} ${b.width} ${b.height}`);
+        svg.style.overflow = "hidden";
+        onView({ ...b, scale: frame.pane.width / b.width });
       }
-      const b = viewBoxOf(view, frame);
-      svg.setAttribute("viewBox", `${b.x} ${b.y} ${b.width} ${b.height}`);
-      svg.style.overflow = "hidden";
+      const edges = printing ? noEdges : edgesOf(current, frame);
+      const key = JSON.stringify(edges);
+      if (key !== lastEdges) {
+        lastEdges = key;
+        onEdges(edges);
+      }
     }
-    function setView(next) {
-      view = next;
+    const motionQuery = win.matchMedia ? win.matchMedia("(prefers-reduced-motion: reduce)") : null;
+    const reducedMotion = () => Boolean(motionQuery && motionQuery.matches);
+    function onMotionPref() {
+      if (reducedMotion() && motion) snap();
+    }
+    function cancelFrame() {
+      if (frameId !== null) win.cancelAnimationFrame(frameId);
+      frameId = null;
+    }
+    function tick(time) {
+      frameId = null;
+      const dt = lastTime === null ? 1 / 60 : (time - lastTime) / 1e3;
+      const r = stepMotion(motion, target, frame, dt);
+      lastTime = time;
+      current = r.view;
+      motion = r.settled ? null : r.motion;
+      apply();
+      if (motion) frameId = win.requestAnimationFrame(tick);
+    }
+    function animateTo(next, anchorPx) {
+      target = next;
+      if (!measured || reducedMotion()) return snap();
+      if (!motion && sameView(current, target)) return;
+      if (anchorPx || !motion) motion = startMotion(current, frame, anchorPx);
+      if (frameId === null) {
+        lastTime = null;
+        frameId = win.requestAnimationFrame(tick);
+      }
+    }
+    function freeze() {
+      cancelFrame();
+      motion = null;
+      target = current;
+    }
+    function snap() {
+      cancelFrame();
+      motion = null;
+      current = target;
       apply();
     }
     function measure() {
@@ -3936,18 +4347,21 @@ html.phone .kb-spacer { flex: 7 1 0; }
       return true;
     }
     function refresh() {
-      if (!measure()) return;
-      setView(clampView(view, frame));
-    }
-    function reset() {
-      setView(initialView(frame));
+      if (printing || !measure()) return;
+      target = clampView(target, frame);
+      if (motion) {
+        motion = startMotion(current, frame);
+        return;
+      }
+      current = clampView(current, frame);
+      apply();
     }
     function zoomed() {
-      return view.zoom > 1;
+      return target.zoom > 1;
     }
     function reveal2(rects, margin) {
-      if (!measured) return;
-      setView(reveal(view, frame, rects, margin));
+      if (!measured || touching.size > 0) return;
+      animateTo(reveal(target, frame, rects, margin));
     }
     const tracker = createGestureTracker({
       tapSlop: TAP_SLOP_PX,
@@ -3974,19 +4388,26 @@ html.phone .kb-spacer { flex: 7 1 0; }
     function local(e) {
       return { x: e.clientX - origin.left, y: e.clientY - origin.top };
     }
+    function showRaw() {
+      current = stretchView(raw, frame);
+      target = current;
+      apply();
+    }
     function run(actions, t) {
       for (const a of actions) {
         if (a.type === "pan") {
-          const before = view;
-          setView(panBy(view, frame, a.dx, a.dy));
-          if (view.cx !== before.cx || view.cy !== before.cy) swept = true;
+          const before = current;
+          raw = followFingers(raw, frame, { from: { x: 0, y: 0 }, to: { x: a.dx, y: a.dy }, scale: 1 });
+          showRaw();
+          if (current.cx !== before.cx || current.cy !== before.cy) swept = true;
         } else if (a.type === "pinch") {
-          setView(zoomAround(view, frame, { from: a.from, to: a.to, zoom: view.zoom * a.scale }));
+          raw = followFingers(raw, frame, a);
+          showRaw();
           swept = true;
         } else if (a.type === "doubleTap") {
           eatNextUntil = t + STRAY_CLICK_MS;
-          if (zoomed()) reset();
-          else setView(zoomAround(view, frame, { from: a, to: a, zoom: doubleTapZoom }));
+          const next = zoomed() ? initialView(frame) : zoomAround(target, frame, { from: a, to: a, zoom: doubleTapZoom });
+          animateTo(next, { x: a.x, y: a.y });
         } else if (a.type === "gestureEnd") {
           if (swept) strayUntil = t + STRAY_CLICK_MS;
           swept = false;
@@ -3997,7 +4418,11 @@ html.phone .kb-spacer { flex: 7 1 0; }
       if (!measured && !measure()) return;
       eatNextUntil = 0;
       if (touching.size > 0) swept = true;
-      else origin = svg.getBoundingClientRect();
+      else {
+        origin = svg.getBoundingClientRect();
+        freeze();
+        raw = unstretchView(current, frame);
+      }
       touching.add(e.pointerId);
       const p = local(e);
       run(tracker.down(e.pointerId, p.x, p.y, e.timeStamp), e.timeStamp);
@@ -4010,11 +4435,24 @@ html.phone .kb-spacer { flex: 7 1 0; }
     function onUp(e) {
       if (!touching.delete(e.pointerId)) return;
       const p = local(e);
-      run(tracker.up(e.pointerId, p.x, p.y, e.timeStamp), e.timeStamp);
+      const actions = tracker.up(e.pointerId, p.x, p.y, e.timeStamp);
+      endSequence(actions);
+      run(actions, e.timeStamp);
     }
     function onCancel(e) {
       if (!touching.delete(e.pointerId)) return;
-      run(tracker.cancel(e.pointerId), e.timeStamp);
+      const actions = tracker.cancel(e.pointerId);
+      endSequence(actions);
+      run(actions, e.timeStamp);
+    }
+    function endSequence(actions) {
+      if (touching.size > 0) return;
+      raw = null;
+      const end = actions.find((a) => a.type === "gestureEnd");
+      const anchor = end && end.anchor;
+      if (!anchor) return animateTo(clampView(current, frame));
+      const settledView = zoomAround(current, frame, { from: anchor, to: anchor, zoom: current.zoom });
+      animateTo(settledView, anchor);
     }
     function onOutsideDown(e) {
       if (!pane.contains(e.target)) tracker.forget();
@@ -4034,6 +4472,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     pane.addEventListener("gesturechange", stopGesture, { passive: false });
     win.addEventListener("click", onClick, true);
     win.addEventListener("pointerdown", onOutsideDown, true);
+    if (motionQuery) motionQuery.addEventListener("change", onMotionPref);
     let observer = null;
     if (win.ResizeObserver) {
       observer = new win.ResizeObserver(refresh);
@@ -4042,6 +4481,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       win.addEventListener("resize", refresh);
     }
     const setPrinting = (on) => () => {
+      if (on) snap();
       printing = on;
       apply();
     };
@@ -4051,6 +4491,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     win.addEventListener("afterprint", afterPrint);
     refresh();
     function destroy() {
+      cancelFrame();
       svg.setAttribute("viewBox", original);
       pane.style.touchAction = saved.pane;
       svg.style.touchAction = saved.svgTouch;
@@ -4063,12 +4504,13 @@ html.phone .kb-spacer { flex: 7 1 0; }
       pane.removeEventListener("gesturechange", stopGesture);
       win.removeEventListener("click", onClick, true);
       win.removeEventListener("pointerdown", onOutsideDown, true);
+      if (motionQuery) motionQuery.removeEventListener("change", onMotionPref);
       if (observer) observer.disconnect();
       else win.removeEventListener("resize", refresh);
       win.removeEventListener("beforeprint", beforePrint);
       win.removeEventListener("afterprint", afterPrint);
     }
-    return { reveal: reveal2, refresh, reset, zoomed, destroy };
+    return { reveal: reveal2, refresh, zoomed, destroy };
   }
 
   // shared/engine-phone.mjs
@@ -4076,6 +4518,47 @@ html.phone .kb-spacer { flex: 7 1 0; }
   var LANDSCAPE_PHONE = "(orientation: landscape) and (max-height: 500px)";
   var MAX_ZOOM = 5;
   var DOUBLE_TAP_ZOOM = 2.5;
+  var EDGE_MARGIN_PX = 12;
+  var ZOOM_STRETCH = Math.log(2);
+  var EDGE_SHADOW_PX = 16;
+  var EDGE_SHADOW_STOPS = [[0, 1], [0.25, 0.56], [0.5, 0.25], [0.75, 0.06], [1, 0]];
+  var EDGE_SIDES = ["top", "right", "bottom", "left"];
+  var GRID_SHAPES = ".cell, .cell-block, .cell-center";
+  function addEdgeShadows(svg) {
+    const clip = svgEl("clipPath", { id: "edge-shadow-clip" });
+    for (const shape of svg.querySelectorAll(GRID_SHAPES)) {
+      const copy = shape.cloneNode(false);
+      for (const name of ["id", "class", "style"]) copy.removeAttribute(name);
+      clip.append(copy);
+    }
+    const from = { top: [0, 0, 0, 1], right: [1, 0, 0, 0], bottom: [0, 1, 0, 0], left: [0, 0, 1, 0] };
+    const gradients = EDGE_SIDES.map((side) => {
+      const [x1, y1, x2, y2] = from[side];
+      const gradient = svgEl("linearGradient", { id: `edge-shadow-${side}`, x1, y1, x2, y2 });
+      gradient.append(...EDGE_SHADOW_STOPS.map(([offset, opacity]) => svgEl("stop", { offset, class: "edge-shadow-stop", "stop-opacity": opacity })));
+      return gradient;
+    });
+    const defs = svgEl("defs");
+    defs.append(clip, ...gradients);
+    const strips = Object.fromEntries(EDGE_SIDES.map((side) => [side, svgEl("rect", {
+      class: "edge-shadow",
+      "data-side": side,
+      fill: `url(#edge-shadow-${side})`
+    })]));
+    const layer = svgEl("g", { class: "edge-shadows", "aria-hidden": "true", "clip-path": "url(#edge-shadow-clip)" });
+    layer.append(...Object.values(strips));
+    svg.append(defs, layer);
+    return ({ x, y, width, height, scale }) => {
+      const t = EDGE_SHADOW_PX / scale;
+      const place = (side, attrs) => {
+        for (const [name, value] of Object.entries(attrs)) strips[side].setAttribute(name, value);
+      };
+      place("top", { x, y, width, height: t });
+      place("bottom", { x, y: y + height - t, width, height: t });
+      place("left", { x, y, width: t, height });
+      place("right", { x: x + width - t, y, width: t, height });
+    };
+  }
   function isTouchFirst(win = window) {
     return win.matchMedia(TOUCH_FIRST).matches;
   }
@@ -4243,11 +4726,20 @@ html.phone .kb-spacer { flex: 7 1 0; }
     const solveView = htmlEl("div", { id: "solve-view" }, top, stage, barRow, keyboard);
     doc.querySelector(".puzzle-main").append(solveView);
     const svgNode = grid.matches("svg") ? grid : grid.querySelector("svg");
+    const placeShadows = addEdgeShadows(svgNode);
     const zoom = attachSvgZoom(svgNode, {
       pane: gridPane,
       maxZoom: MAX_ZOOM,
       doubleTapZoom: DOUBLE_TAP_ZOOM,
-      win
+      marginPx: EDGE_MARGIN_PX,
+      zoomStretch: ZOOM_STRETCH,
+      win,
+      onEdges: (edges) => {
+        const more = EDGE_SIDES.filter((side) => edges[side]).join(" ");
+        if (more) gridPane.dataset.more = more;
+        else delete gridPane.dataset.more;
+      },
+      onView: placeShadows
     });
     const introText = firstVisit && instructionsCopy("intro-text");
     if (introText) {
@@ -4333,7 +4825,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     });
     return { listPane, hideList, fillList: fill, showingClue, follow };
   }
-  function setupFillList(items, { scroller, getLetter, isCorrect, isComposing = () => false, onCellTap }) {
+  function setupFillList(items, { scroller, getLetter, getMark, isComposing = () => false, onCellTap }) {
     const letterEls = items.map(({ li, cells }, i) => {
       const letters = cells.map(() => htmlEl("span", { class: "list-letter" }));
       const cellEls = letters.map((letter, j) => {
@@ -4369,7 +4861,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
           el.style.setProperty("--len", Math.max(1, letter.length));
           if (active) edited = true;
         }
-        letterEls[i].cellEls[j].classList.toggle("correct", isCorrect(n));
+        applyMark(letterEls[i].cellEls[j], getMark(n));
         const isCursor = active && n === activeCell;
         letterEls[i].cellEls[j].classList.toggle("list-cursor", isCursor);
         letterEls[i].cellEls[j].classList.toggle("composing", isCursor && isComposing(n));
@@ -4566,8 +5058,13 @@ html.phone .kb-spacer { flex: 7 1 0; }
     let activeCell = FIRST_CELL;
     let direction = "inward";
     const CELL_IDS = inwardEntryCells.flat();
-    const cells = makeCellStore({ ids: CELL_IDS, cellEl: (n) => cellPaths[n], letterEl: (n) => letterTexts[n] });
-    const { getCellLetter, setCellLetter, setCorrect, isCorrect } = cells;
+    const cells = makeCellStore({
+      ids: CELL_IDS,
+      cellEl: (n) => cellPaths[n],
+      letterEl: (n) => letterTexts[n],
+      drawMark: (n, mark) => markShapes.draw(n, mark)
+    });
+    const { getCellLetter, setCellLetter, setMark, getMark, isConfirmedRight, isLocked } = cells;
     const composer = makeComposer({
       getContent: (n) => getCellLetter(n),
       setContent: (n, s) => setCellLetter(n, s),
@@ -4576,18 +5073,20 @@ html.phone .kb-spacer { flex: 7 1 0; }
         checker.checkIfFilled();
         saveState();
       },
-      isSolved: () => latch.solved
+      isSolved: () => latch.solved,
+      isLocked
     });
     const checker = makeBoardChecker({
       cellIds: CELL_IDS,
       getContent: (n) => getCellLetter(n),
       isCellFilled: (n) => composer.isCellFilled(n),
-      isCellMarkedCorrect: isCorrect,
+      isCellConfirmedRight: isConfirmedRight,
+      isCellMarkedWrong: (n) => cells.isMarkedWrong(n),
       hashed: !!data.hashed,
       getExpected: (n) => data.letters && data.letters[n - 1],
       getBoardHash: () => data.boardHash,
       markSolved: () => {
-        cells.markAllCorrect();
+        svg.classList.add("solved");
         clueItems.forEach((li) => li.classList.add("correct"));
       },
       syncUI: () => syncUI()
@@ -4723,8 +5222,10 @@ html.phone .kb-spacer { flex: 7 1 0; }
     const cellsLayer = svgEl("g", {});
     const circlesLayer = svgEl("g", {});
     const flashLayer = svgEl("g", {});
+    const markLayer = svgEl("g", { class: "mark-layer" });
+    const markShapes = setupMarkLayer(markLayer, (n) => cellPaths[n]);
     const lettersLayer = svgEl("g", {});
-    svg.append(cellsLayer, circlesLayer, flashLayer, lettersLayer);
+    svg.append(cellsLayer, circlesLayer, flashLayer, markLayer, lettersLayer);
     const { band: BAND, numSize, letterSize, circleRadius } = sizesFor(data.geometry);
     const cellCenters = {};
     const cellCircleCenters = {};
@@ -4796,7 +5297,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
         const li = htmlEl(
           "li",
           { class: "clue-item", "data-direction": dir, "data-entry-index": i },
-          htmlEl("span", { class: "clue-range" }, cellRangeLabel(entryCellsFor[i]) + "."),
+          htmlEl("span", { class: "clue-num clue-range" }, cellRangeLabel(entryCellsFor[i]) + "."),
           clueTextEl(entry.clue)
         );
         onClueClick(li, () => {
@@ -4821,6 +5322,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     const rebusBtn = setupRebusButton(document.getElementById("rebus-btn"), {
       onToggle: toggleRebus,
       isComposing: () => composer.isComposing(activeCell),
+      canCompose: () => composer.canCompose(activeCell),
       refocus
     });
     setupEmbedResize();
@@ -4886,7 +5388,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
           saveState();
           return;
         }
-        if (getCellLetter(activeCell)) {
+        if (getCellLetter(activeCell) && !isLocked(activeCell)) {
           setCellLetter(activeCell, "");
           syncUI();
         } else {
@@ -4935,6 +5437,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
         helpRecord,
         clearBoard() {
           cells.clearCells();
+          svg.classList.remove("solved");
           clueItems.forEach((li) => li.classList.remove("correct"));
           flashLayer.replaceChildren();
           direction = "inward";
@@ -4947,7 +5450,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       composer,
       helpRecord,
       setCellLetter,
-      setCorrect,
+      setMark,
       saveState,
       syncUI,
       refocus,
@@ -4976,7 +5479,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       fillList: {
         items: fillItems,
         getLetter: getCellLetter,
-        isCorrect,
+        getMark,
         isComposing: composer.isComposing,
         onCellTap: (i, j) => {
           direction = fillItems[i].dir;

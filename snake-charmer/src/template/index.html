@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{TITLE}}</title>
-  <style>
-{{CSS}}
-  </style>
+  <style>{{CSS}}</style>
 </head>
 <body class="tool-snake-charmer has-clue-bar">
   <div id="active-clue-bar">
@@ -24,28 +22,28 @@
       <h1 class="title">{{TITLE}}</h1>
       <p class="byline"></p>
     </div>
+    <div id="instructions" class="instructions" hidden></div>
     <div class="puzzle-body">
       <div id="ring-wrap">
         <div id="controls">
-          <div id="loop-toggle" class="puzzle-toggle"></div>
+          <div id="loop-toggle" class="puzzle-toggle" role="group" aria-label="Loop"></div>
           <button id="rebus-btn" type="button">Rebus</button>
         </div>
         <div id="ring-container">
           <svg id="ring-svg" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
+        <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
       </div>
-      <div id="clue-list">
-        <div id="instructions" class="instructions" hidden></div>
+      <div id="clue-list" class="clue-section">
         <ol id="clues"></ol>
       </div>
     </div>
   </div>
-  <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
   <input id="hidden-input" type="text" autocomplete="off" autocorrect="off"
          autocapitalize="off" spellcheck="false" aria-hidden="true">
-  <script>{{PUZZLE_DATA}}</script>
   <script>
-{{JS}}
+    {{PUZZLE_DATA}}
   </script>
+  <script>{{JS}}</script>
 </body>
 </html>

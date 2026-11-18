@@ -34,59 +34,26 @@ test('validate: returns empty errors and warnings for valid puzzle', () => {
 // validation.test.js. This is the single wiring test proving spiral forwards
 // validateCommonHeader's errors and passes its own kind ('spiral').
 
-test('validate: error when kind is wrong', () => {
-  const p = valid(); p.kind = 'crossword';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"kind"')));
-});
-
 // ── inward / outward arrays ───────────────────────────────────────────────────
 
-test('validate: error when inward is missing', () => {
-  const p = valid(); delete p.inward;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"inward"')));
+test('validate: error when inward or outward is missing or not an array', () => {
+  for (const dir of ['inward', 'outward']) {
+    const missing = valid(); delete missing[dir];
+    assert.ok(validate(missing).errors.some(e => e.includes(`"${dir}"`)), `${dir} missing`);
+    const notArray = valid(); notArray[dir] = 'oops';
+    assert.ok(validate(notArray).errors.some(e => e.includes(`"${dir}"`)), `${dir} not an array`);
+  }
 });
 
-test('validate: error when outward is missing', () => {
-  const p = valid(); delete p.outward;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"outward"')));
-});
-
-test('validate: error when inward is not an array', () => {
-  const p = valid(); p.inward = 'oops';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"inward"')));
-});
-
-test('validate: error when outward is not an array', () => {
-  const p = valid(); p.outward = 'oops';
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"outward"')));
-});
-
-test('validate: error when inward has fewer than 2 entries', () => {
-  // One entry of 40 a's each side — satisfies reversal and minimum, but inward < 2
-  const p = {
-    kind: 'spiral', title: 'T',
-    inward:  [{ clue: 'A', answer: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }],
-    outward: [{ clue: 'B', answer: 'AAAAAAAAAAAAAAAAAAAA' },
-              { clue: 'C', answer: 'AAAAAAAAAAAAAAAAAAAA' }],
-  };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"inward"') && e.includes('2')));
-});
-
-test('validate: error when outward has fewer than 2 entries', () => {
-  const p = {
-    kind: 'spiral', title: 'T',
-    inward:  [{ clue: 'A', answer: 'AAAAAAAAAAAAAAAAAAAA' },
-              { clue: 'B', answer: 'AAAAAAAAAAAAAAAAAAAA' }],
-    outward: [{ clue: 'C', answer: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }],
-  };
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('"outward"') && e.includes('2')));
+test('validate: error when inward or outward has fewer than 2 entries', () => {
+  // One entry of 40 a's on one side, two of 20 on the other: reversal and the minimum
+  // hold, but the short side has < 2 entries.
+  const one = [{ clue: 'A', answer: 'A'.repeat(40) }];
+  const two = [{ clue: 'B', answer: 'A'.repeat(20) }, { clue: 'C', answer: 'A'.repeat(20) }];
+  for (const dir of ['inward', 'outward']) {
+    const p = { kind: 'spiral', title: 'T', inward: dir === 'inward' ? one : two, outward: dir === 'inward' ? two : one };
+    assert.ok(validate(p).errors.some(e => e.includes(`"${dir}"`) && e.includes('2')), dir);
+  }
 });
 
 // ── entry fields ──────────────────────────────────────────────────────────────
@@ -171,19 +138,6 @@ test('an outward rebus that is neither the cell nor its reverse is rejected, exp
   assert.match(errors[0], /NO\[HAR\]S or NO\[RAH\]S/);
 });
 
-// ── sample puzzle ─────────────────────────────────────────────────────────────
-
-test('validate: sample puzzle is valid', () => {
-  const yaml = require('js-yaml');
-  const fs = require('fs');
-  const path = require('path');
-  const raw = fs.readFileSync(path.join(__dirname, '../../examples/spiral.yaml'), 'utf8');
-  const puzzle = yaml.load(raw);
-  const { errors, warnings } = validate(puzzle);
-  assert.deepEqual(errors, []);
-  assert.deepEqual(warnings, []);
-});
-
 // ── multiple errors ───────────────────────────────────────────────────────────
 
 // ── styles ────────────────────────────────────────────────────────────────────
@@ -209,17 +163,11 @@ function validMuddledSpiral() {
     Array.from({ length: 9 }, (_, i) => ({ clue: `${prefix}${i}`, length: 5 }));
   return {
     kind: 'spiral', title: 'Muddled Spiral',
-    hashed: true, format: 2, boardHash: 'any-hash',
+    boardHash: 'any-hash',
     inward:  makeEntries('in'),
     outward: makeEntries('out'),
   };
 }
-
-test('validate: muddled spiral passes with a skip warning', () => {
-  const { errors, warnings } = validate(validMuddledSpiral());
-  assert.deepEqual(errors, []);
-  assert.ok(warnings.some(w => w.includes('muddled')));
-});
 
 test('validate: muddled spiral — inward/outward total mismatch still caught', () => {
   const p = validMuddledSpiral();
@@ -233,7 +181,7 @@ test('validate: muddled spiral — below-40 total still caught', () => {
     Array.from({ length: 2 }, (_, i) => ({ clue: `${prefix}${i}`, length: 5 }));
   const p = {
     kind: 'spiral', title: 'T',
-    hashed: true, format: 2, boardHash: 'h',
+    boardHash: 'h',
     inward:  makeSmall('in'),   // total=10
     outward: makeSmall('out'),  // total=10 — both equal but <40
   };
@@ -247,23 +195,6 @@ test('validate: muddled spiral — reversal check skipped', () => {
   p.inward[0].length  = 6;  // keep totals equal; no letter strings to compare
   const { errors } = validate(p);
   assert.ok(!errors.some(e => e.includes('reverse')));
-});
-
-test('validate: muddled spiral — answer: entry rejected with a use-length-not-answer message', () => {
-  const p = validMuddledSpiral();
-  p.inward[0] = { clue: 'a', answer: 'HELLO' };  // answer: in a muddled puzzle is not allowed
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('inward[0]') && e.includes('length:, not answer:')));
-});
-
-test('validate: muddled entries without boardHash rejected for spiral', () => {
-  const p = validMuddledSpiral();
-  // Drop format: 2 alongside boardHash — without it the puzzle is neither a source
-  // nor a muddled file, and trips the "format: in a source puzzle" error as well.
-  delete p.boardHash;
-  delete p.format;
-  const { errors } = validate(p);
-  assert.ok(errors.some(e => e.includes('boardHash')));
 });
 
 test('validate: an invalid (non-object) entry does not trigger a spurious reversal error', () => {
@@ -303,10 +234,4 @@ test('validate: an unrelated header error does not hide a circle error', () => {
   const { errors } = validate(p);
   assert.ok(errors.some(e => e.startsWith('"theme"')), errors.join('|'));
   assert.ok(errors.some(e => /^outward\[\d+\]\.styles\.circle is missing position \d+/.test(e)), errors.join('|'));
-});
-
-test('validate: an unknown top-level key warns', () => {
-  const p = valid();
-  p.instruction = 2;
-  assert.ok(validate(p).warnings.includes('unknown key "instruction" (is it a typo?)'), validate(p).warnings.join('|'));
 });

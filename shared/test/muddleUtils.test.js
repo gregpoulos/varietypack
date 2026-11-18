@@ -45,11 +45,11 @@ test('walkAnswers: nested object (rows/entries) — recurses into nested arrays'
 });
 
 test('walkAnswers: non-entry primitive fields pass through unchanged', () => {
-  const puzzle = { kind: 'snake-charmer', title: 'My Puzzle', loops: 2, entries: [] };
+  const puzzle = { kind: 'snake-charmer', title: 'My Puzzle', maxCellLetters: 2, entries: [] };
   const out = walkAnswers(puzzle);
   assert.equal(out.kind,  'snake-charmer');
   assert.equal(out.title, 'My Puzzle');
-  assert.equal(out.loops, 2);
+  assert.equal(out.maxCellLetters, 2);
 });
 
 test('walkAnswers: entry without answer — passes through unchanged', () => {
@@ -71,11 +71,9 @@ test('muddled length is the cell count, not the letter count', () => {
   assert.strictEqual(out.inward[0].answer, undefined);
 });
 
-test('muddled output declares format 2', () => {
+test('muddled output adds boardHash and no other top-level field', () => {
   const out = buildMuddledYaml({ kind: 'spiral', title: 'T', inward: [] }, 'deadbeef');
-  assert.strictEqual(out.format, 2);
-  assert.strictEqual(out.hashed, true);
-  assert.strictEqual(out.boardHash, 'deadbeef');
+  assert.deepStrictEqual(out, { kind: 'spiral', title: 'T', inward: [], boardHash: 'deadbeef' });
 });
 
 // ── muddlePuzzle ──────────────────────────────────────────────────────────────
@@ -87,8 +85,6 @@ test('muddlePuzzle: returns the muddled object for a valid puzzle', () => {
   const r = muddlePuzzle(puzzleWithAnswers, { validateFn: okValidate, prepareFn: () => ({ boardHash: 'abc' }) });
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.warnings, ['w']);
-  assert.equal(r.muddled.hashed, true);
-  assert.equal(r.muddled.format, 2);
   assert.equal(r.muddled.boardHash, 'abc');
   assert.deepEqual(r.muddled.entries, [{ clue: 'c', length: 3 }]);
 });

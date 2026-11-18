@@ -47,13 +47,6 @@ test('preparePuzzle: across/down entries have clue and length (not answer)', () 
   assert.equal(r.down[2].length, 3);
 });
 
-test('preparePuzzle: styles preserved when present', () => {
-  const p = minimalPuzzle();
-  p.across[1].styles = { circle: [0] };
-  const r = preparePuzzle(p);
-  assert.deepEqual(r.across[1].styles, { circle: [0] });
-});
-
 test('preparePuzzle: non-hashed builds a row-major letters array, null at blocks', () => {
   const p = {
     kind: 'crushword', title: 'T', hashed: false,

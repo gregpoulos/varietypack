@@ -4,12 +4,6 @@ A Marching Bands puzzle file is a YAML file describing an N×N grid in which wor
 
 For odd N, the center cell is a black square that belongs to no entry.
 
-Common header fields (`kind`, `title`, `author`, `date`, `instructions`),
-common entry fields (`clue`, `answer`, `styles`), markdown syntax,
-normalization, cell styles, rebus bracket grammar, muddling, and themes are
-all covered in `docs/AUTHORING.md` — this file covers only what's specific
-to Marching Bands.
-
 ## Fields
 
 | Field | Required | Type | Description |
@@ -19,14 +13,12 @@ to Marching Bands.
 | `rows` | yes | array | Exactly N row objects, each containing an `entries` array |
 | `bands` | yes | array | Exactly ⌊N/2⌋ band objects, each containing an `entries` array |
 
-## Rebus cells (multi-letter cells)
+## Rebus cells
 
 See `docs/AUTHORING.md` → "Rebus cells" for the bracket syntax, grammar,
 and how to solve a rebus cell.
 
 **Marching Bands' rule — a row and its crossing band must agree on each shared cell.** Every cell belongs to one Row word and one Band word, and the build cross-checks that they agree as cells — not merely that their letters, split some other way, happen to match. Along a band's bottom edge, corners included, the band reads its row right to left, so a rebus there may be spelled either way: a row's `[CAT]` may be the band's `[TAC]`. Elsewhere it must match exactly. The cell holds the row's spelling, which is what a solver types.
-
-Bracket grammar, error and warning conditions, and how cell counts feed the row/band totals: see `docs/CROSS_TOOL_SPEC.md` → "Rebus cells".
 
 ## Grid size and band count
 
@@ -55,23 +47,16 @@ Band k's entry lengths must sum to `4 × (N−1−2k)`.
 
 ## Validation rules
 
-- `kind` must be exactly `"marching-bands"`
-- `title` must be a non-empty string
+Beyond the rules every format shares (`docs/AUTHORING.md`):
+
 - `rows` must be an array with at least 3 rows; `rows[0].entries` must be non-empty (N is derived from it)
 - N (derived from row 0) must be at least 3
 - If `size` is present it must equal the derived N
 - Every row's entries must have lengths summing to N (or N−1 for the center row of an odd-N grid)
 - `bands` must have exactly ⌊N/2⌋ entries
 - Each band k's entries must sum to `4 × (N−1−2k)` cells
-- Every entry must have a non-empty `clue` and non-empty `answer`
 - Every shared cell's Row word and Band word must agree cell for cell, so a bracketed rebus group must match exactly (or, along a band's bottom edge, match reversed), not just its letters read some other way — once all length checks pass, the build cross-checks the full grid and rejects the puzzle if any cell's Row word and Band word disagree
-- `styles`, if present on an entry, must be an object; each value must be an array of non-negative integers within the answer's cell count
 - A circled cell must be circled on every entry that covers it (error) — its row entry and its band entry
-- Unrecognized style names produce a warning, not an error
-
-## Hashed mode
-
-See `docs/AUTHORING.md` → "Muddling and hashed builds" for what `--muddle` produces and why. Marching Bands' `boardHash` covers every cell in row-major order (center cell skipped for odd N), each cell normalized and lowercased individually, then joined with a delimiter so a multi-letter rebus cell can't be mistaken for several single-letter cells. No partial correctness feedback is given until all cells are filled; the complete board is then hashed and compared to `boardHash`.
 
 ## Example
 
@@ -130,9 +115,6 @@ bands:
 - This skeleton illustrates the required structure and cell-count arithmetic only. In a real puzzle every cell's content must satisfy both its Row word and its Band word simultaneously. The build enforces this: once the length checks pass, it cross-checks every cell and rejects the puzzle if a Row word and Band word disagree on any cell. (The skeleton above is **not** cell-consistent, so it would fail that cross-check — it is shown only to illustrate the cell-count arithmetic.)
 
 ## Notes
-
-Multi-word/hyphenated answers and answer security are covered in
-`docs/AUTHORING.md`.
 
 - **Band direction**: All bands march clockwise — top edge left→right, right edge top→bottom, bottom edge right→left, left edge bottom→top.
 - **Entry boundaries hidden**: The dividing points between consecutive entries within a row or band are intentionally not revealed by the puzzle interface. Tab navigation and highlighting operate at the row/band level, not the entry level.

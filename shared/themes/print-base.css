@@ -3,7 +3,11 @@
    it are the `print` cascade layer, the last one (composeThemeCss), so every rule here
    wins over any screen rule whatever its selector, with no !important: a theme that
    adds a more specific highlight rule can't defeat the print reset. Between this file
-   and a tool's print.css the usual rules hold (specificity, then order). */
+   and a tool's print.css the usual rules hold (specificity, then order).
+
+   A screen rule still applies in print unless a print rule overrides it, so a print
+   rule that relies on a container being flex or grid must declare that display itself:
+   a narrow-screen breakpoint may have set display: block on it. */
 @media print {
   /* Hide interaction chrome */
   #active-clue-bar,
@@ -19,20 +23,30 @@
   #direction-chevron,
   .solve-top,
   #solve-bar,
+  .edge-shadows,
   #drawn-kb { display: none; }
 
   body { padding-top: 0; }
   h1.title { font-size: 1.4rem; }
 
+  /* A tighter page than on screen, the same in every tool */
+  .puzzle-main     { padding: 8px 16px; }
+  .puzzle-header   { margin-bottom: 8px; }
+  .byline          { font-size: 0.8rem; }
+  #instructions    { font-size: 0.8rem; margin-bottom: 8px; }
+  .clue-section h2 { margin-bottom: 4px; }
+  .clue-item       { margin-bottom: 0; padding: 1px 4px; break-inside: avoid; }
+  .cell-num        { fill: #555; }
+
   /* Cell state → plain ink on white */
   .cell,
   .cell.active-entry,
   .cell.active-cell,
-  .cell.correct,
   .cell.secondary-entry { fill: #fff; stroke: #999; stroke-width: 1; stroke-dasharray: none; }
 
-  /* Entered letters → blank: a printout is always the unsolved puzzle */
-  .cell-letter { display: none; }
+  /* Entered letters and their marks → blank: a printout is always the unsolved puzzle */
+  .cell-letter,
+  .mark-layer { display: none; }
   /* ...and the phone list view's cell rows (setupFillList), which repeat them */
   .list-cells { display: none; }
 
@@ -47,7 +61,8 @@
 
   /* The phone layout prints its own arrangement: the page's gutter is on the header and
      instructions (phone.css), and .puzzle-body is empty there. The html.phone prefix is
-     what outranks each tool's print.css, which shares this layer and sets both. */
+     what outranks the .puzzle-main rule above and each tool's print.css, which shares
+     this layer and sets .puzzle-body. */
   html.phone .puzzle-main { padding: 0; }
   html.phone .puzzle-body { display: none; }
 }

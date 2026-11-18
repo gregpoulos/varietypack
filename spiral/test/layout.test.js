@@ -4,15 +4,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { computeCells, cellsOfEntries } = require('../src/layout.mjs');
 
-test('computeCells: returns exactly totalCells cells', () => {
-  assert.equal(computeCells(40).length, 40);
-  assert.equal(computeCells(78).length, 78);
-  assert.equal(computeCells(100).length, 100);
-});
-
-test('computeCells: cell_number is 1-indexed sequentially', () => {
-  const cells = computeCells(5);
-  assert.deepEqual(cells.map(c => c.cell_number), [1, 2, 3, 4, 5]);
+test('computeCells: returns exactly totalCells cells, numbered 1-indexed sequentially', () => {
+  for (const n of [40, 78, 100]) {
+    const cells = computeCells(n);
+    assert.equal(cells.length, n);
+    assert.deepEqual(cells.map(c => c.cell_number), Array.from({ length: n }, (_, i) => i + 1));
+  }
 });
 
 test('computeCells: first cell starts at 12 o\'clock', () => {
@@ -64,12 +61,8 @@ test('computeCells: cell 1 is outermost, last cell is innermost', () => {
     'cell 1 outer radius should exceed last cell outer radius');
 });
 
-test('computeCells: throws on non-integer totalCells', () => {
-  assert.throws(() => computeCells(3.5), /positive integer/);
-});
-
-test('computeCells: throws on zero totalCells', () => {
-  assert.throws(() => computeCells(0), /positive integer/);
+test('computeCells: throws on a non-integer or zero totalCells', () => {
+  for (const bad of [3.5, 0]) assert.throws(() => computeCells(bad), /positive integer/, String(bad));
 });
 
 // ── drawing geometry (shared by the builder, the engine and the studio) ──────

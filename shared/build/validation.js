@@ -14,15 +14,13 @@ function formatValidationErrors(errors, label) {
 
 // Every top-level key validateCommonHeader knows, muddled-only ones included. Each
 // validator adds its own and warns about the rest (warnUnknownKeys).
-const HEADER_KEYS = ['kind', 'title', 'author', 'date', 'instructions', 'theme', 'themeTokens', 'hashed', 'format', 'boardHash'];
+const HEADER_KEYS = ['kind', 'title', 'author', 'date', 'instructions', 'theme', 'themeTokens', 'boardHash'];
 
 // Validates the header fields common to every puzzle kind: the object itself,
 // `kind`, `title`, and optional `instructions`. Pushes user-readable messages
 // to `errors`. Returns false when the puzzle is not a usable object (the
 // caller should bail), true otherwise. Tool-specific fields (e.g.
-// snake-charmer's `loops`/`shape`) are validated separately by each tool.
-// `hashed:` is only valid in muddled format (requires top-level `boardHash:`);
-// in source puzzles, use `varietypack build --muddle` instead.
+// snake-charmer's `shape`) are validated separately by each tool.
 function validateCommonHeader(puzzle, kind, errors) {
   if (!puzzle || typeof puzzle !== 'object') {
     errors.push('Puzzle must be a YAML object');
@@ -33,20 +31,6 @@ function validateCommonHeader(puzzle, kind, errors) {
   }
   if (!puzzle.title || typeof puzzle.title !== 'string' || !puzzle.title.trim()) {
     errors.push('"title" must be a non-empty string');
-  }
-  if (puzzle.hashed !== undefined && puzzle.boardHash === undefined) {
-    errors.push('"hashed:" is not valid in source puzzles; use \'varietypack build --muddle\' to produce a hashed build');
-  }
-  // format: 2 — see docs/ARCHITECTURE.md -> "Muddled YAML" for the full rule.
-  const isMuddled = puzzle.boardHash !== undefined;
-  if (puzzle.format !== undefined && !isMuddled) {
-    errors.push('"format:" is not valid in source puzzles; it is written by \'varietypack muddle\'');
-  }
-  if (isMuddled && puzzle.format !== 2) {
-    errors.push(
-      'Muddled file is missing "format: 2". It was produced by an older version whose ' +
-      'boardHash cannot be verified — re-run \'varietypack muddle\' on the source puzzle.'
-    );
   }
   if (puzzle.instructions !== undefined &&
       (typeof puzzle.instructions !== 'string' || !puzzle.instructions.trim())) {

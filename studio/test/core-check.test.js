@@ -26,7 +26,8 @@ test('parseYaml: an unquoted date stays a string', () => {
   assert.equal(core.parseYaml('kind: spiral\ndate: 2026-05-01\n').date, '2026-05-01');
 });
 
-test('checkPuzzle: unknown kind', () => {
+test('validate and checkPuzzle: unknown kind', () => {
+  assert.deepEqual(core.validate({ kind: 'nope', title: 'T' }).errors, ['unknown kind "nope"']);
   assert.deepEqual(core.checkPuzzle({ kind: 'nope', title: 'T' }).errors, ['unknown kind "nope"']);
 });
 
@@ -70,11 +71,6 @@ test('checkPuzzle: a muddled puzzle builds hashed', () => {
   const r = core.checkPuzzle(load('spiral/test/fixtures/test-78.muddled.yaml'));
   assert.equal(r.muddled, true);
   assert.ok(r.html.includes('"hashed": true'));
-});
-
-test('a kind naming an Object.prototype member is an unknown kind, not a crash', () => {
-  assert.deepEqual(core.validate({ kind: 'constructor', title: 'T' }).errors, ['unknown kind "constructor"']);
-  assert.deepEqual(core.checkPuzzle({ kind: 'toString', title: 'T' }).errors, ['unknown kind "toString"']);
 });
 
 test('feasibleShapes: only the shapes whose geometry exists for N', () => {

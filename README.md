@@ -55,7 +55,7 @@ The `varietypack` dispatcher reads the `kind` field from each YAML and routes to
 
 ### Muddling puzzles
 
-`varietypack muddle <file.yaml>` produces a **muddled YAML** — a distributable version of a puzzle where each entry's `answer:` is replaced by `length:` (a cell count — a bracketed rebus group like `[HAR]` counts as one cell, not three letters), and `hashed: true`, `format: 2`, plus a single `boardHash:` (SHA-256 of the board's cells, each normalized individually and joined with a delimiter) are added at the top level. The muddled file can be shared with collaborators or test-solvers who need to build the HTML themselves without seeing the answers. Building a muddled YAML always produces answer-obscured HTML.
+`varietypack muddle <file.yaml>` produces a **muddled YAML**: the puzzle with its answers replaced by cell counts and a hash of the solved board, for collaborators or test-solvers who build the page themselves without seeing the answers. Building one always produces an answer-hidden page. Details: [docs/AUTHORING.md](docs/AUTHORING.md) → "Muddling and hashed builds".
 
 ```fish
 # Produce puzzle.muddled.yaml next to the source
@@ -68,8 +68,6 @@ varietypack muddle puzzle.yaml -o dist/puzzle.yaml
 varietypack muddle puzzle.yaml -f
 ```
 
-The puzzle must be valid before it can be muddled. `varietypack validate` runs automatically as part of the muddle step.
-
 ### Global options
 
 These are supported by every tool:
@@ -80,7 +78,7 @@ These are supported by every tool:
 | `--theme <name>` | the YAML's `theme:`, else `broadsheet` | Visual theme; overrides the YAML's `theme:` field. The theme list is shared across all tools (see `docs/AUTHORING.md` → "Themes and fonts"); all tools ship `broadsheet`, `skeleton` and `swiss`. |
 | `--font <mode>` | `embed` | Font delivery for custom-font themes: `embed` inlines fonts as base64 (self-contained output) or `link` references a CDN via `@import` (needs network at solve time). Defaults to `embed` (or `link` for a theme with no local font files); ignored for system-font themes. |
 | `--embed-origin <origin>` | off | Post the completion message, including the solution, to this one parent origin (e.g. `https://hunt.example.com`) and no other, for embedding. Meaningful with `--muddle`: the host can check the solution against the `boardHash`. |
-| `--minify` | off | Minify the generated HTML: terser-minifies each `<script>`, clean-css minifies each `<style>`, and trims trailing whitespace elsewhere. A block the minifier can't read is left as written, with a note on stderr. |
+| `--minify` | off | Minify the generated HTML: each `<script>` and `<style>` through esbuild, and trailing whitespace elsewhere. A script that can't be parsed is left as written, with a note on stderr. |
 | `-o`, `--output <file>` | `<input-basename>.html` | Output path. Defaults to writing next to the input file. |
 | `-f`, `--force` | off | Overwrite the output file if it already exists. |
 
@@ -96,9 +94,7 @@ Some tools accept additional options. When building a directory, each applies on
 
 ## Puzzle formats
 
-Every tool's `clue` field, and the top-level `instructions` field, accept a small markdown subset: `**bold**`, `*italic*`, `` `code` ``, `[text](url)` links, `~~strikethrough~~`, `H~2~O`-style subscript, `29^th^`-style superscript, and `:shortcode:` emoji. Rendering happens at build time, so the shipped puzzle HTML has no runtime markdown dependency.
-
-See [docs/AUTHORING.md](docs/AUTHORING.md) for the full cross-tool authoring guide — common header fields, this markdown subset, normalization, cell styles, rebus bracket grammar, muddling/hashed builds, and themes/fonts — shared by all four formats below.
+[docs/AUTHORING.md](docs/AUTHORING.md) has the rules every format shares (header fields, markdown in clues, normalization, cell styles, rebus cells, muddling, themes), and each format's `docs/SPEC.md` its own fields and an example. The [examples](examples/) are complete puzzles of each kind.
 
 ### Snake Charmer
 
@@ -106,116 +102,29 @@ N numbered answers fill a continuous snake-shaped loop of cells. Each answer sta
 
 ![A Snake Charmer puzzle page](docs/images/snake-charmer.png)
 
-```yaml
-kind: snake-charmer
-title: "My Snake Charmer"
-author: "Your Name"
-date: "2025"
-entries:
-  - clue: "Promenade"
-    answer: "MALL"
-  - clue: "Mislead"
-    answer: "LIE TO"
-  # at least 3 entries, even total cell count, at least 16 cells (ring size ≥ 8)
-```
-
-`--shape` accepts `circle`, `stadium`, `turn`, or `double-turn`. When omitted, the tool auto-selects `double-turn` if the ring size supports it, otherwise `stadium`. The `shape` field in the YAML sets a default that the `--shape` flag overrides.
-
 See [snake-charmer/docs/SPEC.md](snake-charmer/docs/SPEC.md) for the full format reference.
 
 ### Spiral
 
-Two sets of entries share every cell: inward entries fill the spiral from the outer edge toward the center; outward entries fill it from the center back out. The inward cells, read in order, must be the reverse of the outward cells. Minimum 40 cells. The generated HTML is print-ready. **[Try an example](https://gregpoulos.github.io/varietypack/examples/spiral.html)**
+Two sets of entries share every cell: inward entries fill the spiral from the outer edge toward the center; outward entries fill it from the center back out. The inward cells, read in order, must be the reverse of the outward cells. Minimum 40 cells. **[Try an example](https://gregpoulos.github.io/varietypack/examples/spiral.html)**
 
 ![A Spiral puzzle page](docs/images/spiral.png)
-
-```yaml
-kind: spiral
-title: "My Spiral"
-author: "Your Name"
-date: "2026"
-
-inward:
-  - clue: "Indian flatbread"
-    answer: "ROTI"
-  - clue: "Guitar pedal that generates a spectral glide"
-    answer: "WAH-WAH"
-
-outward:
-  - clue: "Jeter or Jacobi"
-    answer: "DEREK"
-  - clue: "Major snowboard manufacturer"
-    answer: "BURTON"
-```
 
 See [spiral/docs/SPEC.md](spiral/docs/SPEC.md) for the full format reference.
 
 ### Marching Bands
 
-An N×N grid where words march in two formations: **Rows** (two or more words per numbered row, reading left to right) and **Bands** (words march clockwise around each concentric rectangular band). Every cell belongs to exactly one Row word and one Band word; where words begin and end within a row or band is for the solver to discover. For odd N, the center cell is a black square. The generated HTML is print-ready. **[Try an example](https://gregpoulos.github.io/varietypack/examples/marching-bands.html)**
+An N×N grid where words march in two formations: **Rows** (two or more words per numbered row, reading left to right) and **Bands** (words march clockwise around each concentric rectangular band). Every cell belongs to exactly one Row word and one Band word; where words begin and end within a row or band is for the solver to discover. For odd N, the center cell is a black square. **[Try an example](https://gregpoulos.github.io/varietypack/examples/marching-bands.html)**
 
 ![A Marching Bands puzzle page](docs/images/marching-bands.png)
-
-```yaml
-kind: marching-bands
-title: "My Marching Bands"
-author: "Your Name"
-date: "2026"
-size: 5
-
-rows:
-  - entries:
-      - clue: "Unwell"
-        answer: "ILL"
-      - clue: "All correct"
-        answer: "OK"
-  # 5 rows total; each row's answers sum to N (center row sums to N−1 for odd N)
-
-bands:
-  - entries:
-      - clue: "Ski hill"
-        answer: "SLOPES"
-      - clue: "Settee"
-        answer: "DIVAN"
-      - clue: "Blackboard stick"
-        answer: "CHALK"
-  # ⌊N/2⌋ bands total; band k's answers sum to 4×(N−1−2k)
-```
-
-N is derived from the first row (the sum of its entry cell counts); the optional `size` field is validated against it.
 
 See [marching-bands/docs/SPEC.md](marching-bands/docs/SPEC.md) for the full format reference.
 
 ### Crushword
 
-A rebus crossword: standard American crossword grid and clue numbering (across/down, black squares), plus the repo-wide rebus convention that a bracketed group in an `answer:` occupies a single cell however many letters it holds. Tab jumps between entries (not rows or bands) since a crossword's numbering already reveals entry boundaries to the solver. **[Try an example](https://gregpoulos.github.io/varietypack/examples/crushword.html)**
+A rebus crossword: standard American crossword grid and clue numbering (across/down, black squares), plus the repo-wide rebus convention that a bracketed group in an `answer:` occupies a single cell however many letters it holds. **[Try an example](https://gregpoulos.github.io/varietypack/examples/crushword.html)**
 
 ![A Crushword puzzle page](docs/images/crushword.png)
-
-```yaml
-kind: crushword
-title: "My Crushword"
-author: "Your Name"
-date: "2026"
-grid:
-  - "...#."
-  - "....."
-  - "....."
-  - "....."
-  - ".#..."
-across:
-  1:
-    clue: "First three letters"
-    answer: "ABC"
-  # ... keyed by clue number, matching the grid's derived numbering
-down:
-  1:
-    clue: "First column"
-    answer: "AEIMR"
-  # ... keyed by clue number, matching the grid's derived numbering
-```
-
-`grid` uses `.` for an open cell and `#` for a block; clue numbers are derived from the grid (standard American crossword numbering) and must match `across`/`down`'s keys exactly. `maxCellLetters` (optional, default 3) bounds how many letters one bracketed rebus cell may hold.
 
 See [crushword/docs/SPEC.md](crushword/docs/SPEC.md) for the full format reference.
 
@@ -275,26 +184,4 @@ To verify a solve on the host's server: check that `e.origin` is the puzzle's or
 
 ## Testing
 
-Run all tests from the repo root:
-
-```fish
-npm test
-```
-
-Or run tests for a single tool:
-
-```fish
-node --test snake-charmer/test/*.test.js
-node --test spiral/test/*.test.js
-node --test marching-bands/test/*.test.js
-node --test crushword/test/*.test.js
-node --test shared/test/*.test.js
-```
-
-End-to-end (Playwright) tests are separate from `npm test`:
-
-```fish
-npm run test:e2e
-```
-
-For how the pieces fit together and the testing conventions, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/TESTING.md](docs/TESTING.md).
+`npm test` runs the unit tests and `npm run test:e2e` the browser tests (Playwright). See [docs/TESTING.md](docs/TESTING.md), and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together.

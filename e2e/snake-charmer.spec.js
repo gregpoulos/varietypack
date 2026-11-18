@@ -124,48 +124,6 @@ test('Backspace deletes one letter at a time while composing', async ({ page }) 
   await expect(page.locator('#letter-0')).toHaveClass(/len-2/);
 });
 
-// The auto-save payload records cell correctness only, so a solved board used to come
-// back with green cells and unmarked clue items. checker.repaintIfSolved() re-derives
-// the rest of the solved painting at restore time.
-test('a solved board restores with its clue items still marked correct', async ({ page }) => {
-  await page.goto('file://' + rebusPath);
-  await ready(page);
-
-  for (const cell of REBUS_CELLS) await typeCell(page, cell);
-  await expect(page.locator('#congrats-dialog')).toBeVisible();
-
-  const clueCount = await page.locator('.clue-item').count();
-  await expect(page.locator('.clue-item.correct')).toHaveCount(clueCount);
-
-  await page.reload();
-  await ready(page);
-
-  await expect(page.locator('.cell.correct')).toHaveCount(REBUS_CELLS.length);
-  await expect(page.locator('.clue-item.correct')).toHaveCount(clueCount);
-  // This guards the emission guarantee, and nothing about the repaint: focusCell's
-  // syncUI does call latch.check(true) here, and sealIfSolved() is the only reason the
-  // dialog stays shut. The repaint's own no-syncUI contract is pinned in
-  // shared/test/engine-state.checker.test.js, not here.
-  await expect(page.locator('#congrats-dialog')).toBeHidden();
-
-  // The composing exclusion that syncUI's latch.check() lacks (see
-  // docs/CROSS_TOOL_SPEC.md → Answer checking): a solved board is safe only because
-  // latch.solved makes every keydown handler return before the Enter branch that opens
-  // composition. This is the one place it can be exercised on a page that never touched a
-  // dialog — post-reload the latch is sealed by sealIfSolved(), so CDP key injection is
-  // unimpaired. The control is '[snake-charmer] Enter opens a multi-letter cell' in
-  // e2e/shared.spec.js: same fixture, and Enter does open composition when the board is
-  // not solved.
-  await page.keyboard.press('Enter');
-  await expect(page.locator('.cell.composing')).toHaveCount(0);
-
-  // #rebus-btn reaches composition without going through setupKeydown at all, so the
-  // latch.solved argument above does not cover it — composer.toggle's own solved check
-  // does. Removing that check must turn this red.
-  await page.locator('#rebus-btn').click();
-  await expect(page.locator('.cell.composing')).toHaveCount(0);
-});
-
 // The regression that a Chromium-only suite could not see. #rebus-btn preserves focus by
 // canceling mousedown; canceling pointerdown instead leaves the button inert on a
 // WebKit touch tap, because WebKit suppresses the click and Chromium does not. This must

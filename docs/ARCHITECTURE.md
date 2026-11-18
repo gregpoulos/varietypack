@@ -3,9 +3,9 @@
 How the build pipeline and the shared library fit together. Format-specific
 material lives in each tool's own docs; author-facing rules live in
 [AUTHORING.md](AUTHORING.md); interactive contracts between the engines live in
-[CROSS_TOOL_SPEC.md](CROSS_TOOL_SPEC.md). Every function is documented at its
-definition site, so this file covers only what the code can't say for itself:
-how the pieces divide the work, and why.
+[CROSS_TOOL_SPEC.md](CROSS_TOOL_SPEC.md). Functions are documented where they are
+defined, so this file covers only what the code can't say for itself: how the
+pieces divide the work, and why.
 
 ## Shape of the repo
 
@@ -28,33 +28,21 @@ builds it in-process through `buildOneFile` (output-path resolution and
 overwrite protection) and `writePuzzlePage`, whose `buildKnownPuzzle` pairs a
 loaded puzzle with its tool's hooks.
 
-**The tool registry.** `shared/build/tools.js` is the one list of tools: `KINDS`,
-`isKnownKind`, `kindError` (the message for a missing or unknown `kind`) and
-`hooksFor(kind)`, which returns that tool's `HOOKS` and requires its builder on
-first use. It is on the build path, so the studio bundles it too; the engine
-bundler (`engineBundle.js`), `studio/build.js` and the studio core read their
-tool list from it. `shared/cli/cliTools.js` holds only what the CLI adds:
-loading a puzzle file whose kind is known, a tool's directory (for `watch`),
-`validatorFor(kind)` (a tool's `validate`, read from its validator module alone, so
-`validate` never loads the page builder) and `extraOptionsFor(kind)`, a tool's own
-flags beside the global ones. Snake Charmer's `--shape` is the only one, defined in
-`snake-charmer/src/cliOptions.js`;
-`varietypack build --help` lists each tool's options from there. No tool has a
-command-line entry point of its own. Flag parsing is Node's
-`util.parseArgs`, and options are written in its format (plus `arg` and
-`description` for `--help`); `parseCliArgs` only adds a positional cap. Flag
-values aren't allowlisted at parse time: the build path reports a bad
-`--theme`, `--font` or `--embed-origin` (`validateBuildOptions`, which
-`buildFromObject` runs) or `--shape` (Snake Charmer's validator) as a
-validation error, which also covers the studio.
+**The tool registry.** `shared/build/tools.js` is the one list of tools. It is on the
+build path, so the engine bundler, the studio and the CLI all read their tool list
+from it. `shared/cli/cliTools.js` adds only what the CLI needs, such as a tool's own
+flags (Snake Charmer's `--shape`, defined in `snake-charmer/src/cliOptions.js`). Flag
+parsing is Node's `util.parseArgs`. Flag values aren't allowlisted at parse time: the
+build path reports a bad `--theme`, `--font`, `--embed-origin` or `--shape` as a
+validation error, so the studio gets the same checks.
 
-Every tool takes its output path through `-o <output.html>`, never a
-positional, so the interface stays uniform as flags accumulate. Without `-o`,
-the output is `<input-basename>.html` next to the input.
+Every command takes its output path through `-o <output.html>`, never a positional,
+so the interface stays uniform as flags accumulate. Without `-o`, the output is
+`<input-basename>.html` next to the input.
 
-**The `hashed` pattern.** `hashed` is never read from a source YAML (the
-validator rejects it there). It is always injected at build time, from the
-`--muddle` flag or from detecting a muddled file. `buildFromObject()` in
+**The `hashed` pattern.** `hashed` is never read from the YAML. It is always
+injected at build time, from the `--muddle` flag or from the YAML carrying
+`boardHash:`. `buildFromObject()` in
 `shared/build/buildFromObject.js` owns both that computation and the
 `prepareFn({ ...rawPuzzle, hashed })` call. `writePuzzlePage()` in
 `shared/cli/writePuzzlePage.js` wraps it with file I/O for the CLI; the studio
@@ -84,23 +72,10 @@ genuinely tool-specific part.
 ## Muddled YAML
 
 A muddled YAML is a source YAML with each entry's `answer:` replaced by
-`length:` and the top-level fields `hashed: true`, `format: 2` and `boardHash:`
-added (the full field list is in [AUTHORING.md](AUTHORING.md)). What the build
-path relies on:
-
-- `length:` is a **cell** count: a bracketed rebus group is one cell however
-  many letters it holds.
-- `format:` is invalid in a source puzzle, and that field set is the canonical
-  muddled signal, so the format is self-describing.
-- Only the board-level hash is stored; there are no per-entry hashes.
-- A muddled file carrying `boardHash:` without `format: 2` came from a
-  pre-rebus muddler whose hash used plain concatenation. It is no longer
-  verifiable, so the validator rejects it and tells the author to re-run
-  `varietypack muddle`.
-- `format: 2` is an explicit version rather than silent reinterpretation
-  because `length:`'s meaning changed with the rebus feature (letter count to
-  cell count). Without the version check, an old file's letter-count `length:`
-  values would silently misbuild the grid for any puzzle that still parses.
+`length:`, a **cell** count (a bracketed rebus group is one cell however many
+letters it holds), and a top-level `boardHash:` added. A YAML is muddled exactly
+when it carries `boardHash:`; only the board-level hash is stored, with no
+per-entry hashes.
 
 ## Cells and board strings
 
@@ -157,8 +132,9 @@ drawn keyboard that a touch-first device gets (see CROSS_TOOL_SPEC → "Phone
 layout and drawn keyboard"). Each engine calls into them from its own `init()`,
 keeping per-tool SVG rendering, navigation and `syncUI` in the engine.
 
-`svg-zoom.mjs`, `svg-zoom-geometry.mjs` and `svg-zoom-gestures.mjs` are the phone
-grid's pinch, pan and double-tap zoom. They are generic: they know nothing about
+`svg-zoom.mjs`, `svg-zoom-geometry.mjs`, `svg-zoom-gestures.mjs` and
+`svg-zoom-motion.mjs` are the phone grid's pinch, pan and double-tap zoom, the last
+being the spring its glides run on. They are generic: they know nothing about
 puzzles, cells or clues, and `engine-phone.mjs` is what attaches them to a grid and
 feeds them the cursor.
 
@@ -188,7 +164,7 @@ time (`processEntries` for clues, `prepareCommon` for instructions, both in
 inject the result via `innerHTML`, only through `setClueHtml` and
 `renderInstructions` in `shared/engine-chrome.mjs` (ESLint rejects an `innerHTML`
 assignment in other page code). An engine must never `innerHTML` any other YAML
-string. Syntax and security notes: CROSS_TOOL_SPEC → "Markdown formatting
+string. Syntax and security notes: AUTHORING → "Markdown formatting
 in clue and instructions text".
 
 **Testability categories.** Which category a function is in decides where a
@@ -220,10 +196,6 @@ cascade layers are older than all three. Any CSS
 or DOM feature those three versions all support is fair to use without a fallback;
 anything newer needs one, or a decision to raise the floor here.
 
-One limit comes from the build, not from browsers: `--minify` runs clean-css, which
-doesn't read every newer syntax (CSS nesting, for one). `shared/test/minify.test.js`
-fails on a stylesheet it can't read.
-
 ## Themes and print
 
 `shared/themes/theme-base.css` defines neutral `--theme-*` defaults; each theme
@@ -247,6 +219,15 @@ to cross layers: among `!important` declarations the layer order runs backwards 
 one `!important` in the stylesheet, the `[hidden]` reset in the `base` layer, relies
 on that to win everywhere).
 
+**Tool stylesheets.** A tool's `base.css` and `print.css` lay out the tool's own
+containers: the grid or ring, the clue columns, where each sits on the page and on
+paper. How shared elements look (the page column, clue headings, clue rows and their
+numbers) is set once, in `shared/base.css` and `print-base.css`, so the tools
+can't drift apart one stylesheet at a time. A tool's stylesheets set
+no type style (size, line height, letter spacing, weight, case, family) except on the
+text drawn on its board, whose sizes follow its geometry. `shared/test/toolTemplates.test.js`
+enforces this, along with the markup every template shares.
+
 `composeThemeCss(templateDir, theme, fontMode, themeTokens)` in
 `shared/build/themes.js` owns theme defaulting (to `broadsheet`) and the layers
 (listed in the comment above it). Builders call it once instead of defaulting and
@@ -258,17 +239,3 @@ themes use `{ fonts: null }`. Custom-font themes declare `fonts.faces` (for
 `--font embed`) and/or `fonts.cdn` (for `--font link`), and builders default to
 `embed` (or `link` when only `fonts.cdn` is declared). The flag is silently
 ignored for system-font themes.
-
-**A theme is printer-friendly if its base visual design translates cleanly to
-paper without modification**: high contrast, no screen-specific effects. Every
-theme hides interaction chrome (`#controls`, `#congrats-dialog`, `#done-wrong`)
-in `@media print`, but a printer-friendly theme needs no further print
-overrides. If `@media print` must undo a theme's highlight colors, the theme
-isn't printer-friendly. The author's theme choice is the print decision; there
-is no separate print mode.
-
-**Explicit `display` in print rules.** A screen rule still applies in print unless
-a print rule overrides it. If a responsive breakpoint sets `display: block` on a
-flex or grid container, that rule applies in print too, so `@media print` must
-re-declare `display: flex` or `display: grid` explicitly rather than rely on
-the base rule still being active.

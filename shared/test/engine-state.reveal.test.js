@@ -9,7 +9,7 @@ const { revealCells, makeComposer } = require('../engine-state.mjs');
 function harness({ content = '', composing = false } = {}) {
   const store = { 1: content };
   const calls = [];
-  const marked = new Set();
+  const marks = {};
   const composer = makeComposer({
     getContent: n => store[n] || '',
     setContent: (n, s) => { store[n] = s; },
@@ -17,16 +17,16 @@ function harness({ content = '', composing = false } = {}) {
     isSolved:   () => false,
   });
   if (composing) composer.toggle(1);
-  const setCellLetter = (n, s) => { calls.push('write'); store[n] = s; marked.delete(n); };
-  const setCorrect = (n, on) => { calls.push('mark'); if (on) marked.add(n); else marked.delete(n); };
+  const setCellLetter = (n, s) => { calls.push('write'); store[n] = s; delete marks[n]; };
+  const setMark = (n, mark) => { calls.push('mark'); if (mark) marks[n] = mark; else delete marks[n]; };
   const reveal = expected => revealCells({
-    ids: [1], composer, getExpected: () => expected, canReveal: () => true,
-    setCellLetter, setCorrect,
+    ids: [1], composer, getContent: n => store[n] || '', getExpected: () => expected,
+    canReveal: () => true, setCellLetter, setMark,
   });
-  return { composer, store, calls, marked, reveal };
+  return { composer, store, calls, marks, reveal };
 }
 
-test('reveal drops composition, then writes the answer, then marks the cell correct', () => {
+test('reveal drops composition, then writes the answer, then marks the cell revealed', () => {
   const { composer, calls, reveal } = harness({ content: 'h', composing: true });
   const realReset = composer.reset;
   composer.reset = () => { calls.push('reset'); realReset(); };
@@ -51,17 +51,17 @@ test('reveal never commits the half-typed prefix', () => {
 });
 
 test('reveal writes a rebus answer whole', () => {
-  const { store, marked, reveal } = harness();
+  const { store, marks, reveal } = harness();
   reveal('bc');
   assert.equal(store[1], 'bc');
-  assert.ok(marked.has(1));
+  assert.equal(marks[1], 'revealed');
 });
 
 test('reveal replaces a wrong letter', () => {
-  const { store, marked, reveal } = harness({ content: 'z' });
+  const { store, marks, reveal } = harness({ content: 'z' });
   reveal('a');
   assert.equal(store[1], 'a');
-  assert.ok(marked.has(1));
+  assert.equal(marks[1], 'revealed');
 });
 
 test('reveal on an empty cell fills it', () => {
@@ -79,7 +79,7 @@ const ANSWER = { 0: 'a', 1: 'bc', 2: 'd' };
 function multi({ content = {}, marked = [], composing = null } = {}) {
   const store = { ...content };
   const log = [];
-  const markedSet = new Set(marked);
+  const marks = Object.fromEntries(marked.map(n => [n, 'checked']));
   const composer = makeComposer({
     getContent: n => store[n] || '',
     setContent: (n, s) => { store[n] = s; },
@@ -90,11 +90,12 @@ function multi({ content = {}, marked = [], composing = null } = {}) {
   const realReset = composer.reset;
   composer.reset = () => { log.push('reset'); realReset(); };
   const run = ids => revealCells({
-    ids, composer, getExpected: n => ANSWER[n], canReveal: n => !markedSet.has(n),
-    setCellLetter: (n, s) => { log.push(`write ${n}`); store[n] = s; markedSet.delete(n); },
-    setCorrect: (n, on) => { log.push(`mark ${n}`); if (on) markedSet.add(n); },
+    ids, composer, getContent: n => store[n] || '', getExpected: n => ANSWER[n],
+    canReveal: n => !marks[n],
+    setCellLetter: (n, s) => { log.push(`write ${n}`); store[n] = s; delete marks[n]; },
+    setMark: (n, mark) => { log.push(`mark ${n}`); if (mark) marks[n] = mark; else delete marks[n]; },
   });
-  return { store, log, markedSet, composer, run };
+  return { store, log, marks, composer, run };
 }
 
 test('revealCells ends composition first, then writes and marks each cell in turn', () => {
@@ -106,14 +107,14 @@ test('revealCells ends composition first, then writes and marks each cell in tur
 });
 
 test('revealCells fills every cell with its answer and leaves none composing', () => {
-  const { store, composer, markedSet, run } = multi({ content: { 1: 'x' }, composing: 1 });
+  const { store, composer, marks, run } = multi({ content: { 1: 'x' }, composing: 1 });
   run([0, 1, 2]);
   assert.deepEqual(store, { 0: 'a', 1: 'bc', 2: 'd' });
   assert.equal(composer.getComposing(), null);
-  assert.deepEqual([...markedSet].sort(), [0, 1, 2]);
+  assert.deepEqual(marks, { 0: 'revealed', 1: 'revealed', 2: 'revealed' });
 });
 
-test('revealCells leaves a cell already marked correct untouched', () => {
+test('revealCells leaves a cell already confirmed right untouched', () => {
   const { store, log, run } = multi({ content: { 0: 'a' }, marked: [0] });
   run([0, 1]);
   assert.ok(!log.includes('write 0'), 'the correct cell is not rewritten');
@@ -148,4 +149,32 @@ test('revealCells ends composition on a composing cell it does reveal', () => {
   run([0, 1]);
   assert.equal(composer.getComposing(), null);
   assert.equal(log[0], 'reset');
+});
+
+// ── A cell already holding the answer is still revealed, its letter left alone ──────
+
+test('reveal marks a cell already holding the answer revealed and leaves its letter', () => {
+  const { store, calls, marks, reveal } = harness({ content: 'a' });
+  reveal('a');
+  assert.equal(marks[1], 'revealed');
+  assert.equal(store[1], 'a');
+  assert.ok(!calls.includes('write'), 'the letter is not rewritten');
+});
+
+// Crushword composes every cell as it is typed, so a just-typed right letter is
+// composing when Reveal arrives; it must come out unrewritten, as in the other tools.
+test('reveal ends composition before comparing, so a composing cell holding the answer is not rewritten', () => {
+  const { composer, calls, marks, reveal } = harness({ content: 'ha', composing: true });
+  reveal('ha');
+  assert.equal(composer.isComposing(1), false);
+  assert.equal(marks[1], 'revealed');
+  assert.ok(!calls.includes('write'), 'the letter is not rewritten');
+  assert.ok(!calls.includes('commit'), 'onCommit must not run');
+});
+
+test('reveal of a half-typed prefix writes the answer and marks it revealed', () => {
+  const { store, marks, reveal } = harness({ content: 'h', composing: true });
+  reveal('ha');
+  assert.equal(store[1], 'ha');
+  assert.equal(marks[1], 'revealed');
 });

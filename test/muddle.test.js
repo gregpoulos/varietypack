@@ -4,27 +4,10 @@ const { test } = require('node:test');
 const assert   = require('node:assert/strict');
 const path  = require('node:path');
 const fs    = require('node:fs');
-const os    = require('node:os');
 
-const { main } = require('../cli');
+const { runCli: run, tmpDir } = require('./helpers');
 
 const SC_FIXTURE = path.resolve(__dirname, '..', 'snake-charmer/test/fixtures/circle-8.yaml');
-
-// In-process invocation of the dispatcher's pure main(). muddle/validate/build
-// (single-file) never spawn a subprocess internally, so this fully replaces
-// the previous spawnSync-based coverage for these commands.
-function run(...args) {
-  let out = '';
-  let err = '';
-  const status = main(args, {
-    stdout: { write: (s) => { out += s; } },
-    stderr: { write: (s) => { err += s; } },
-  });
-  return { status, stdout: out, stderr: err };
-}
-function tmpDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'vp-muddle-cmd-test-'));
-}
 
 // ── help ───────────────────────────────────────────────────────────────────────
 //
@@ -52,15 +35,6 @@ test('muddle: -o redirects output to specified path', () => {
   assert.ok(!fs.existsSync(path.join(dir, 'circle-8.muddled.yaml')), 'default output should not exist');
 });
 
-test('muddle: -f overwrites existing output', () => {
-  const dir   = tmpDir();
-  const input = path.join(dir, 'circle-8.yaml');
-  fs.copyFileSync(SC_FIXTURE, input);
-  run('muddle', input);          // first run
-  const r = run('muddle', input, '-f');  // force-overwrite
-  assert.equal(r.status, 0, r.stderr);
-});
-
 // ── diagnostics streams ─────────────────────────────────────────────────────────
 
 test('muddle: validator warnings go to stderr, not stdout', () => {
@@ -75,14 +49,17 @@ test('muddle: validator warnings go to stderr, not stdout', () => {
 
 // ── error cases ───────────────────────────────────────────────────────────────
 
-test('muddle: refuses to overwrite without -f and exits 1', () => {
+test('muddle: a second run refuses to overwrite; -f overwrites', () => {
   const dir   = tmpDir();
   const input = path.join(dir, 'circle-8.yaml');
   fs.copyFileSync(SC_FIXTURE, input);
-  run('muddle', input);          // first run
-  const r = run('muddle', input);  // second run, no -f
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /already exists/i);
+  const first = run('muddle', input);
+  assert.equal(first.status, 0, first.stderr);
+  const second = run('muddle', input);
+  assert.equal(second.status, 1);
+  assert.match(second.stderr, /already exists/i);
+  const forced = run('muddle', input, '-f');
+  assert.equal(forced.status, 0, forced.stderr);
 });
 
 test('muddle: refuses to overwrite its own source, even with -f', () => {
@@ -231,7 +208,6 @@ test('every committed *.muddled.yaml matches a fresh hash of its source', () => 
       const rel = path.relative(repoRoot, muddledPath);
       assert.equal(muddled.boardHash, fresh,
         `${rel} is stale — re-run: node cli.js muddle ${path.relative(repoRoot, sourcePath)} -o ${rel} -f`);
-      assert.equal(muddled.format, 2, `${rel} must declare format: 2`);
       checked++;
     }
   }

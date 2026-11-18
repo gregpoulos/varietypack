@@ -6,45 +6,25 @@ const { renderClueMarkdown, renderInstructionsMarkdown } = require('../build/ren
 
 // ── renderClueMarkdown (inline) ──────────────────────────────────────────────
 
-test('renderClueMarkdown: bold', () => {
-  assert.equal(renderClueMarkdown('**bold**'), '<strong>bold</strong>');
-});
-
-test('renderClueMarkdown: italic', () => {
-  assert.equal(renderClueMarkdown('*italic*'), '<em>italic</em>');
-});
-
-test('renderClueMarkdown: code/monospace', () => {
-  assert.equal(renderClueMarkdown('`code`'), '<code>code</code>');
+test('renderClueMarkdown: the enabled syntax renders', () => {
+  const rows = [
+    ['**bold**',                        '<strong>bold</strong>'],
+    ['*italic*',                        '<em>italic</em>'],
+    ['`code`',                          '<code>code</code>'],
+    ['~~gone~~',                        '<s>gone</s>'],
+    ['H~2~O',                           'H<sub>2</sub>O'],
+    ['29^th^',                          '29<sup>th</sup>'],
+    [':smile:',                         '😄'],
+    ['[**bold link**](https://x.com)',
+      '<a href="https://x.com" target="_blank" rel="noopener noreferrer"><strong>bold link</strong></a>'],
+  ];
+  for (const [input, expected] of rows) assert.equal(renderClueMarkdown(input), expected, input);
 });
 
 test('renderClueMarkdown: link', () => {
   assert.equal(
     renderClueMarkdown('[text](https://example.com)'),
     '<a href="https://example.com" target="_blank" rel="noopener noreferrer">text</a>'
-  );
-});
-
-test('renderClueMarkdown: strikethrough', () => {
-  assert.equal(renderClueMarkdown('~~gone~~'), '<s>gone</s>');
-});
-
-test('renderClueMarkdown: subscript', () => {
-  assert.equal(renderClueMarkdown('H~2~O'), 'H<sub>2</sub>O');
-});
-
-test('renderClueMarkdown: superscript', () => {
-  assert.equal(renderClueMarkdown('29^th^'), '29<sup>th</sup>');
-});
-
-test('renderClueMarkdown: emoji shortcode', () => {
-  assert.equal(renderClueMarkdown(':smile:'), '😄');
-});
-
-test('renderClueMarkdown: nested formatting (bold link)', () => {
-  assert.equal(
-    renderClueMarkdown('[**bold link**](https://x.com)'),
-    '<a href="https://x.com" target="_blank" rel="noopener noreferrer"><strong>bold link</strong></a>'
   );
 });
 

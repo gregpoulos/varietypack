@@ -24,16 +24,18 @@ function makeEl() {
 
 // Builds a composer over a plain object store keyed 0..n-1, plus a commit counter, so
 // every test can assert on both.
-function harness(initial = {}, { solved = false } = {}) {
+function harness(initial = {}, { solved = false, locked = [] } = {}) {
   const store = { ...initial };
   const commits = [];
+  const lockedSet = new Set(locked);
   const composer = makeComposer({
     getContent: n => store[n] || '',
     setContent: (n, s) => { store[n] = s; },
     onCommit:   () => commits.push(Object.assign({}, store)),
     isSolved:   () => solved,
+    isLocked:   n => lockedSet.has(n),
   });
-  return { composer, store, commits };
+  return { composer, store, commits, lockedSet };
 }
 
 // Every way into composition (Enter, the Rebus button, Crushword's keystrokes) ends in
@@ -42,6 +44,37 @@ test('toggle does nothing once the board is solved', () => {
   const { composer } = harness({ 0: 'A' }, { solved: true });
   composer.toggle(0);
   assert.equal(composer.isComposing(0), false);
+});
+
+// A locked cell (checked or revealed) can't be edited, so nothing composes on it; with
+// this, no cell is ever composing and confirmed right at once.
+// The one statement of where composition may open, which the Rebus button reads.
+test('canCompose is false on a locked cell or a solved board, true otherwise', () => {
+  assert.equal(harness({ 0: 'A' }).composer.canCompose(0), true);
+  assert.equal(harness({ 0: 'A' }, { locked: [0] }).composer.canCompose(0), false);
+  assert.equal(harness({ 0: 'A' }, { solved: true }).composer.canCompose(0), false);
+});
+
+test('toggle refuses a locked cell', () => {
+  const { composer } = harness({ 0: 'A' }, { locked: [0] });
+  composer.toggle(0);
+  assert.equal(composer.isComposing(0), false);
+});
+
+// A letter typed on a locked cell is dropped, and the caller advances as if it landed.
+test('typeLetter on a locked cell writes nothing and returns true', () => {
+  const { composer, store } = harness({ 0: 'A' }, { locked: [0] });
+  assert.equal(composer.typeLetter(0, 'Q'), true);
+  assert.equal(store[0], 'A');
+});
+
+test('toggle still commits a composing cell even if it is now locked', () => {
+  const { composer, commits, lockedSet } = harness({ 0: 'A' });
+  composer.toggle(0);
+  lockedSet.add(0);
+  composer.toggle(0);
+  assert.equal(composer.isComposing(0), false);
+  assert.equal(commits.length, 1);
 });
 
 test('isCellFilled is true for a non-empty, non-composing cell', () => {
@@ -276,9 +309,7 @@ test('restore(null) leaves nothing composing', () => {
   assert.equal(composer.getComposing(), null);
 });
 
-// Saves written before this field existed have no `composing` key at all; restore must
-// treat that exactly like null rather than opening composition on cell "undefined".
-test('restore(undefined) leaves nothing composing, for saves predating the field', () => {
+test('restore(undefined) leaves nothing composing', () => {
   const { composer } = harness({ 0: 'A' });
   composer.restore(undefined);
   assert.equal(composer.getComposing(), null);

@@ -2,12 +2,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('fs');
-const os = require('os');
 const path = require('path');
-const yaml = require('js-yaml');
 const { buildHtml, HOOKS } = require('../src/builder');
-const { buildPuzzleFile } = require('../../test/helpers');
 const { buildFromObject } = require('../../shared/build/buildFromObject');
 const { loadPuzzle } = require('../../shared/cli/puzzleFiles');
 const { ringFor, SHAPES } = require('../src/layout');
@@ -15,13 +11,6 @@ const { preparePuzzle } = require('../src/prepare');
 const { puzzleDataOf } = require('../../test/helpers');
 
 const SAMPLE = path.join(__dirname, 'fixtures', 'double-turn-72.yaml');
-
-// Reads a built HTML file's PUZZLE_DATA, then deletes the file.
-function takePuzzleData(outPath) {
-  const html = fs.readFileSync(outPath, 'utf8');
-  fs.unlinkSync(outPath);
-  return puzzleDataOf(html);
-}
 
 // ── buildHtml ─────────────────────────────────────────────────────────────────
 
@@ -36,92 +25,47 @@ test('buildHtml: PUZZLE_DATA carries loops and ring, and omits cells (entry mapp
 
 // ── auto-shape ────────────────────────────────────────────────────────────────
 
+// A puzzle with a ring of 8 cells: too small for double-turn, fine for stadium and turn.
+const smallPuzzle = (shape) => ({
+  kind: 'snake-charmer', title: 'T', ...(shape && { shape }),
+  entries: [
+    { clue: 'One',   answer: 'ABCD' },
+    { clue: 'Two',   answer: 'EFGH' },
+    { clue: 'Three', answer: 'ABCDEFGH' },
+  ],
+});
+const shapeOf = (puzzle, options = {}) => puzzleDataOf(buildFromObject(puzzle, options, HOOKS).html).shape;
+
 test('build: no shape specified — uses double-turn for compatible puzzle', () => {
-  const outPath = path.join(os.tmpdir(), 'sc-test-autoshape-dt.html');
-  buildPuzzleFile(SAMPLE, outPath);
-  const data = takePuzzleData(outPath);
-  assert.equal(data.shape, 'double-turn');
+  const { shape, ...autoShaped } = loadPuzzle(SAMPLE);   // no shape: auto-select
+  assert.equal(shapeOf(autoShaped), 'double-turn');
 });
 
 test('build: shape field in YAML used when no --shape flag', () => {
-  const puzzle = {
-    kind: 'snake-charmer', title: 'T', shape: 'stadium',
-    entries: [
-      { clue: 'One',   answer: 'ABCD' },
-      { clue: 'Two',   answer: 'EFGH' },
-      { clue: 'Three', answer: 'ABCDEFGH' },
-    ],
-  };
-  const inPath  = path.join(os.tmpdir(), 'sc-test-yaml-shape-in.yaml');
-  const outPath = path.join(os.tmpdir(), 'sc-test-yaml-shape-out.html');
-  fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
-  try { buildPuzzleFile(inPath, outPath); } finally { fs.unlinkSync(inPath); }
-  assert.equal(takePuzzleData(outPath).shape, 'stadium');
+  assert.equal(shapeOf(smallPuzzle('stadium')), 'stadium');
 });
 
 test('build: --shape flag overrides shape field in YAML', () => {
-  const puzzle = {
-    kind: 'snake-charmer', title: 'T', shape: 'turn',
-    entries: [
-      { clue: 'One',   answer: 'ABCD' },
-      { clue: 'Two',   answer: 'EFGH' },
-      { clue: 'Three', answer: 'ABCDEFGH' },
-    ],
-  };
-  const inPath  = path.join(os.tmpdir(), 'sc-test-yaml-shape-override-in.yaml');
-  const outPath = path.join(os.tmpdir(), 'sc-test-yaml-shape-override-out.html');
-  fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
-  try { buildPuzzleFile(inPath, outPath, { shape: 'stadium' }); } finally { fs.unlinkSync(inPath); }
-  assert.equal(takePuzzleData(outPath).shape, 'stadium');
+  assert.equal(shapeOf(smallPuzzle('turn'), { shape: 'stadium' }), 'stadium');
 });
 
 test('build: YAML shape disables auto-select fallback — throws on incompatible shape', () => {
   // N=8 is too small for double-turn; auto-select would fall back to stadium.
   // With shape: 'double-turn' in the YAML the fallback is disabled, so it must throw.
-  const puzzle = {
-    kind: 'snake-charmer', title: 'T', shape: 'double-turn',
-    entries: [
-      { clue: 'One',   answer: 'ABCD' },
-      { clue: 'Two',   answer: 'EFGH' },
-      { clue: 'Three', answer: 'ABCDEFGH' },
-    ],
-  };
-  const inPath  = path.join(os.tmpdir(), 'sc-test-yaml-shape-nofallback-in.yaml');
-  const outPath = path.join(os.tmpdir(), 'sc-test-yaml-shape-nofallback-out.html');
-  fs.writeFileSync(inPath, yaml.dump(puzzle), 'utf8');
-  try {
-    assert.throws(() => buildPuzzleFile(inPath, outPath));
-  } finally {
-    try { fs.unlinkSync(inPath); } catch {}
-    try { fs.unlinkSync(outPath); } catch {}
-  }
+  assert.throws(() => buildFromObject(smallPuzzle('double-turn'), {}, HOOKS),
+    /"shape" "double-turn" cannot lay out a ring of 8 cells/);
 });
 
-// ── ring data in PUZZLE_DATA ─────────────────────────────────────────────────
-
-test('buildHtml: PUZZLE_DATA contains ring object with all stadium fields', () => {
-  const puzzle = loadPuzzle(SAMPLE);
-  const prepared = preparePuzzle(puzzle);
-  const { ring } = ringFor(72, 'stadium');   // the fixture's ring size
-  const data = puzzleDataOf(buildHtml(prepared, ring));
-  assert.equal(data.ring.N, 72);
-  for (const f of ['nCurve', 'nStraight', 'L', 'rCenter', 'rOuter', 'rInner', 'svgWidth', 'svgHeight', 'cx', 'cy']) {
-    assert.ok(typeof data.ring[f] === 'number', `ring.${f} should be a number`);
-  }
-  assert.ok(Math.abs(data.ring.cx - data.ring.svgWidth / 2) < 0.01, 'cx = svgWidth/2');
-  assert.ok(Math.abs(data.ring.cy - data.ring.svgHeight / 2) < 0.01, 'cy = svgHeight/2');
-});
-
-test('build: turn shape writes ring with turn-specific fields', () => {
-  const outPath = path.join(os.tmpdir(), 'sc-test-turn.html');
-  buildPuzzleFile(SAMPLE, outPath, { shape: 'turn' });
-  const data = takePuzzleData(outPath);
-  assert.equal(data.shape, 'turn');
-  assert.equal(data.ring.N, 72);
-  for (const f of ['nArmStraight', 'nArmCurve', 'nBodyInner', 'nBodyOuter', 'R_in', 'R_out', 'D', 'svgWidth', 'svgHeight']) {
-    assert.ok(typeof data.ring[f] === 'number', `ring.${f} should be a number`);
-  }
-  assert.equal(data.ring.nCurve, undefined, 'stadium field nCurve should be absent');
+// assertRingFields enforces each shape's ring fields at build time, so the page data's
+// ring needs no per-shape field list here. What it does not check is the stadium ring's
+// centering and that a turn ring carries none of the stadium's own fields.
+test('build: the ring in PUZZLE_DATA is centered, and a turn ring has no stadium nCurve', () => {
+  const stadium = puzzleDataOf(buildFromObject(loadPuzzle(SAMPLE), { shape: 'stadium' }, HOOKS).html);
+  assert.ok(Math.abs(stadium.ring.cx - stadium.ring.svgWidth / 2) < 0.01, 'cx = svgWidth/2');
+  assert.ok(Math.abs(stadium.ring.cy - stadium.ring.svgHeight / 2) < 0.01, 'cy = svgHeight/2');
+  const turn = puzzleDataOf(buildFromObject(loadPuzzle(SAMPLE), { shape: 'turn' }, HOOKS).html);
+  assert.equal(turn.shape, 'turn');
+  assert.equal(turn.ring.nCurve, undefined, 'stadium field nCurve should be absent');
 });
 
 function captureStderr(fn) {

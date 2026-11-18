@@ -1,13 +1,6 @@
 /* Shared print resets live in shared/themes/print-base.css (just before this file,
    in the same cascade layer). Only marching-bands-specific print rules belong here. */
 @media print {
-  .puzzle-main   { padding: 8px 16px; }
-  .puzzle-header { margin-bottom: 8px; }
-  .byline        { font-size: 0.8rem; }
-  #instructions  { font-size: 0.8rem; margin-bottom: 8px; }
-  .clue-section h2 { margin-bottom: 4px; }
-  .clue-item     { padding: 1px 4px; }
-
   .puzzle-body {
     display: grid;
     grid-template-columns: 1fr 1fr;

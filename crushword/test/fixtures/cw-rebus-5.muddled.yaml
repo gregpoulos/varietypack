@@ -40,6 +40,4 @@ down:
   '6':
     clue: Fourth column, crosses the three-letter rebus cell
     length: 4
-hashed: true
-format: 2
 boardHash: e2f7e001d527b53ae8d0fa0f9fd36548cb029e1ecad5a0d3c44636c84083707a

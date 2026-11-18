@@ -1,6 +1,7 @@
 /* Swiss theme — International Typographic Style: a system grotesque, black on white,
    and one accent (orange) used flat. Everything that is not the accent is black, white
-   or a neutral gray. Overrides theme-base. */
+   or a neutral gray, except two spot colors kept to cell marks: a blue for a checked
+   letter and a red for the wrong slash. Overrides theme-base. */
 :root {
   --theme-font-body:    'Helvetica Neue', Helvetica, Arial, sans-serif;
   --theme-font-display: var(--theme-font-body);
@@ -39,6 +40,8 @@
   --theme-color-highlight:     #f9c55f;
   --theme-color-active:        #ee8a00;
   --theme-color-active-stroke: #111111;
+  /* The active clue, row or block, takes the lighter shade; the deeper is too heavy. */
+  --theme-color-active-clue: var(--theme-color-highlight);
 
   --theme-color-band-even:       #ececec;
   --theme-color-clue-hover:      #eeeeee;
@@ -48,10 +51,11 @@
   --theme-color-secondary-active:        #bdbdbd;
   --theme-color-secondary-active-stroke: #111111;
 
-  /* A checked cell inverts to white on black. */
-  --theme-color-correct-bg:     #111111;
-  --theme-color-correct-stroke: #666666;
-  --theme-color-correct-text:   #ffffff;
+  /* Cell marks: the two spot colors, and a black flag. The slash is a deeper shade of
+     --theme-color-danger, which is too light against the orange cursor. */
+  --theme-color-checked-text:  #1f45b8;
+  --theme-color-revealed-flag: #111111;
+  --theme-color-wrong-slash:   #9e0c24;
 
   --theme-clue-filled-opacity: 0.4;
 

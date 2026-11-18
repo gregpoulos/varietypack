@@ -15,7 +15,9 @@ function toolDir(kind) {
   return path.join(ROOT, kind);
 }
 
-// kind → that tool's own util.parseArgs options, for the tools that have any.
+// kind → that tool's own util.parseArgs options, for the tools that have any. A
+// directory build parses every tool's flags together, so a name must not repeat a global
+// flag or another tool's (test/cli.test.js checks).
 const TOOL_OPTIONS = {
   'snake-charmer': require('../../snake-charmer/src/cliOptions').CLI_OPTIONS,
 };

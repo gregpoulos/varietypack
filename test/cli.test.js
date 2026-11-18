@@ -4,10 +4,9 @@ const assert = require('node:assert/strict');
 const { spawn, spawnSync } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
-const os = require('node:os');
 
 const { KINDS } = require('../shared/build/tools');
-const { main } = require('../cli');
+const { runCli: run, tmpDir } = require('./helpers');
 
 const CLI = path.resolve(__dirname, '..', 'cli.js');
 const SC_FIXTURE = path.resolve(__dirname, '..', 'snake-charmer/test/fixtures/circle-36.yaml');
@@ -21,25 +20,10 @@ const PER_KIND_FIXTURE = {
   'crushword':      path.resolve(__dirname, '..', 'crushword/test/fixtures/cw-9.yaml'),
 };
 
-// In-process invocation of the dispatcher's main().
-function run(...args) {
-  let out = '';
-  let err = '';
-  const status = main(args, {
-    stdout: { write: (s) => { out += s; } },
-    stderr: { write: (s) => { err += s; } },
-  });
-  return { status, stdout: out, stderr: err };
-}
-
 // cli.js run as a real program, for what only a process shows (see the
 // entry-point test below).
 function runSubprocess(...args) {
   return spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
-}
-
-function tmpDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'vp-cli-test-'));
 }
 
 // ── help ──────────────────────────────────────────────────────────────────────
@@ -116,18 +100,16 @@ test('build: yaml with no kind field exits 1', () => {
   assert.match(r.stderr, /kind/i);
 });
 
-// `toString`/`constructor` are inherited by every plain object, so a bare
-// `TOOL_HOOKS[kind]` lookup would treat them as known kinds.
-for (const kind of ['widget', 'toString', 'constructor']) {
-  test(`build: yaml with unknown kind "${kind}" exits 1`, () => {
-    const dir = tmpDir();
-    const f = path.join(dir, 'badkind.yaml');
-    fs.writeFileSync(f, `kind: ${kind}\ntitle: "Bad"\n`);
-    const r = run('build', f);
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /unknown kind/i);
-  });
-}
+// A bare `TOOL_HOOKS[kind]` lookup would treat inherited names like `toString` as known
+// kinds; shared/test/tools.test.js covers those, so one name proves the wiring here.
+test('build: yaml with unknown kind exits 1', () => {
+  const dir = tmpDir();
+  const f = path.join(dir, 'badkind.yaml');
+  fs.writeFileSync(f, 'kind: widget\ntitle: "Bad"\n');
+  const r = run('build', f);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /unknown kind/i);
+});
 
 // ── build: directory mode ─────────────────────────────────────────────────────
 
@@ -368,36 +350,6 @@ test('build: directory mode rejects a second path instead of ignoring it', () =>
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-test('watch: the process keeps running after the initial build', async () => {
-  const dir = tmpDir();
-  fs.copyFileSync(SC_FIXTURE, path.join(dir, 'puzzle.yaml'));
-  const child = spawn(process.execPath, [CLI, 'watch', dir]);
-  let exited = false;
-  child.on('exit', () => { exited = true; });
-  try {
-    await sleep(1500);
-    assert.equal(exited, false, 'watch must not exit on its own');
-  } finally {
-    child.kill();
-  }
-});
-
-test('watch: flags may come before the directory, as for build', async () => {
-  const dir = tmpDir();
-  fs.copyFileSync(SC_FIXTURE, path.join(dir, 'puzzle.yaml'));
-  const child = spawn(process.execPath, [CLI, 'watch', '--theme', 'skeleton', dir]);
-  let out = '', err = '';
-  child.stdout.on('data', d => { out += d; });
-  child.stderr.on('data', d => { err += d; });
-  try {
-    for (let i = 0; i < 50 && !out.includes('Open:'); i++) await sleep(100);
-    assert.match(out, /Built "/, err);
-    assert.ok(fs.existsSync(path.join(dir, 'puzzle.html')));
-  } finally {
-    child.kill();
-  }
-});
-
 test('watch: a bad flag exits 1 before building anything', () => {
   const dir = tmpDir();
   fs.copyFileSync(SC_FIXTURE, path.join(dir, 'puzzle.yaml'));
@@ -408,16 +360,31 @@ test('watch: a bad flag exits 1 before building anything', () => {
   assert.ok(!fs.existsSync(path.join(dir, 'puzzle.html')));
 });
 
+// The child is killed and has exited before the test returns, so the directory's
+// exit-time cleanup can't race a write.
+function stopWatch(child) {
+  return new Promise(resolve => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    child.once('exit', resolve);
+    child.kill();
+  });
+}
+
+// Flags come before the directory here, as `build` also allows. A rebuild line also
+// shows the process kept running after the initial build.
 test('watch: one editor-style save triggers one rebuild', async () => {
   const dir = tmpDir();
   const yamlPath = path.join(dir, 'puzzle.yaml');
   fs.copyFileSync(SC_FIXTURE, yamlPath);
-  const child = spawn(process.execPath, [CLI, 'watch', dir]);
-  let out = '';
+  const child = spawn(process.execPath, [CLI, 'watch', '--theme', 'skeleton', dir]);
+  let out = '', err = '';
   child.stdout.on('data', d => { out += d; });
+  child.stderr.on('data', d => { err += d; });
   try {
     // Wait for the initial build, then give the watchers a moment to start.
     for (let i = 0; i < 50 && !out.includes('Open:'); i++) await sleep(100);
+    assert.match(out, /Built "/, err);
+    assert.ok(fs.existsSync(path.join(dir, 'puzzle.html')));
     await sleep(300);
 
     // Editors save by writing a temp file and renaming it over the original, which can
@@ -428,6 +395,21 @@ test('watch: one editor-style save triggers one rebuild', async () => {
 
     assert.equal(out.match(/Changed:/g)?.length ?? 0, 1, out);
   } finally {
-    child.kill();
+    await stopWatch(child);
+  }
+});
+
+// A directory build parses every tool's flags in one table, where a repeated name would
+// silently replace the other definition.
+test('no tool flag repeats a global flag or another tool\'s', () => {
+  const { KINDS } = require('../shared/build/tools');
+  const { extraOptionsFor } = require('../shared/cli/cliTools');
+  const { GLOBAL_OPTIONS, HELP_OPTION } = require('../shared/cli/globalHelp');
+  const seen = new Set([...Object.keys(GLOBAL_OPTIONS), ...Object.keys(HELP_OPTION ?? {}), 'build-index']);
+  for (const kind of KINDS) {
+    for (const name of Object.keys(extraOptionsFor(kind))) {
+      assert.ok(!seen.has(name), `${kind}'s --${name} is already taken`);
+      seen.add(name);
+    }
   }
 });

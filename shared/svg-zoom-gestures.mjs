@@ -13,8 +13,10 @@ const DEFAULTS = { tapSlop: 10, doubleTapMs: 300, doubleTapSlop: 15 };
 //                                                  ratio of the new finger distance to the old
 //   { type: 'tap', x, y }                          returned by the up
 //   { type: 'doubleTap', x, y }                    returned by the up
-//   { type: 'gestureEnd' }                         the last pointer lifted or was canceled
-//                                                  after a pan or a second pointer
+//   { type: 'gestureEnd', anchor }                 the last pointer lifted or was canceled
+//                                                  after a pan or a second pointer; `anchor`
+//                                                  is the last two-pointer midpoint {x, y},
+//                                                  or null if there never were two
 // Only the first two pointers are tracked; a third is ignored. forget() drops a tap
 // that was waiting to pair into a double-tap.
 function createGestureTracker(options = {}) {
@@ -27,6 +29,7 @@ function createGestureTracker(options = {}) {
   let lastTap = null; // { x, y, t } of the previous tap's up, while it can still pair
   let prevDist = 0;
   let prevMid = { x: 0, y: 0 };
+  let anchor = null; // the last two-pointer midpoint of this sequence
 
   // The distance and midpoint of the two tracked pointers.
   function pair() {
@@ -42,6 +45,13 @@ function createGestureTracker(options = {}) {
     gesture = false;
     double = false;
     lastTap = null;
+    anchor = null;
+  }
+  // Ends a gesture sequence, reporting where its last two-pointer midpoint was.
+  function endGesture() {
+    const end = { type: 'gestureEnd', anchor };
+    endSequence();
+    return [end];
   }
 
   function down(id, x, y, t) {
@@ -65,6 +75,7 @@ function createGestureTracker(options = {}) {
     for (const other of pointers.values()) other.panning = true;
     pointers.set(id, p);
     ({ dist: prevDist, mid: prevMid } = pair());
+    anchor = prevMid;
     return [];
   }
 
@@ -81,6 +92,7 @@ function createGestureTracker(options = {}) {
       };
       prevDist = dist;
       prevMid = mid;
+      anchor = mid;
       return [action];
     }
     // One pointer: stay a tap until it leaves the slop, then pan from where it started.
@@ -103,10 +115,7 @@ function createGestureTracker(options = {}) {
       // The remaining pointer keeps panning, with no slop.
       return [];
     }
-    if (gesture) {
-      endSequence();
-      return [{ type: 'gestureEnd' }];
-    }
+    if (gesture) return endGesture();
     if (double) {
       endSequence();
       return [{ type: 'doubleTap', x, y }];
@@ -119,9 +128,9 @@ function createGestureTracker(options = {}) {
     if (!pointers.has(id)) return [];
     pointers.delete(id);
     if (pointers.size > 0) return [];
-    const wasGesture = gesture;
+    if (gesture) return endGesture();
     endSequence();
-    return wasGesture ? [{ type: 'gestureEnd' }] : [];
+    return [];
   }
 
   // Drops a tap waiting to pair into a double-tap, for the caller to say that something
