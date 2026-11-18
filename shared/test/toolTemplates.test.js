@@ -68,7 +68,7 @@ test('every .puzzle-toggle is a labeled group', () => {
 const SHARED = ['.puzzle-main', '.puzzle-header', '.byline', '#instructions', '.instructions',
   '.clue-item', '.clue-num', '.clue-section h2'];
 const names = (selector, shared) =>
-  new RegExp(`(^|[^\\w-])${shared.replace(/[.#]/g, '\\$&')}($|[^\\w-])`).test(selector);
+  new RegExp(`(^|[^\\w-])${shared.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\w-])`).test(selector);
 
 test("a tool's stylesheets leave shared elements to shared/", () => {
   for (const tool of KINDS) {
