@@ -7,7 +7,7 @@ const path = require('path');
 const {
   pathCorners, rectCorners, flagCornerIndex, flagPolygon, slashLine,
 } = require('../markShapes.mjs');
-const { puzzleDataOf } = require('../../test/helpers');
+const { puzzleDataOf, buildPuzzleFile, tmpDir } = require('../../test/helpers');
 const { cellPath } = require('../../spiral/src/layout.mjs');
 const { getStadiumRenderer } = require('../../snake-charmer/src/template/shapes/stadium.mjs');
 const { getTurnRenderer } = require('../../snake-charmer/src/template/shapes/turn.mjs');
@@ -42,15 +42,20 @@ test('rectCorners runs clockwise from top-left', () => {
 // Every real cell outline the tools draw goes through pathCorners. A generator that
 // starts emitting relative or curve commands must fail here, not draw a stray flag.
 test('pathCorners handles every real cell path', () => {
-  const html = (tool, name) => fs.readFileSync(
-    path.join(__dirname, '..', '..', tool, 'test', 'fixtures', name), 'utf8');
+  // Built from the fixture YAML, never read from a prebuilt .html: those are gitignored.
+  const out = tmpDir();
+  const html = (tool, name) => {
+    const dest = path.join(out, `${tool}-${name}.html`);
+    buildPuzzleFile(path.join(__dirname, '..', '..', tool, 'test', 'fixtures', `${name}.yaml`), dest);
+    return fs.readFileSync(dest, 'utf8');
+  };
   const paths = [];
-  for (const name of ['test-78.html', 'rebus-40.html']) {
+  for (const name of ['test-78', 'rebus-40']) {
     for (const cell of puzzleDataOf(html('spiral', name)).cells) paths.push(cellPath(cell));
   }
   const renderers = { stadium: getStadiumRenderer, turn: getTurnRenderer,
     'double-turn': getDoubleTurnRenderer };
-  for (const name of ['circle-8.html', 'stadium-24.html', 'turn-20.html', 'double-turn-42.html']) {
+  for (const name of ['circle-8', 'stadium-24', 'turn-20', 'double-turn-42']) {
     const data = puzzleDataOf(html('snake-charmer', name));
     const { cellPath: snakePath } = (renderers[data.shape] || getStadiumRenderer)(data.ring);
     for (let i = 0; i < data.ring.N; i++) paths.push(snakePath(i));
