@@ -4,7 +4,7 @@
 
 varietypack turns a YAML puzzle definition into a single self-contained HTML page: playable in a browser, printable, and needing no back end. It makes four kinds of variety word puzzle: Snake Charmer, Spiral, Marching Bands and Crushword.
 
-**[Try the examples online](https://gregpoulos.github.io/varietypack/examples/)**
+**[Try the examples online](https://gregpoulos.github.io/varietypack/examples/)** · **[Open the studio](https://gregpoulos.github.io/varietypack/studio/)**
 
 ## Requirements and install
 
@@ -98,7 +98,7 @@ Some tools accept additional options. When building a directory, each applies on
 
 ### Snake Charmer
 
-N numbered answers fill a continuous snake-shaped loop of cells. Each answer starts at its numbered cell and proceeds clockwise; the loop is closed so the last answer ends where the first begins. **[Try an example](https://gregpoulos.github.io/varietypack/examples/snake-charmer.html)**
+N numbered answers fill a continuous snake-shaped loop of cells. Each answer starts at its numbered cell and proceeds clockwise; the loop is closed so the last answer ends where the first begins. **[Try an example](https://gregpoulos.github.io/varietypack/examples/broadsheet/snake-charmer.html)**
 
 ![A Snake Charmer puzzle page](docs/images/snake-charmer.png)
 
@@ -106,7 +106,7 @@ See [snake-charmer/docs/SPEC.md](snake-charmer/docs/SPEC.md) for the full format
 
 ### Spiral
 
-Two sets of entries share every cell: inward entries fill the spiral from the outer edge toward the center; outward entries fill it from the center back out. The inward cells, read in order, must be the reverse of the outward cells. Minimum 40 cells. **[Try an example](https://gregpoulos.github.io/varietypack/examples/spiral.html)**
+Two sets of entries share every cell: inward entries fill the spiral from the outer edge toward the center; outward entries fill it from the center back out. The inward cells, read in order, must be the reverse of the outward cells. Minimum 40 cells. **[Try an example](https://gregpoulos.github.io/varietypack/examples/broadsheet/spiral.html)**
 
 ![A Spiral puzzle page](docs/images/spiral.png)
 
@@ -114,7 +114,7 @@ See [spiral/docs/SPEC.md](spiral/docs/SPEC.md) for the full format reference.
 
 ### Marching Bands
 
-An N×N grid where words march in two formations: **Rows** (two or more words per numbered row, reading left to right) and **Bands** (words march clockwise around each concentric rectangular band). Every cell belongs to exactly one Row word and one Band word; where words begin and end within a row or band is for the solver to discover. For odd N, the center cell is a black square. **[Try an example](https://gregpoulos.github.io/varietypack/examples/marching-bands.html)**
+An N×N grid where words march in two formations: **Rows** (two or more words per numbered row, reading left to right) and **Bands** (words march clockwise around each concentric rectangular band). Every cell belongs to exactly one Row word and one Band word; where words begin and end within a row or band is for the solver to discover. For odd N, the center cell is a black square. **[Try an example](https://gregpoulos.github.io/varietypack/examples/broadsheet/marching-bands.html)**
 
 ![A Marching Bands puzzle page](docs/images/marching-bands.png)
 
@@ -122,7 +122,7 @@ See [marching-bands/docs/SPEC.md](marching-bands/docs/SPEC.md) for the full form
 
 ### Crushword
 
-A rebus crossword: standard American crossword grid and clue numbering (across/down, black squares), plus the repo-wide rebus convention that a bracketed group in an `answer:` occupies a single cell however many letters it holds. **[Try an example](https://gregpoulos.github.io/varietypack/examples/crushword.html)**
+A rebus crossword: standard American crossword grid and clue numbering (across/down, black squares), plus the repo-wide rebus convention that a bracketed group in an `answer:` occupies a single cell however many letters it holds. **[Try an example](https://gregpoulos.github.io/varietypack/examples/broadsheet/crushword.html)**
 
 ![A Crushword puzzle page](docs/images/crushword.png)
 
@@ -148,6 +148,8 @@ Build it once, then open it from disk or host the single file anywhere:
 npm install
 npm run build:studio    # writes studio/build/index.html
 ```
+
+The public repo hosts it, with every example in every theme, on GitHub Pages; `npm run build:site` builds that site locally.
 
 What it does today:
 

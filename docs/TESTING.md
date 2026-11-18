@@ -99,6 +99,8 @@ while working, run `npm run capture:mobile [-- <yaml-or-dir>...]` and open the
 PNGs it prints (it also takes a landscape shot of each page). Neither reaches a
 real soft keyboard or IME (see CROSS_TOOL_SPEC → "Known limitation (touch)"), and Playwright's WebKit is not iOS Safari.
 
+**README screenshots.** `npm run capture:readme` regenerates `docs/images/<kind>.png` from the examples in the default theme. Run it when a page's look changes and review the images before committing; they are not regenerated on publish, because fonts and rendering vary by machine and every publish would then rewrite them.
+
 **Real-device checks.** Build the pages into a scratch directory and serve it on
 the LAN with `python3 -m http.server 8765 --bind <LAN IP> --directory <dir>`.
 Plain `http://` on a LAN address isn't a secure context, so clipboard copy fails

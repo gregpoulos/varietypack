@@ -3,23 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Puzzles</title>
+  <title>Examples</title>
   <style>
-    body { font-family: Georgia, 'Times New Roman', serif; max-width: 600px; margin: 40px auto; padding: 0 20px; background: #f9f7f1; }
+    body { font-family: Georgia, 'Times New Roman', serif; max-width: 640px; margin: 40px auto; padding: 0 20px; background: #f9f7f1; color: #222; }
     h1 { border-bottom: 2px solid #222; padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-    ul { margin-top: 16px; padding-left: 0; list-style: none; }
-    li { margin: 10px 0; }
-    a { color: #222; text-decoration: none; font-size: 1.05rem; }
-    a:hover { text-decoration: underline; }
+    table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+    th, td { text-align: left; padding: 10px 12px 10px 0; }
+    thead th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #666; }
+    tbody tr { border-top: 1px solid #ddd; }
+    a { color: #222; }
+    p { margin-top: 24px; }
   </style>
 </head>
 <body>
-  <h1>Puzzles</h1>
-  <ul>
-    <li><a href="crushword.html">Crushword</a></li>
-    <li><a href="marching-bands.html">Marching Bands</a></li>
-    <li><a href="snake-charmer.html">Snake Charmer</a></li>
-    <li><a href="spiral.html">Spiral</a></li>
-  </ul>
+  <h1>Examples</h1>
+  <table>
+    <thead><tr><th></th><th>broadsheet</th><th>skeleton</th><th>swiss</th></tr></thead>
+    <tbody>
+    <tr><th scope="row">Crushword</th><td><a href="broadsheet/crushword.html">broadsheet</a></td><td><a href="skeleton/crushword.html">skeleton</a></td><td><a href="swiss/crushword.html">swiss</a></td></tr>
+    <tr><th scope="row">Marching Bands</th><td><a href="broadsheet/marching-bands.html">broadsheet</a></td><td><a href="skeleton/marching-bands.html">skeleton</a></td><td><a href="swiss/marching-bands.html">swiss</a></td></tr>
+    <tr><th scope="row">Snake Charmer</th><td><a href="broadsheet/snake-charmer.html">broadsheet</a></td><td><a href="skeleton/snake-charmer.html">skeleton</a></td><td><a href="swiss/snake-charmer.html">swiss</a></td></tr>
+    <tr><th scope="row">Spiral</th><td><a href="broadsheet/spiral.html">broadsheet</a></td><td><a href="skeleton/spiral.html">skeleton</a></td><td><a href="swiss/spiral.html">swiss</a></td></tr>
+    </tbody>
+  </table>
+  <p><a href="../studio/">Open the studio</a> to compose a puzzle in the browser.</p>
 </body>
 </html>

@@ -1,0 +1,5547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spiral</title>
+  <style>@layer base, tool, theme, phone, print;
+@layer base {
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* An ID or class rule that sets `display` on a [hidden] element (e.g. #menu-panel's
+   `display: flex` below) otherwise outranks the UA [hidden] default by specificity,
+   leaving the element stuck visible. */
+[hidden] { display: none !important; }
+
+/* iOS Safari enlarges text when a phone turns to landscape unless told not to, and the
+   landscape phone layout (phone.css) counts on its line heights. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+body { line-height: 1.4; }
+
+/* Measurements other rules are computed from, here and in theme-components.css. Change
+   one here and every position derived from it follows.
+   --corner-*: the round buttons fixed in the page's corners (#keys-btn, #menu-btn,
+   #help-btn): their size, their inset from the edges, and the gap between two of them
+   and between a button and the panel it opens.
+   --tap-min: the smallest side of anything tapped in the phone layout. */
+:root {
+  --corner-btn: 32px;
+  --corner-inset: 20px;
+  --corner-gap: 8px;
+  --corner-btn-2: calc(var(--corner-inset) + var(--corner-btn) + var(--corner-gap));
+  --tap-min: 44px;
+}
+
+/* Tools with a fixed active-clue bar reserve its height as body padding, and expose it
+   as --active-clue-bar-space for anything positioned against the bar (#menu-btn and
+   #menu-panel in theme-components.css, Crushword's sticky grid). The bar's min-height
+   fills that space, and its clue text can never wrap (nowrap + ellipsis), so this is an
+   exact height, not a floor — which is what makes calc()-only positioning against it
+   exact. */
+body.has-clue-bar {
+  --active-clue-bar-space: 56px;
+  padding-top: var(--active-clue-bar-space);
+}
+
+#active-clue-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  min-height: var(--active-clue-bar-space);
+  padding: 5px 16px 4px;
+}
+
+.active-clue-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+#active-clue-secondary {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.active-clue-num {
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.active-clue-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* By class, not id: the phone layout shows copies of #instructions (setupPhoneLayout),
+   which carry the class but can't carry the id. */
+.instructions {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* The page column and the clue lists look the same in every tool, so their sizes live
+   here and not in a tool's base.css (docs/ARCHITECTURE.md → "Tool stylesheets"). */
+.puzzle-main { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
+
+.clue-section h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.clue-section :is(ul, ol) { list-style: none; }
+
+.clue-item {
+  display: flex;
+  align-items: baseline;
+  cursor: pointer;
+  margin-bottom: 4px;
+  padding: 2px 6px 2px 2px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+/* The number, label or cell range ahead of a clue's text. */
+.clue-num {
+  flex-shrink: 0;
+  min-width: 1.6em;
+  margin-right: 4px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  text-align: right;
+}
+
+.cell        { cursor: pointer; }
+.cell-letter { pointer-events: none; text-anchor: middle; dominant-baseline: middle; font-weight: bold; }
+.cell-num    { pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
+.style-circle { pointer-events: none; }
+/* The active cell's direction chevron (Spiral, Marching Bands). */
+#direction-chevron { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+
+#controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* font-family is theme-components.css's: a button inherits no font from the page. */
+button {
+  cursor: pointer;
+  border: 1px solid;
+  padding: 6px 14px;
+  font-size: 0.875rem;
+}
+
+/* Suppress double-tap-to-zoom and its tap delay on the in-solve controls, which are
+   tapped repeatedly (#rebus-btn especially) so the delay is felt. Scoped to #controls
+   rather than every button: the modal and dialog buttons are tapped once and have no
+   reason to change hit-testing behavior. */
+#controls button { touch-action: manipulation; }
+
+button:disabled { opacity: 0.4; cursor: default; }
+/* A browser sends no mouse events to a disabled button, so a press on a disabled help row
+   would take focus from the puzzle before setupPopupMenu's panel mousedown handler could
+   stop it. With pointer events off, the press lands on the panel itself, where it can. */
+#help-panel button:disabled { pointer-events: none; }
+
+/* Reserve the width of the widest label each button can show, so swapping the label
+   never reflows its container — #menu-panel for #clear-btn (shrink-to-fit width,
+   sized off this reservation, not the panel's own min-width), #controls for
+   #rebus-btn. #clear-btn swaps Clear puzzle→Are you sure?, #rebus-btn Rebus→Done.
+   The two armed buttons reserve both strings, one per line, so the width is the wider of
+   the two whichever font renders them: 'Are you sure?' is wider than 'Clear puzzle' in
+   some fonts and narrower in others (likewise 'Reveal puzzle'). #rebus-btn reserves
+   its longer string, 'Rebus'. */
+#clear-btn::after,
+#reveal-puzzle-btn::after,
+#rebus-btn::after {
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+#clear-btn::after { content: 'Clear puzzle\A Are you sure?'; white-space: pre; }
+#reveal-puzzle-btn::after { content: 'Reveal puzzle\A Are you sure?'; white-space: pre; }
+#rebus-btn::after { content: 'Rebus'; }
+
+/* Fixed, not absolute: a fixed element is always inside the viewport, so focusing it
+   never scrolls the page. */
+#hidden-input {
+  position: fixed;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.puzzle-toggle { display: flex; overflow: hidden; }
+.puzzle-toggle .toggle-opt { border: none; flex: 1; white-space: nowrap; }
+.toggle-opt { user-select: none; }
+
+#keys-btn,
+#menu-btn {
+  position: fixed;
+  right: var(--corner-inset);
+  width: var(--corner-btn);
+  height: var(--corner-btn);
+  font-size: 1rem;
+  font-weight: bold;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#keys-btn {
+  bottom: var(--corner-inset);
+  z-index: 50;
+}
+
+/* The help menu's life-ring button, immediately left of #menu-btn (--corner-btn-2: the
+   inset, a button and a gap). Same `top` as #menu-btn, so the two share the
+   .has-clue-bar override (theme-components.css). The phone puts it in the top bar
+   instead (phone.css). */
+#help-btn {
+  position: fixed;
+  top: var(--corner-inset);
+  right: var(--corner-btn-2);
+  z-index: 110;
+  width: var(--corner-btn);
+  height: var(--corner-btn);
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+/* Fixed top-right corner, mirroring #keys-btn's bottom-right circle. The
+   clue-bar tools override `top` (theme-components.css) to sit the button inside
+   #active-clue-bar's band instead of at this default offset — see that override for
+   why. */
+#menu-btn {
+  top: var(--corner-inset);
+  z-index: 110;
+  /* The ☰ glyph's ink sits ~1px below its line box's center; asymmetric padding nudges
+     it up to compensate (pinned by an e2e pixel measurement). */
+  padding-bottom: 8px;
+}
+
+/* Non-modal dropdown — plain div, not <dialog>, so the page behind it stays
+   interactive. The [hidden] reset above (!important) wins over this display:flex
+   while the panel is closed. */
+#menu-panel,
+#help-panel {
+  position: fixed;
+  top: var(--corner-btn-2);
+  right: var(--corner-inset);
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  min-width: 120px;
+}
+/* Opens under #help-btn, aligned to its right edge rather than ☰'s. */
+#help-panel { right: var(--corner-btn-2); }
+
+/* Matches #clear-btn's padding and font-size (theme-components.css)
+   so the menu-panel rows all read as plain, equally-weighted menu items — a flat
+   hoverable strip, not a bordered "submit button" next to a bare checkbox. */
+.menu-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 6px 8px;
+}
+.menu-toggle input { cursor: pointer; }
+
+/* Native <dialog>: raised to the top layer by showModal() and dimmed via
+   ::backdrop — no positioning or z-index needed. The dialog is a transparent
+   frame; #keys-modal / the congrats card (inside it) is the visible card.
+   `margin: auto` restores the UA modal centering that the global
+   `* { margin: 0 }` reset above would otherwise defeat (the UA
+   `dialog:modal { inset: 0 }` is still in effect). */
+#keys-overlay,
+#congrats-dialog {
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
+/* A wrong check's flash, on a grid cell and on a Clues-screen cell. FLASH_WRONG_MS in
+   engine-chrome.mjs must match the duration. */
+:root {
+  --flash-wrong-color: #ef9a9a;
+  --flash-wrong-duration: 600ms;
+}
+@keyframes flash-wrong {
+  0%   { opacity: 1; }
+  20%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+.flash-wrong-overlay {
+  fill: var(--flash-wrong-color);
+  pointer-events: none;
+  animation: flash-wrong var(--flash-wrong-duration) ease-out forwards;
+}
+/* No end keyframe: it fades to the cell's own background. */
+@keyframes flash-wrong-cell {
+  0%, 20% { background: var(--flash-wrong-color); }
+}
+html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wrong-duration) ease-out; }
+
+}
+@layer tool {
+#grid-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+#spiral-svg {
+  max-width: min(100%, 500px);
+  height: auto;
+  display: block;
+}
+
+.puzzle-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(500px, 100%) minmax(0, 1fr);
+  grid-template-areas: "left center right";
+  gap: 0 32px;
+  align-items: start;
+}
+
+.puzzle-center        { grid-area: center; }
+.clue-section-inward  { grid-area: left; }
+.clue-section-outward { grid-area: right; }
+
+.puzzle-center {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (max-width: 880px) {
+  .puzzle-body {
+    display: block;
+  }
+  .clue-section-inward,
+  .clue-section-outward {
+    margin-top: 24px;
+  }
+}
+
+/* A cell range ("12–18.") is wider than a clue number. */
+.clue-range {
+  min-width: 5em;
+  font-variant-numeric: tabular-nums;
+}
+
+}
+@layer theme {
+/* theme-base: neutral defaults — every --theme-* var a theme can override.
+   A theme's <name>-tokens.css need only override what differs from these. */
+:root {
+  /* Fonts */
+  --theme-font-body:    system-ui, -apple-system, sans-serif;
+  --theme-font-display: var(--theme-font-body);
+  --theme-font-button:  var(--theme-font-body);
+  --theme-font-cell:    var(--theme-font-body);
+
+  /* Masthead / title / byline */
+  --theme-color-header-rule: #cccccc;
+  --theme-header-align:      center;
+  --theme-title-size:        2rem;
+  --theme-title-tracking:    normal;
+  --theme-title-transform:   none;
+  --theme-color-title:       var(--theme-color-text);
+  --theme-byline-style:      normal;
+  --theme-byline-size:       0.875rem;
+
+  /* Page */
+  --theme-color-bg:    #ffffff;
+  --theme-color-text:  #111111;
+  --theme-color-muted: #555555;
+  --theme-color-link:  #0000ee;
+
+  /* Bars / borders */
+  --theme-color-bar-border:  #cccccc;
+  --theme-color-soft-border: #cccccc;
+
+  /* Corner radii: text buttons, toggles and keys; and the round menu, help and keys
+     buttons. */
+  --theme-control-radius:     4px;
+  --theme-icon-button-radius: 50%;
+
+  /* Primary button */
+  --theme-color-btn-bg:       #333333;
+  --theme-color-btn-text:     #ffffff;
+  --theme-button-tracking:    0.05em;
+
+  /* Secondary / toggle button colors */
+  --theme-color-btn2-bg:     #eeeeee;
+  --theme-color-btn2-border: #aaaaaa;
+  --theme-color-btn2-hover:  #e0e0e0;
+
+  /* Clear button */
+  --theme-color-clear-fg:       #999999;
+  --theme-color-clear-hover-fg: #333333;
+
+  /* Grid cells */
+  --theme-color-cell-bg:     #ffffff;
+  --theme-color-cell-stroke: #999999;
+  --theme-color-cell-text:   #111111;
+
+  /* Cell / clue states */
+  --theme-color-highlight:            #deeeff;
+  --theme-color-band-even:            var(--theme-color-cell-bg);
+  --theme-color-highlight-band-even:  var(--theme-color-highlight);
+  --theme-color-active:               #b8d4f5;
+  --theme-color-active-stroke:        #1e5799;
+  /* The active clue row or block (Marching Bands' clue groups):
+     a theme whose active shade is too strong over that much area softens it here. */
+  --theme-color-active-clue:          var(--theme-color-active);
+  --theme-color-clue-hover:           #eeeeee;
+  --theme-color-secondary-entry:      #f0f0f0;
+  --theme-clue-radius:                2px;
+
+  /* Snake-charmer-specific secondary-active cell */
+  --theme-color-secondary-active:        #7aaed8;
+  --theme-color-secondary-active-stroke: #3a72a8;
+
+  /* Cell marks: a checked letter's color, the revealed flag and the wrong slash. A mark
+     never touches the cell's fill (theme-components.css → .mark-flag). */
+  --theme-color-checked-text:  #166534;
+  --theme-color-revealed-flag: #166534;
+  --theme-color-wrong-slash:   #991b1b;
+
+  /* Filled clue: every cell the clue owns has content, right or wrong — like crossing it
+     off by hand. Distinct from Correct above (whole board verified). Defaults are no-ops;
+     a theme opts in. Contract: docs/CROSS_TOOL_SPEC.md → "Filled clues". */
+  --theme-clue-filled-decoration: none;
+  --theme-clue-filled-opacity:    1;
+
+  /* Decorations */
+  --theme-color-circle:      #cccccc;
+  --theme-color-curl:        #aaaaaa;
+  --theme-color-cell-center: #222222;
+
+  /* Instructions */
+  --theme-color-instructions: var(--theme-color-muted);
+  --theme-instructions-size:  0.85rem;
+
+  /* Congrats / overlay */
+  --theme-color-overlay:         rgba(0, 0, 0, 0.45);
+  --theme-color-congrats-bg:     #2e7d32;
+  --theme-color-congrats-border: #1b5e20;
+  --theme-color-congrats-text:   #ffffff;
+  --theme-card-radius:           10px;
+
+  /* Phone: the zoomed grid's edge shadow, where more grid lies past the view */
+  --theme-color-edge-shadow: rgba(0, 0, 0, 0.28);
+
+  /* Done-wrong */
+  --theme-color-wrong-bg:     #fff3e0;
+  --theme-color-wrong-border: #e65100;
+  --theme-color-wrong-text:   var(--theme-color-text);
+
+  /* Danger */
+  --theme-color-danger: #b91c1c;
+}
+
+/* Swiss theme — International Typographic Style: a system grotesque, black on white,
+   and one accent (orange) used flat. Everything that is not the accent is black, white
+   or a neutral gray, except two spot colors kept to cell marks: a blue for a checked
+   letter and a red for the wrong slash. Overrides theme-base. */
+:root {
+  --theme-font-body:    'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --theme-font-display: var(--theme-font-body);
+  --theme-font-button:  var(--theme-font-body);
+  --theme-font-cell:    var(--theme-font-body);
+
+  --theme-color-header-rule: #111111;
+  --theme-header-align:      left;
+  --theme-title-size:        3.2rem;
+  --theme-title-tracking:    -0.02em;
+  --theme-title-transform:   lowercase;
+
+  --theme-color-muted: #444444;
+  /* Text-colored, told apart by its underline: a blue link would be a second hue. */
+  --theme-color-link:  #111111;
+
+  --theme-color-bar-border:  #111111;
+  --theme-color-soft-border: #111111;
+
+  --theme-control-radius:     0;
+  --theme-icon-button-radius: 0;
+
+  --theme-color-btn-bg:    #111111;
+  --theme-button-tracking: 0;
+
+  --theme-color-btn2-bg:     #ffffff;
+  --theme-color-btn2-border: #111111;
+  --theme-color-btn2-hover:  #eeeeee;
+
+  --theme-color-clear-fg:       #777777;
+  --theme-color-clear-hover-fg: #111111;
+
+  --theme-color-cell-stroke: #111111;
+
+  /* The accent: the active entry, and a deeper shade for the active cell and clue. */
+  --theme-color-highlight:     #f9c55f;
+  --theme-color-active:        #ee8a00;
+  --theme-color-active-stroke: #111111;
+  /* The active clue, row or block, takes the lighter shade; the deeper is too heavy. */
+  --theme-color-active-clue: var(--theme-color-highlight);
+
+  --theme-color-band-even:       #ececec;
+  --theme-color-clue-hover:      #eeeeee;
+  --theme-color-secondary-entry: #e2e2e2;
+  --theme-clue-radius:           0;
+
+  --theme-color-secondary-active:        #bdbdbd;
+  --theme-color-secondary-active-stroke: #111111;
+
+  /* Cell marks: the two spot colors, and a black flag. The slash is a deeper shade of
+     --theme-color-danger, which is too light against the orange cursor. */
+  --theme-color-checked-text:  #1f45b8;
+  --theme-color-revealed-flag: #111111;
+  --theme-color-wrong-slash:   #9e0c24;
+
+  --theme-clue-filled-opacity: 0.4;
+
+  --theme-color-circle:      #8a8a8a;
+  --theme-color-curl:        #111111;
+  --theme-color-cell-center: #111111;
+
+  --theme-color-overlay:         rgba(255, 255, 255, 0.75);
+  --theme-color-congrats-bg:     #111111;
+  --theme-color-congrats-border: #111111;
+  --theme-card-radius:           0;
+
+  /* Black on white, so the box does not read as the accent. */
+  --theme-color-wrong-bg:     #ffffff;
+  --theme-color-wrong-border: #111111;
+
+  --theme-color-danger: #c8102e;
+}
+
+/* theme-components: every tool-agnostic selector, driven entirely by --theme-*.
+   Per-tool namespaced sections live at the bottom (body class hook: .tool-<name>).
+
+   SVG cell states (.cell.active-entry / .cell.active-cell) live here safely:
+   marching-bands' band rules use :where() (specificity 0,1,0) so these 0,2,0
+   rules always win regardless of source order. */
+
+body {
+  background:   var(--theme-color-bg);
+  color:        var(--theme-color-text);
+  font-family:  var(--theme-font-body);
+}
+
+/* Masthead */
+.puzzle-header {
+  text-align:     var(--theme-header-align);
+  border-bottom:  2px solid var(--theme-color-header-rule);
+  padding-bottom: 12px;
+  margin-bottom:  24px;
+}
+h1.title {
+  font-family:     var(--theme-font-display);
+  font-size:       var(--theme-title-size);
+  line-height:     1;
+  letter-spacing:  var(--theme-title-tracking);
+  text-transform:  var(--theme-title-transform);
+  color:           var(--theme-color-title);
+}
+.byline {
+  font-style: var(--theme-byline-style);
+  color:      var(--theme-color-muted);
+  font-size:  var(--theme-byline-size);
+  margin-top: 6px;
+}
+
+#active-clue-bar {
+  background:    var(--theme-color-bg);
+  border-bottom: 1px solid var(--theme-color-bar-border);
+}
+html.phone #clue-full {
+  background: var(--theme-color-bg);
+  color:      var(--theme-color-text);
+  border-top: 1px solid var(--theme-color-bar-border);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* #menu-btn and #help-btn sit *within* #active-clue-bar's own band instead of floating
+   below it as a separate row — no extra vertical space. Pure CSS calc() against the
+   bar's min-height (base.css), not JS-measured: nothing has to re-measure it when the
+   bar or the viewport resizes. --corner-* are the buttons' measurements (base.css);
+   Marching Bands, with no bar, keeps the plain default `top`. The phone layout moves the
+   buttons into its top bar instead (phone.css). */
+.has-clue-bar #menu-btn,
+.has-clue-bar #help-btn { top: calc((var(--active-clue-bar-space) - var(--corner-btn)) / 2); }
+
+/* #menu-panel and #help-panel open directly below the bar's bottom edge (8px gap,
+   matching Marching Bands' static button-to-panel gap from base.css) — same
+   CSS-not-JS reasoning as the buttons above. */
+.has-clue-bar #menu-panel,
+.has-clue-bar #help-panel { top: calc(var(--active-clue-bar-space) + var(--corner-gap)); }
+
+/* Right gutter for the bar's own text now that #menu-btn shares its row: its width and
+   inset, plus a gap to the text. Lives here rather than in base.css's shared
+   #active-clue-bar rule since only these three tools ever place the button there.
+   A page with a help button (setupHelpMenu puts `has-help-btn` on <body>; a hashed
+   build has none) also reserves its width and the gap between them. Same specificity as
+   the rule above, so it follows it; the phone layer overrides both. */
+.has-clue-bar #active-clue-bar { padding-right: var(--corner-btn-2); }
+.has-help-btn #active-clue-bar { padding-right: calc(var(--corner-btn-2) + var(--corner-btn) + var(--corner-gap)); }
+
+/* Direction label ("Across"/"Down", "In"/"Out") before the bar's clue number. */
+.active-clue-dir {
+  font-size:      0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color:          var(--theme-color-muted);
+  opacity:        0.6;
+  flex-shrink:    0;
+}
+
+.instructions {
+  color:         var(--theme-color-instructions);
+  font-size:     var(--theme-instructions-size);
+  line-height:   1.5;
+  margin-bottom: 20px;
+}
+.instructions p + p { margin-top: 0.6em; }
+
+/* Links in a clue or the instructions (markdown). Visited ones keep the color: the
+   browser's own visited purple is unreadable on a dark theme. */
+a { color: var(--theme-color-link); }
+
+.clue-item { border-radius: var(--theme-clue-radius); }
+/* Clue-row highlights for the tools whose rows are <li class="clue-item"> (Marching
+   Bands highlights its .clue-group instead, below). :where() keeps :hover at the same
+   specificity as the state rules, so the state rules that follow win by source order. */
+:where(.tool-snake-charmer, .tool-spiral, .tool-crushword) .clue-item:hover { background: var(--theme-color-clue-hover); }
+.clue-item.active-clue     { background: var(--theme-color-active-clue); }
+.clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
+.clue-item.filled .clue-text { text-decoration: var(--theme-clue-filled-decoration); opacity: var(--theme-clue-filled-opacity); }
+
+.clue-section h2 {
+  color:          var(--theme-color-text);
+  border-bottom:  1px solid var(--theme-color-soft-border);
+  padding-bottom: 4px;
+}
+
+/* Every button: a button takes the browser's own font unless told otherwise. */
+button { font-family: var(--theme-font-button); }
+
+/* Corner radii: one for every text button, toggle and key (the phone keyboard's too),
+   another for the three icon buttons. No other layer sets a radius on these.
+   .puzzle-toggle's options, buttons themselves, stay square inside its frame. */
+button,
+.puzzle-toggle,
+.menu-toggle,
+kbd { border-radius: var(--theme-control-radius); }
+.puzzle-toggle .toggle-opt { border-radius: 0; }
+#menu-btn,
+#help-btn,
+#keys-btn { border-radius: var(--theme-icon-button-radius); }
+
+/* Primary button: the phone's first-visit Start */
+html.phone .intro-card > button {
+  font-size:      0.95rem;
+  padding:        8px 22px;
+  background:     var(--theme-color-btn-bg);
+  color:          var(--theme-color-btn-text);
+  border:         none;
+  letter-spacing: var(--theme-button-tracking);
+}
+/* Clear button — flat, borderless, left-aligned, matching .menu-toggle
+   (base.css): all are plain menu-panel rows now, not a bordered pill next to a
+   bare checkbox. Color cues (armed, hover) carry entirely through text color
+   and the shared row-hover background instead of a border. */
+#clear-btn {
+  font-size:      0.8rem;
+  padding:        6px 8px;
+  background:     transparent;
+  border:         none;
+  text-align:     left;
+  color:          var(--theme-color-clear-fg);
+  letter-spacing: var(--theme-button-tracking);
+}
+#clear-btn:hover              { color: var(--theme-color-clear-hover-fg); }
+#clear-btn.armed              { color: var(--theme-color-danger); }
+/* With no hover on a phone, the pale resting color reads as disabled next to the menu's
+   other rows, so it takes the text color there; the armed state stays danger. */
+html.phone #clear-btn         { color: var(--theme-color-text); }
+html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
+#clear-btn:hover,
+.menu-toggle:hover { background: var(--theme-color-clue-hover); }
+
+/* Rebus button — the pointer route into multi-letter entry, mirroring the Enter key.
+   It is disabled only where composition is refused whatever the cell's capacity (see
+   setupRebusButton in shared/engine-chrome.mjs); otherwise it looks identical on every
+   square, in every build, which keeps it from signalling which cells are rebus.
+   Composition-in-progress is shown on the cell itself (.cell.active-cell.composing
+   below), so the button carries only its label — whose width is reserved in
+   shared/base.css so the Rebus→Done swap does not reflow #controls. */
+#rebus-btn {
+  font-size:      0.8rem;
+  padding:        5px 12px;
+  background:     transparent;
+  color:          var(--theme-color-muted);
+  border-color:   var(--theme-color-btn2-border);
+  letter-spacing: var(--theme-button-tracking);
+}
+#rebus-btn:hover:not(:disabled) { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+
+/* Puzzle toggle (direction / mode / loop) */
+.puzzle-toggle { border: 1px solid var(--theme-color-btn2-border); }
+.toggle-opt {
+  font-size:      0.9rem;
+  font-weight:    bold;
+  padding:        6px 16px;
+  background:     var(--theme-color-btn2-bg);
+  color:          var(--theme-color-muted);
+  letter-spacing: 0.04em;
+}
+.toggle-opt:not(:last-child)   { border-right: 1px solid var(--theme-color-btn2-border); }
+.toggle-opt.active             { background: var(--theme-color-btn-bg); color: var(--theme-color-btn-text); cursor: default; }
+.toggle-opt:not(.active):hover { background: var(--theme-color-btn2-hover); }
+
+/* SVG cell states */
+.cell              { fill: var(--theme-color-cell-bg); stroke: var(--theme-color-cell-stroke); stroke-width: 0.5; }
+.cell.active-entry { fill: var(--theme-color-highlight); }
+.cell.active-cell  { fill: var(--theme-color-active); stroke: var(--theme-color-active-stroke); stroke-width: 1.5; }
+
+.style-circle { fill: none; stroke: var(--theme-color-circle); stroke-width: 1; }
+
+/* No font-size on .cell-letter or .cell-num: Spiral sizes these dynamically as SVG
+   presentation attributes; a CSS font-size overrides them silently. The other tools
+   size them in their own template base.css. */
+.cell-letter         { font-family: var(--theme-font-cell); fill: var(--theme-color-cell-text); }
+/* A mark never changes the cell's fill, which belongs to the cursor and the highlights:
+   a checked cell colors its letter, and the flag and slash are shapes in .mark-layer
+   (setupMarkLayer, shared/engine-chrome.mjs). */
+.cell-letter[data-mark="checked"] { fill: var(--theme-color-checked-text); }
+.mark-shape { pointer-events: none; }
+.mark-flag  { fill: var(--theme-color-revealed-flag); }
+/* Screen pixels, not user units: each tool's viewBox scales its cells differently. */
+.mark-slash { stroke: var(--theme-color-wrong-slash); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.cell-num            { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
+
+/* The direction chevron (Spiral, Marching Bands); each tool sets its stroke width, which
+   scales with its own viewBox. */
+#direction-chevron { stroke: var(--theme-color-active-stroke); opacity: 0.5; }
+
+/* Multi-letter (rebus) cell content. Sized with transform, not font-size: Spiral writes
+   its per-puzzle letter size as an SVG presentation attribute, which any CSS font-size
+   rule would outrank (e2e/spiral.spec.js asserts exactly that). transform composes with
+   whatever base size each tool established, so one shared block covers all three tools
+   with no per-tool font math. The scale pivots on the letter's own x,y, which every
+   tool centers its text on (text-anchor middle): setLetterText sets transform-origin
+   from those attributes, in the view-box coordinates that transform-box: view-box
+   resolves them in. fill-box (the origin as "center") would be simpler, but WebKit
+   mis-resolves it for SVG <text>, so the letter slid toward the drawing's top-left. */
+.cell-letter          { transform-box: view-box; }
+.cell-letter.len-2    { transform: scale(0.62); }
+.cell-letter.len-3    { transform: scale(0.45); }
+.cell-letter.len-long { transform: scale(0.34); }
+
+/* Rebus entry in progress. Specificity 0,3,0 beats .cell.active-cell (0,2,0) without
+   depending on source order; the composing cell is always the active cell, so the
+   selector states that invariant rather than working around it. Fill and stroke color
+   are inherited from .cell.active-cell — only the dash pattern distinguishes the state,
+   so no theme needs a new token. */
+.cell.active-cell.composing { stroke-width: 2.5; stroke-dasharray: 4 2; }
+
+/* Congrats modal — backdrop handles the overlay dim; #congrats is the visible card */
+#congrats-dialog::backdrop { background: var(--theme-color-overlay); }
+
+/* Keys button (fixed bottom-right corner, created by setupKeysOverlay) */
+#keys-btn {
+  background: var(--theme-color-btn2-bg);
+  border:     1px solid var(--theme-color-btn2-border);
+  color:      var(--theme-color-muted);
+}
+#keys-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+
+/* Menu and help buttons (fixed top-right corner, created by setupOptionsMenu and
+   setupHelpMenu) — same var usage as #keys-btn. */
+#menu-btn,
+#help-btn {
+  background: var(--theme-color-btn2-bg);
+  border:     1px solid var(--theme-color-btn2-border);
+  color:      var(--theme-color-muted);
+}
+#menu-btn:hover,
+#help-btn:hover { background: var(--theme-color-btn2-hover); color: var(--theme-color-text); }
+
+/* Menu dropdown card — same var usage as #keys-modal. */
+#menu-panel,
+#help-panel {
+  background:    var(--theme-color-bg);
+  color:         var(--theme-color-text);
+  border:        2px solid var(--theme-color-soft-border);
+  border-radius: var(--theme-card-radius);
+}
+/* #clear-btn is full width inside the dropdown. */
+#menu-panel #clear-btn { width: 100%; }
+/* Each button of the help panel is a plain row, as #clear-btn is of ☰'s. */
+#help-panel button {
+  width:          100%;
+  font-size:      0.8rem;
+  padding:        6px 8px;
+  background:     transparent;
+  border:         none;
+  color:          var(--theme-color-text);
+  text-align:     left;
+  letter-spacing: var(--theme-button-tracking);
+}
+#help-panel button:hover:not(:disabled) { background: var(--theme-color-clue-hover); }
+#reveal-puzzle-btn.armed { color: var(--theme-color-danger); }
+
+/* Keys modal — the <dialog> dim is its ::backdrop (skeleton sets this transparent) */
+#keys-overlay::backdrop { background: var(--theme-color-overlay); }
+#keys-modal {
+  background:    var(--theme-color-bg);
+  color:         var(--theme-color-text);
+  border:        2px solid var(--theme-color-soft-border);
+  border-radius: var(--theme-card-radius);
+  padding:       20px 24px;
+  min-width:     220px;
+}
+#keys-modal-header {
+  display:         flex;
+  justify-content: space-between;
+  align-items:     center;
+  margin-bottom:   12px;
+  font-weight:     bold;
+  font-size:       1rem;
+  letter-spacing:  0.03em;
+}
+#keys-close {
+  background: transparent;
+  border:     none;
+  font-size:  1.1rem;
+  line-height: 1;
+  padding:    0 0 0 12px;
+  color:      var(--theme-color-text);
+}
+#keys-close:hover { opacity: 0.65; }
+#keys-modal table { border-collapse: collapse; width: 100%; }
+#keys-modal td    { padding: 3px 0; vertical-align: middle; }
+#keys-modal td:first-child { padding-right: 14px; white-space: nowrap; }
+kbd {
+  display:       inline-block;
+  background:    var(--theme-color-btn2-bg);
+  border:        1px solid var(--theme-color-btn2-border);
+  padding:       1px 5px;
+  font-family:   monospace;
+  font-size:     0.78rem;
+  color:         var(--theme-color-text);
+}
+
+@keyframes congrats-pop {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+#congrats {
+  background:     var(--theme-color-congrats-bg);
+  color:          var(--theme-color-congrats-text);
+  border:         2px solid var(--theme-color-congrats-border);
+  border-radius:  var(--theme-card-radius);
+  padding:        28px 36px;
+  text-align:     center;
+  animation:      congrats-pop 200ms ease-out;
+}
+#congrats-msg {
+  font-size:      1.2rem;
+  font-weight:    bold;
+  letter-spacing: 0.04em;
+}
+#congrats-time {
+  font-size:      1rem;
+  font-weight:    normal;
+  margin-top:     8px;
+  letter-spacing: 0;
+  opacity:        0.85;
+}
+#congrats-actions {
+  display:         flex;
+  flex-wrap:       wrap;
+  gap:             12px;
+  justify-content: center;
+  margin-top:      20px;
+}
+#congrats-copy-btn,
+#congrats-view-btn,
+#congrats-play-btn {
+  background:   var(--theme-color-btn2-bg);
+  border-color: var(--theme-color-btn2-border);
+  color:        var(--theme-color-text);
+}
+#congrats-play-btn { font-weight: bold; }
+
+#done-wrong {
+  margin-top:     20px;
+  padding:        16px 24px;
+  border-radius:  var(--theme-card-radius);
+  background:     var(--theme-color-wrong-bg);
+  border:         2px solid var(--theme-color-wrong-border);
+  color:          var(--theme-color-wrong-text);
+  font-size:      1.05rem;
+  font-weight:    bold;
+  text-align:     center;
+  letter-spacing: 0.04em;
+}
+
+/* Phone solving view (shared/engine-phone.mjs; structure in phone.css). The keys take
+   the secondary-button tokens and sit in a tray of the hover shade. */
+html.phone #solve-view { background: var(--theme-color-bg); }
+html.phone .solve-top  { border-bottom: 2px solid var(--theme-color-header-rule); }
+html.phone .solve-title {
+  font-family: var(--theme-font-display);
+  color:       var(--theme-color-title);
+}
+html.phone .solve-byline {
+  font-style: var(--theme-byline-style);
+  color:      var(--theme-color-muted);
+}
+html.phone #intro { background: var(--theme-color-overlay); }
+html.phone .intro-card {
+  background:    var(--theme-color-bg);
+  color:         var(--theme-color-text);
+  border-radius: var(--theme-card-radius);
+}
+html.phone #clues-btn {
+  background:     var(--theme-color-btn2-bg);
+  border-color:   var(--theme-color-btn2-border);
+  color:          var(--theme-color-text);
+  letter-spacing: var(--theme-button-tracking);
+}
+html.phone #solve-bar  { border-top: 1px solid var(--theme-color-bar-border); }
+/* The zoomed grid's edge shadows: darkest at the side, fading inward. */
+html.phone .edge-shadow-stop { stop-color: var(--theme-color-edge-shadow); }
+html.phone .bar-step   { background: transparent; color: var(--theme-color-muted); }
+html.phone .nav-label  { color: var(--theme-color-title); }
+html.phone .nav-count  { color: var(--theme-color-muted); }
+html.phone #drawn-kb {
+  background: var(--theme-color-btn2-hover);
+  border-top: 1px solid var(--theme-color-bar-border);
+}
+html.phone #drawn-kb button {
+  background:   var(--theme-color-btn2-bg);
+  border:       1px solid var(--theme-color-btn2-border);
+  color:        var(--theme-color-text);
+}
+html.phone #drawn-kb button:active { background: var(--theme-color-clue-hover); }
+/* The fill-in list's cells, as the grid colors its own: the active clue's row as its
+   active entry, the cursor as its active cell. */
+html.phone .list-cell {
+  font-family: var(--theme-font-cell);
+  background:  var(--theme-color-cell-bg);
+  border:      1px solid var(--theme-color-cell-stroke);
+  color:       var(--theme-color-cell-text);
+}
+html.phone .clue-item.active-clue .list-cell { background: var(--theme-color-highlight); }
+html.phone .clue-item .list-cell.list-cursor {
+  background:   var(--theme-color-active);
+  border-color: var(--theme-color-active-stroke);
+  box-shadow:   inset 0 0 0 1px var(--theme-color-active-stroke);
+}
+/* A list cell shows its grid cell's mark the same way: a checked letter's color, the
+   revealed flag as a corner triangle and the wrong slash (an HTML box, so CSS draws
+   them). */
+html.phone .clue-item .list-cell[data-mark="checked"] { color: var(--theme-color-checked-text); }
+html.phone .clue-item .list-cell[data-mark="revealed"]::after {
+  content:        '';
+  position:       absolute;
+  inset:          0;
+  background:     var(--theme-color-revealed-flag);
+  clip-path:      polygon(70% 0, 100% 0, 100% 30%);
+  pointer-events: none;
+}
+html.phone .clue-item .list-cell[data-mark="wrong"]::after {
+  content:        '';
+  position:       absolute;
+  inset:          0;
+  /* Toward the bottom-right, so the midline runs bottom-left to top-right, as on
+     the grid. */
+  background:     linear-gradient(to bottom right, transparent calc(50% - 1px),
+                    var(--theme-color-wrong-slash) calc(50% - 1px),
+                    var(--theme-color-wrong-slash) calc(50% + 1px), transparent calc(50% + 1px));
+  pointer-events: none;
+}
+/* A cell composing a rebus dashes its outline, as in the grid (the inset shadow would
+   fill the dashes in, so it goes). */
+html.phone .clue-item .list-cell.list-cursor.composing {
+  border-width: 2px;
+  border-style: dashed;
+  box-shadow:   none;
+}
+
+/* Landscape phones (the query and its reason are defined in phone.css). .solve-top has no
+   box there, so the strip's rule is drawn by the view's ::before, which spans it; the
+   bar loses its own top rule, and the stage's right edge, the stage/keyboard divide,
+   stands in for the keyboard's (a plain list takes the whole width, so has none). */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  html.phone #solve-view::before { border-bottom: 2px solid var(--theme-color-header-rule); }
+  html.phone #solve-bar { border-top: none; }
+  html.phone #solve-stage { border-right: 1px solid var(--theme-color-bar-border); }
+  html.phone.kb-left #solve-stage { border-right: none; border-left: 1px solid var(--theme-color-bar-border); }
+  html.phone #solve-view:has(> #drawn-kb[hidden]) #solve-stage { border: none; }
+  /* The full clue hangs below the strip, so its edge and shadow face down. */
+  html.phone #clue-full {
+    border-top: none;
+    border-bottom: 1px solid var(--theme-color-bar-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* ── Per-tool selectors (body class hook: .tool-<name>) ─────────────────────
+   Each tool's <body> carries a class like .tool-snake-charmer so these rules
+   scope to the right tool without a separate per-tool CSS file. Plain sizing and
+   spacing that reads no --theme-* token belongs in the tool's template base.css
+   instead. */
+
+/* Snake Charmer */
+.tool-snake-charmer .cell.secondary-entry { fill: var(--theme-color-secondary-entry); }
+.tool-snake-charmer .cell.active-cell.secondary-entry {
+  fill:         var(--theme-color-secondary-active);
+  stroke:       var(--theme-color-secondary-active-stroke);
+  stroke-width: 1.5;
+}
+
+/* Marching Bands — band fills are unnamespaced to keep :where() specificity
+   below .cell.active-entry (0,2,0); .band-even/.band-odd are MB-exclusive.
+   Prefixing with .tool-marching-bands would raise these to 0,2,0 too, tying
+   with active-entry and leaving the winner to source order (wrong) — dead
+   CSS in other tools, but harmless since the classes are MB-exclusive. */
+.cell:where(.band-even) { fill: var(--theme-color-band-even); }
+.cell:where(.band-odd)  { fill: var(--theme-color-cell-bg); }
+.cell.band-even.active-entry { fill: var(--theme-color-highlight-band-even); }
+.tool-marching-bands .band-label  { font-family: var(--theme-font-cell); fill: var(--theme-color-muted); }
+.tool-marching-bands .row-label   { font-family: var(--theme-font-cell); fill: var(--theme-color-text); }
+.tool-marching-bands .cell-center { fill: var(--theme-color-cell-center); }
+.tool-marching-bands .clue-group:hover          { background: var(--theme-color-clue-hover); }
+.tool-marching-bands .clue-group.active-clue    { background: var(--theme-color-active-clue); }
+.tool-marching-bands .clue-group.secondary-entry { background: var(--theme-color-secondary-entry); }
+.tool-marching-bands #direction-chevron { stroke-width: 1.6; }
+
+/* Spiral */
+.tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
+.tool-spiral #direction-chevron { stroke-width: 0.9; }
+/* Crushword, and Marching Bands when stacked */
+/* Opaque background is load-bearing, not cosmetic: .puzzle-center is
+   position:sticky over the clues (each tool's base.css), which scroll directly
+   underneath it in the same horizontal space — without this, clue text
+   would show through the sticky grid as it scrolls. */
+.tool-crushword .puzzle-center,
+.tool-marching-bands .puzzle-center { background: var(--theme-color-bg); }
+
+/* Crushword */
+.tool-crushword .cell-block  { fill: var(--theme-color-cell-center); }
+/* Every Crushword cell composes from its first keystroke, so the shared
+   dashed outline would flag nothing; reset to plain .active-cell. */
+.tool-crushword .cell.active-cell.composing { stroke-width: 1.5; stroke-dasharray: none; }
+/* Deliberately static: a blink competes for attention in a dense grid. */
+.tool-crushword .cell-caret { fill: var(--theme-color-cell-text); pointer-events: none; }
+
+}
+@layer phone {
+/* Phone solving view (html.phone; shared/engine-phone.mjs): structure. Its colors are in
+   theme-components.css. This file is the `phone` cascade layer (composeThemeCss), above
+   the shared, tool and theme layers, so a rule here overrides any desktop rule without
+   having to out-specify it. The html.phone prefix on every rule only scopes it to the
+   phone layout. */
+
+/* Everything the phone layout shows has moved out of .puzzle-body. What's left includes
+   Crushword's sticky, opaque .puzzle-center, which would otherwise float empty over the
+   page. #controls goes with it, holding only the desktop toggle by now. */
+html.phone .puzzle-body,
+html.phone #keys-btn { display: none; }
+
+html.phone body.has-clue-bar { padding-top: 0; }
+
+/* The view and its keyboard run edge to edge, with nothing above them on screen: the
+   top bar and the Clues screen show the header and instructions (setupPhoneLayout).
+   They still print, with a gutter. */
+html.phone .puzzle-main { max-width: none; padding: 0; }
+html.phone .puzzle-header,
+html.phone #instructions { padding-left: 16px; padding-right: 16px; }
+@media screen {
+  html.phone .puzzle-header,
+  html.phone #instructions { display: none; }
+}
+/* The copies fill their container, a pane or a card, rather than keep the page's
+   centered reading column. */
+html.phone .list-instructions,
+html.phone .intro-text { max-width: none; }
+html.phone .list-instructions { margin: 0 0 16px; }
+/* The card's own gap spaces it from Start. */
+html.phone .intro-text { margin: 0; }
+
+/* One screen high, in normal page flow (below the header, which only prints), and
+   nothing in it is sticky or fixed. In a frame, 100svh is the frame's height, which the
+   host makes one screen high (setupEmbedResize's `fill`). */
+html.phone #solve-view {
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  /* No double-tap zoom on anything in the view: keys, the bar's steps and the list's
+     cells are all tapped fast. It limits every descendant, so none repeats it. */
+  touch-action: manipulation;
+}
+/* The congrats card's buttons, at the tap minimum. */
+html.phone #congrats-actions button { min-height: var(--tap-min); padding: 0 16px; }
+/* First-visit instructions (setupPhoneLayout): a card over the whole view. */
+html.phone #intro {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+html.phone .intro-card {
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+html.phone .intro-card > button { align-self: center; min-width: 120px; min-height: var(--tap-min); }
+
+/* Top bar: title, Clues/Grid, menu, 52px high to leave the buttons clear of the
+   divider below. The menu panel opens below it, absolutely, since a fixed panel would
+   stay put while the bar scrolls with the page. */
+html.phone .solve-top {
+  flex: none;
+  min-height: 52px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 0 12px;
+}
+/* The title's slot, which the done-wrong banner covers while it shows (setupPhoneLayout).
+   Its text is clipped to the slot, so the bar keeps its height. */
+html.phone .solve-head-slot {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  position: relative;
+}
+html.phone .solve-head-slot #done-wrong {
+  position: absolute;
+  inset: 4px 0;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+/* The title, up to two lines, over the byline: the bar takes its height from them once,
+   at load, so a long title costs the grid a line instead of being cut off. */
+html.phone .solve-head {
+  flex: 1;
+  align-self: center;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+html.phone .solve-title {
+  font-weight: bold;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+html.phone .solve-byline {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html.phone #clues-btn { flex: none; height: var(--tap-min); min-width: 64px; }
+html.phone #menu-btn { position: static; flex: none; width: var(--tap-min); height: var(--tap-min); }
+html.phone #help-btn {
+  position: static;
+  flex: none;
+  width: var(--tap-min);
+  height: var(--tap-min);
+}
+html.phone #menu-panel { position: absolute; top: 100%; right: 8px; z-index: 10; }
+/* The help panel opens under its own button, right of ☰'s: the bar's 4px padding, ☰'s
+   width and a gap. */
+html.phone #help-panel {
+  position: absolute;
+  top: 100%;
+  right: calc(4px + var(--tap-min) + 8px);
+  z-index: 10;
+}
+/* The menus' rows at the tap minimum. */
+html.phone #menu-panel .menu-toggle,
+html.phone #menu-panel #clear-btn,
+html.phone #help-panel button { min-height: var(--tap-min); }
+
+/* The stage takes what the bars leave. The grid fills it, and the SVG's viewBox scales
+   it to fit; the ID rules below undo each tool's desktop sizing. */
+html.phone #solve-stage { flex: 1; min-height: 0; }
+html.phone #grid-pane { height: 100%; padding: 6px 8px; }
+html.phone #grid-pane > *,
+html.phone #ring-svg,
+html.phone #spiral-svg,
+html.phone #puzzle-svg { width: 100%; height: 100%; max-width: none; }
+html.phone #ring-container { margin-top: 0; min-width: 0; }
+
+/* The zoomed grid's edge shadows (addEdgeShadows in engine-phone.mjs): a strip inside
+   the grid's SVG along each side beyond which more grid lies (#grid-pane[data-more],
+   from attachSvgZoom's onEdges). They fade rather than hide, since they change as the
+   view moves. Colors in theme-components.css. */
+.edge-shadows { pointer-events: none; }
+.edge-shadow {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+html.phone #grid-pane[data-more~="top"]    .edge-shadow[data-side="top"],
+html.phone #grid-pane[data-more~="bottom"] .edge-shadow[data-side="bottom"],
+html.phone #grid-pane[data-more~="left"]   .edge-shadow[data-side="left"],
+html.phone #grid-pane[data-more~="right"]  .edge-shadow[data-side="right"] { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .edge-shadow { transition: none; }
+}
+html.phone #grid-wrap { display: block; }
+
+/* Not overscroll-behavior: contain. Until the solver scrolls the view flush, the pane
+   fills most of the screen, and a swipe that couldn't pass to the page at the list's
+   end would leave the keyboard reachable only by its sliver on screen. */
+html.phone #list-pane {
+  height: 100%;
+  overflow-y: auto;
+  padding: 8px 16px;
+}
+
+/* The fill-in list (setupFillList): each clue's cell row on a line of its own below the
+   clue. Cells are 36px squares, a long entry wrapping onto more lines; under
+   html.list-nowrap (the options menu) they shrink instead, to keep it on one line. 36px,
+   not MIN_TAP's 44: near a grid cell's feel, and a ten-cell entry still fits a small
+   phone in two lines. A letter scales with its cell (cqw) and, in a rebus cell, with
+   its length (--len). The clue text takes the rest of the first line, so a long clue
+   wraps beside its number instead of dropping below it as an item of its own. */
+html.phone .clue-item { flex-wrap: wrap; }
+html.phone .clue-item > .clue-text { flex: 1 1 0; min-width: 0; }
+html.phone .list-cells {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 3px;
+  margin: 4px 0 2px;
+}
+html.phone .list-cell {
+  flex: none;
+  width: 36px;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  container-type: inline-size;
+  cursor: pointer;
+  position: relative; /* anchors a mark's ::after (theme-components.css) */
+}
+html.phone .list-letter {
+  font-size: min(55cqw, calc(100cqw / (var(--len, 1) + 0.2)));
+  font-weight: bold;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* Crushword's caret, a bar between two letters of the cursor's cell as in the grid. Its
+   margins give it a gap of its own, which the letter size reserves (the 0.2 above), so it
+   shows even at the edge of a full cell. */
+html.phone .list-caret {
+  display: inline-block;
+  width: 0.07em;
+  height: 0.9em;
+  margin: 0 0.05em;
+  vertical-align: -0.1em;
+  background: currentColor;
+}
+html.phone.list-nowrap .list-cells { flex-wrap: nowrap; }
+html.phone.list-nowrap .list-cell { flex: 1 1 0; width: auto; min-width: 0; max-width: 36px; }
+
+/* Bar row: one clue, at most two lines, between the ‹ › steps. Its height is fixed, so
+   a clue of any length leaves the grid where it is. The desktop bar's gutter for
+   #menu-btn goes, since the button is in the top bar now. */
+html.phone #solve-bar { flex: none; height: 48px; display: flex; position: relative; }
+html.phone .bar-step {
+  flex: none;
+  width: var(--tap-min);
+  padding: 0;
+  border: none;
+  font-size: 1.5rem;
+}
+/* The desktop bar's position and z-index don't belong in the bar row. */
+html.phone #active-clue-bar {
+  position: static;
+  z-index: auto;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  border-bottom: none;
+}
+/* Marching Bands' navigator takes the same bar row, so the same fixed height and
+   two-line clamp. Its row or band and clue count stack in a column at the left. */
+html.phone #clue-navigator {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+}
+/* Clear of the clue, so the label reads as a label. */
+html.phone .nav-meta + .nav-text { margin-left: 8px; }
+html.phone .nav-meta {
+  flex: none;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+html.phone .nav-label { font-weight: bold; font-size: 0.8rem; }
+html.phone .nav-text {
+  flex: 1;
+  align-self: center;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+html.phone #active-clue-secondary { display: none; }
+/* A cut-off clue in full (setupClueExpand): over the bar row, growing up over the foot
+   of the grid as far as the clue needs, so nothing else moves. */
+html.phone #clue-full {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  min-height: 100%;
+  max-height: 50svh;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+html.phone #active-clue-primary .active-clue-text {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* Drawn keyboard. Every row has a fixed height, an empty one too, so both layers are
+   the same height. Keys shrink to fit the row (min-width: 0, no padding): only their
+   height has to meet the tap minimum. */
+html.phone #drawn-kb {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 3px calc(6px + env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html.phone .kb-layer { display: flex; flex-direction: column; gap: 6px; }
+html.phone .kb-row { display: flex; gap: 4px; height: var(--key-h, var(--tap-min)); }
+html.phone .kb-layer > .kb-row:nth-child(2) { padding: 0 5%; }
+html.phone #drawn-kb button {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  font-size: 1.1rem;
+}
+html.phone #drawn-kb .kb-mod { flex-grow: 1.5; font-size: 0.85rem; }
+/* pre-line: a label may break itself over two lines (Crushword's Prev/Next cell). */
+html.phone #drawn-kb .kb-bottom button { font-size: 0.8rem; line-height: 1.15; white-space: pre-line; }
+html.phone #drawn-kb .kb-wide { flex-grow: 2; font-weight: bold; }
+html.phone #drawn-kb .kb-arrow { width: 1.1rem; height: 1.1rem; fill: currentColor; }
+/* Holds ABC and ⌫ at the digit layer's edges, where the letter layer has them. */
+html.phone .kb-spacer { flex: 7 1 0; }
+
+/* Landscape phones: a strip across the top (title, buttons) over the stage at the left
+   and, at the right, the drawn keyboard with the clue bar above it. CSS alone:
+   setupPhoneLayout builds the same DOM in both orientations, so rotating switches live.
+
+   max-height: phones in landscape are shorter than 500px; taller touch screens keep the
+   stacked layout, which has room for it (and which nobody has been able to test side by
+   side). Keep shared/engine-phone.mjs's LANDSCAPE_PHONE in step.
+
+   .solve-top is display: contents because the title and the buttons, its children, must
+   be items of the one grid that also holds the stage, the clue bar and the keyboard.
+
+   Columns: the first is the stage; the rest add up to --kb-w, the right column, and end
+   in the three button columns (auto, so a hashed page's missing help button leaves no
+   hole). The title spans the strip up to the buttons. Rows: the strip, the clue bar
+   (whatever the keyboard leaves of the column), the keyboard.
+
+   --kb-w: 55% keeps the keys as wide as portrait's on the narrowest phone; past 400px
+   wider keys gain nothing, and the grid (a wide Crushword grid above all) can use the
+   width. */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  html.phone #solve-view {
+    --strip-h: 54px;
+    --kb-w: min(55%, 400px);
+    display: grid;
+    grid-template-columns: calc(100% - var(--kb-w)) minmax(0, 1fr) auto auto auto;
+    grid-template-rows: var(--strip-h) minmax(0, 1fr) auto;
+  }
+  /* Key height: the tap minimum, unless the screen is too short to leave the clue bar
+     its own tap minimum above four rows of keys; then the rows shrink, to 32px at the
+     least. What is taken off the height: the keyboard's padding and gaps (6 + 10 + 3 * 6)
+     and its safe area. */
+  html.phone #solve-view {
+    --key-h: clamp(32px, calc((100svh - var(--strip-h) - var(--tap-min) - 34px - env(safe-area-inset-bottom)) / 4), var(--tap-min));
+  }
+  /* The strip's rule (theme-components.css), spanning the buttons too. */
+  html.phone #solve-view::before { content: ''; grid-area: 1 / 1 / 2 / -1; }
+  html.phone .solve-top { display: contents; }
+  html.phone .solve-head-slot { grid-area: 1 / 1 / 2 / 3; margin-left: 12px; }
+  /* The bottom margin, the rule's width, centers the buttons above the strip's rule. */
+  html.phone #clues-btn { grid-area: 1 / 3; align-self: center; margin: 0 4px 2px; }
+  html.phone #help-btn { grid-area: 1 / 4; align-self: center; margin-bottom: 2px; }
+  html.phone #menu-btn { grid-area: 1 / 5; align-self: center; margin: 0 4px 2px 0; }
+  html.phone #solve-stage { grid-area: 2 / 1 / 4 / 2; min-width: 0; }
+  /* Static, so #clue-full is placed against the view, not the bar. The bar takes the
+     column's height the keyboard leaves, so a long clue gets room. */
+  html.phone #solve-bar { grid-area: 2 / 2 / 3 / -1; height: auto; min-width: 0; position: static; }
+  /* The clue shows as many lines as the bar has height for. line-clamp takes only a
+     whole number, so the height is queried in steps, one line (about 20px) apiece, from
+     the two lines portrait has. The container is the bar's child, not the bar:
+     containment would make the bar the containing block of #clue-full. */
+  html.phone #active-clue-bar,
+  html.phone #clue-navigator { container-type: size; }
+  @container (min-height: 60px) {
+    html.phone .nav-text,
+    html.phone #active-clue-primary .active-clue-text { -webkit-line-clamp: 3; line-clamp: 3; }
+  }
+  @container (min-height: 80px) {
+    html.phone .nav-text,
+    html.phone #active-clue-primary .active-clue-text { -webkit-line-clamp: 4; line-clamp: 4; }
+  }
+  @container (min-height: 100px) {
+    html.phone .nav-text,
+    html.phone #active-clue-primary .active-clue-text { -webkit-line-clamp: 5; line-clamp: 5; }
+  }
+  /* A little more under the keys than portrait has, as the keyboard sits at the screen's
+     foot here. */
+  html.phone #drawn-kb {
+    grid-area: 3 / 2 / 4 / -1;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+  /* One line: the byline doesn't fit the strip with it. */
+  html.phone .solve-title { -webkit-line-clamp: 1; line-clamp: 1; }
+  /* With .solve-top boxless the panels' containing block is the view, hence the
+     explicit top. The help panel is taller than the shortest phones, so it scrolls
+     inside itself. */
+  html.phone #menu-panel,
+  html.phone #help-panel {
+    top: var(--strip-h);
+    max-height: calc(100svh - var(--strip-h));
+    overflow-y: auto;
+  }
+  /* A clue still cut off in the bar opens in full from the strip down, at the
+     keyboard's width, over the bar and the top of the keys. */
+  html.phone #clue-full {
+    top: var(--strip-h);
+    bottom: auto;
+    left: auto;
+    right: 0;
+    width: var(--kb-w);
+    min-height: 0;
+    max-height: calc(100svh - var(--strip-h));
+  }
+  /* Keyboard on the left (the options menu's row, shared/engine-phone.mjs): the right
+     column swaps with the stage, under the same strip. */
+  html.phone.kb-left #solve-view {
+    grid-template-columns: var(--kb-w) minmax(0, 1fr) auto auto auto;
+  }
+  html.phone.kb-left #solve-stage { grid-area: 2 / 2 / 4 / -1; }
+  html.phone.kb-left #solve-bar { grid-area: 2 / 1 / 3 / 2; }
+  html.phone.kb-left #drawn-kb { grid-area: 3 / 1 / 4 / 2; }
+  html.phone.kb-left #clue-full { left: 0; right: auto; }
+  /* A plain list (Marching Bands) hides the keyboard on the Clues screen, so the list
+     takes the whole width. */
+  html.phone #solve-view:has(> #drawn-kb[hidden]) #solve-stage { grid-column: 1 / -1; }
+}
+
+}
+@layer print {
+/* Shared print resets, applied to every tool and theme: prints the blank, unsolved
+   puzzle regardless of solve state or theme. This file and the tool's print.css after
+   it are the `print` cascade layer, the last one (composeThemeCss), so every rule here
+   wins over any screen rule whatever its selector, with no !important: a theme that
+   adds a more specific highlight rule can't defeat the print reset. Between this file
+   and a tool's print.css the usual rules hold (specificity, then order).
+
+   A screen rule still applies in print unless a print rule overrides it, so a print
+   rule that relies on a container being flex or grid must declare that display itself:
+   a narrow-screen breakpoint may have set display: block on it. */
+@media print {
+  /* Hide interaction chrome */
+  #active-clue-bar,
+  #controls,
+  #congrats-dialog,
+  #keys-overlay,
+  #keys-btn,
+  #menu-btn,
+  #menu-panel,
+  #help-btn,
+  #help-panel,
+  #done-wrong,
+  #direction-chevron,
+  .solve-top,
+  #solve-bar,
+  .edge-shadows,
+  #drawn-kb { display: none; }
+
+  body { padding-top: 0; }
+  h1.title { font-size: 1.4rem; }
+
+  /* A tighter page than on screen, the same in every tool */
+  .puzzle-main     { padding: 8px 16px; }
+  .puzzle-header   { margin-bottom: 8px; }
+  .byline          { font-size: 0.8rem; }
+  #instructions    { font-size: 0.8rem; margin-bottom: 8px; }
+  .clue-section h2 { margin-bottom: 4px; }
+  .clue-item       { margin-bottom: 0; padding: 1px 4px; break-inside: avoid; }
+  .cell-num        { fill: #555; }
+
+  /* Cell state → plain ink on white */
+  .cell,
+  .cell.active-entry,
+  .cell.active-cell,
+  .cell.secondary-entry { fill: #fff; stroke: #999; stroke-width: 1; stroke-dasharray: none; }
+
+  /* Entered letters and their marks → blank: a printout is always the unsolved puzzle */
+  .cell-letter,
+  .mark-layer { display: none; }
+  /* ...and the phone list view's cell rows (setupFillList), which repeat them */
+  .list-cells { display: none; }
+
+  /* Clue highlight / filled-dimming reset */
+  .clue-item.active-clue,
+  .clue-item.secondary-entry { background: transparent; }
+  .clue-item.filled .clue-text { opacity: 1; text-decoration: none; }
+
+  /* A link prints in the color of the text around it: a theme's link color is chosen
+     against its screen background, which paper doesn't have. */
+  a { color: inherit; }
+
+  /* The phone layout prints its own arrangement: the page's gutter is on the header and
+     instructions (phone.css), and .puzzle-body is empty there. The html.phone prefix is
+     what outranks the .puzzle-main rule above and each tool's print.css, which shares
+     this layer and sets .puzzle-body. */
+  html.phone .puzzle-main { padding: 0; }
+  html.phone .puzzle-body { display: none; }
+}
+
+/* Shared print resets live in shared/themes/print-base.css (just before this file,
+   in the same cascade layer). Only spiral-specific print rules belong here. */
+@media print {
+  .puzzle-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "center center"
+      "left   right";
+  }
+  .clue-section { break-inside: avoid; }
+}
+
+@media print and (orientation: landscape) {
+  .puzzle-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) min(40%, 500px) minmax(0, 1fr);
+    grid-template-areas: "left center right";
+    gap: 0 16px;
+  }
+}
+
+}
+</style>
+</head>
+<body class="tool-spiral has-clue-bar">
+  <div id="active-clue-bar">
+    <div class="active-clue-row" id="active-clue-primary">
+      <span class="active-clue-dir"></span>
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+    <div class="active-clue-row" id="active-clue-secondary">
+      <span class="active-clue-dir"></span>
+      <span class="active-clue-num"></span>
+      <span class="active-clue-text"></span>
+    </div>
+  </div>
+  <div class="puzzle-main">
+    <div class="puzzle-header">
+      <h1 class="title">Spiral</h1>
+      <p class="byline"></p>
+    </div>
+    <div id="instructions" class="instructions" hidden></div>
+    <div class="puzzle-body">
+      <div class="puzzle-center">
+        <div id="grid-wrap">
+          <svg id="spiral-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div id="controls">
+          <div id="direction-toggle" class="puzzle-toggle" role="group" aria-label="Direction">
+            <button class="toggle-opt" data-dir="inward">Inward</button>
+            <button class="toggle-opt" data-dir="outward">Outward</button>
+          </div>
+          <button id="rebus-btn" type="button">Rebus</button>
+        </div>
+        <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
+      </div>
+      <div class="clue-section clue-section-inward">
+        <h2>Inward</h2>
+        <ul id="inward-clues"></ul>
+      </div>
+      <div class="clue-section clue-section-outward">
+        <h2>Outward</h2>
+        <ul id="outward-clues"></ul>
+      </div>
+    </div>
+  </div>
+  <input id="hidden-input" type="text" autocomplete="off" autocorrect="off"
+         autocapitalize="off" spellcheck="false" aria-hidden="true">
+  <script>
+    window.PUZZLE_DATA = {
+  "title": "Spiral",
+  "kind": "spiral",
+  "hashed": false,
+  "author": "Greg Poulos",
+  "date": "2026",
+  "instructions": "<p>Answers from the “Inward” clue list should be entered starting at the outermost cell of the puzzle (cell #1) spiraling toward the center of the grid; answers from the “Outward” clue list should be likewise entered starting from the innermost cell and spiralling outward.<\/p>\n",
+  "letters": [
+    "r",
+    "o",
+    "t",
+    "i",
+    "d",
+    "e",
+    "r",
+    "e",
+    "k",
+    "w",
+    "a",
+    "h",
+    "w",
+    "a",
+    "h",
+    "s",
+    "p",
+    "e",
+    "e",
+    "d",
+    "y",
+    "b",
+    "u",
+    "r",
+    "t",
+    "o",
+    "n",
+    "y",
+    "h",
+    "w",
+    "h",
+    "t",
+    "o",
+    "m",
+    "b",
+    "o",
+    "y",
+    "b",
+    "e",
+    "a",
+    "r",
+    "n",
+    "a",
+    "i",
+    "s",
+    "e",
+    "t",
+    "r",
+    "a",
+    "c",
+    "e",
+    "y",
+    "e",
+    "m",
+    "i",
+    "n",
+    "e",
+    "d",
+    "w",
+    "a",
+    "r",
+    "d",
+    "i",
+    "v",
+    "a",
+    "d",
+    "j",
+    "a",
+    "n",
+    "i",
+    "m",
+    "a",
+    "c",
+    "r",
+    "o",
+    "j",
+    "a",
+    "m"
+  ],
+  "boardHash": "6445f5ad75ae6582c1f606e9e96956061ed42bc8fc89a2ee9c4a0af785b47e76",
+  "inward": [
+    {
+      "clue": "Indian flatbread",
+      "length": 4,
+      "styles": {
+        "circle": [
+          0
+        ]
+      }
+    },
+    {
+      "clue": "Jeter or Jacobi",
+      "length": 5
+    },
+    {
+      "clue": "Guitar pedal that generates a spectral glide",
+      "length": 6
+    },
+    {
+      "clue": "Sylvester’s nemesis south of the border",
+      "length": 6
+    },
+    {
+      "clue": "Major snowboard manufacturer",
+      "length": 6,
+      "styles": {
+        "circle": [
+          4
+        ]
+      }
+    },
+    {
+      "clue": "Tetragrammaton",
+      "length": 4
+    },
+    {
+      "clue": "Jo March or Scout Finch, notably",
+      "length": 6,
+      "styles": {
+        "circle": [
+          0
+        ]
+      }
+    },
+    {
+      "clue": "Steak sauce with shallot, black pepper, and tarragon",
+      "length": 9,
+      "styles": {
+        "circle": [
+          5
+        ]
+      }
+    },
+    {
+      "clue": "Creator of “Everyone I Have Ever Slept With 1963–1995”",
+      "length": 10,
+      "styles": {
+        "circle": [
+          0
+        ]
+      }
+    },
+    {
+      "clue": "Father of the Princes in the Tower",
+      "length": 8,
+      "styles": {
+        "circle": [
+          0
+        ]
+      }
+    },
+    {
+      "clue": "Isabelle who starred in “The Story of Adele H.”",
+      "length": 6
+    },
+    {
+      "clue": "Camera mode typically symbolized with a flower icon",
+      "length": 5
+    },
+    {
+      "clue": "Phish hook?",
+      "length": 3
+    }
+  ],
+  "outward": [
+    {
+      "clue": "Largest of the Balearic Islands",
+      "length": 7
+    },
+    {
+      "clue": "Featured artist on Grande’s “Side to Side”",
+      "length": 5
+    },
+    {
+      "clue": "Painter of “The Death of Marat”",
+      "length": 5
+    },
+    {
+      "clue": "Unwashed jeans fabric",
+      "length": 8,
+      "styles": {
+        "circle": [
+          4
+        ]
+      }
+    },
+    {
+      "clue": "Moment of respite, so to speak",
+      "length": 3
+    },
+    {
+      "clue": "Adjective for a coordinate plane or a dualist",
+      "length": 9,
+      "styles": {
+        "circle": [
+          3,
+          7
+        ]
+      }
+    },
+    {
+      "clue": "Addison who first gained fame on TikTok",
+      "length": 3
+    },
+    {
+      "clue": "What the extra “B” is supposed to stand for in Homer’s “BBBQ”",
+      "length": 4
+    },
+    {
+      "clue": "Silkworm imago",
+      "length": 4,
+      "styles": {
+        "circle": [
+          2
+        ]
+      }
+    },
+    {
+      "clue": "Something I can’t see, often",
+      "length": 6,
+      "styles": {
+        "circle": [
+          4
+        ]
+      }
+    },
+    {
+      "clue": "Actress, activist, and longtime partner of Ossie Davis",
+      "length": 7
+    },
+    {
+      "clue": "“Oh, hell!”",
+      "length": 5
+    },
+    {
+      "clue": "Street vendor",
+      "length": 6
+    },
+    {
+      "clue": "Emacs or vi, for example",
+      "length": 6,
+      "styles": {
+        "circle": [
+          5
+        ]
+      }
+    }
+  ],
+  "cells": [
+    {
+      "cell_number": 1,
+      "theta_start": -1.5707963267948966,
+      "theta_end": -1.3769327520441699,
+      "r_inner_start": 217,
+      "r_outer_start": 265,
+      "r_inner_end": 215.51899138206193,
+      "r_outer_end": 263.5189913820619
+    },
+    {
+      "cell_number": 2,
+      "theta_start": -1.3769327520441699,
+      "theta_end": -1.1818704680668661,
+      "r_inner_start": 215.51899138206193,
+      "r_outer_start": 263.5189913820619,
+      "r_inner_end": 214.02882530018434,
+      "r_outer_end": 262.02882530018434
+    },
+    {
+      "cell_number": 3,
+      "theta_start": -1.1818704680668661,
+      "theta_end": -0.9855870076246113,
+      "r_inner_start": 214.02882530018434,
+      "r_outer_start": 262.02882530018434,
+      "r_inner_end": 212.52933011730912,
+      "r_outer_end": 260.5293301173091
+    },
+    {
+      "cell_number": 4,
+      "theta_start": -0.9855870076246113,
+      "theta_end": -0.7880591936670216,
+      "r_inner_start": 212.52933011730912,
+      "r_outer_start": 260.5293301173091,
+      "r_inner_end": 211.02032877381376,
+      "r_outer_end": 259.02032877381373
+    },
+    {
+      "cell_number": 5,
+      "theta_start": -0.7880591936670216,
+      "theta_end": -0.589263107563806,
+      "r_inner_start": 211.02032877381376,
+      "r_outer_start": 259.02032877381373,
+      "r_inner_end": 209.5016385448226,
+      "r_outer_end": 257.50163854482264
+    },
+    {
+      "cell_number": 6,
+      "theta_start": -0.589263107563806,
+      "theta_end": -0.3891740554865264,
+      "r_inner_start": 209.5016385448226,
+      "r_outer_start": 257.50163854482264,
+      "r_inner_end": 207.9730707833824,
+      "r_outer_end": 255.9730707833824
+    },
+    {
+      "cell_number": 7,
+      "theta_start": -0.3891740554865264,
+      "theta_end": -0.187766532806648,
+      "r_inner_start": 207.9730707833824,
+      "r_outer_start": 255.9730707833824,
+      "r_inner_end": 206.4344306484834,
+      "r_outer_end": 254.4344306484834
+    },
+    {
+      "cell_number": 8,
+      "theta_start": -0.187766532806648,
+      "theta_end": 0.014985813634999623,
+      "r_inner_start": 206.4344306484834,
+      "r_outer_start": 254.4344306484834,
+      "r_inner_end": 204.88551681681932,
+      "r_outer_end": 252.88551681681932
+    },
+    {
+      "cell_number": 9,
+      "theta_start": 0.014985813634999623,
+      "theta_end": 0.21911022554489246,
+      "r_inner_start": 204.88551681681932,
+      "r_outer_start": 252.88551681681932,
+      "r_inner_end": 203.32612117708243,
+      "r_outer_end": 251.32612117708243
+    },
+    {
+      "cell_number": 10,
+      "theta_start": 0.21911022554489246,
+      "theta_end": 0.42463487565111735,
+      "r_inner_start": 203.32612117708243,
+      "r_outer_start": 251.32612117708243,
+      "r_inner_end": 201.75602850548378,
+      "r_outer_end": 249.75602850548378
+    },
+    {
+      "cell_number": 11,
+      "theta_start": 0.42463487565111735,
+      "theta_end": 0.6315889128222234,
+      "r_inner_start": 201.75602850548378,
+      "r_outer_start": 249.75602850548378,
+      "r_inner_end": 200.17501612107074,
+      "r_outer_end": 248.17501612107074
+    },
+    {
+      "cell_number": 12,
+      "theta_start": 0.6315889128222234,
+      "theta_end": 0.8400025100345565,
+      "r_inner_start": 200.17501612107074,
+      "r_outer_start": 248.17501612107074,
+      "r_inner_end": 198.58285351928325,
+      "r_outer_end": 246.58285351928325
+    },
+    {
+      "cell_number": 13,
+      "theta_start": 0.8400025100345565,
+      "theta_end": 1.049906915410856,
+      "r_inner_start": 198.58285351928325,
+      "r_outer_start": 246.58285351928325,
+      "r_inner_end": 196.9793019820479,
+      "r_outer_end": 244.9793019820479
+    },
+    {
+      "cell_number": 14,
+      "theta_start": 1.049906915410856,
+      "theta_end": 1.2613345065737636,
+      "r_inner_start": 196.9793019820479,
+      "r_outer_start": 244.9793019820479,
+      "r_inner_end": 195.36411416254762,
+      "r_outer_end": 243.36411416254762
+    },
+    {
+      "cell_number": 15,
+      "theta_start": 1.2613345065737636,
+      "theta_end": 1.4743188485810665,
+      "r_inner_start": 195.36411416254762,
+      "r_outer_start": 243.36411416254762,
+      "r_inner_end": 193.73703364262906,
+      "r_outer_end": 241.73703364262906
+    },
+    {
+      "cell_number": 16,
+      "theta_start": 1.4743188485810665,
+      "theta_end": 1.6888947557352365,
+      "r_inner_start": 193.73703364262906,
+      "r_outer_start": 241.73703364262906,
+      "r_inner_end": 192.0977944606124,
+      "r_outer_end": 240.0977944606124
+    },
+    {
+      "cell_number": 17,
+      "theta_start": 1.6888947557352365,
+      "theta_end": 1.9050983575884746,
+      "r_inner_start": 192.0977944606124,
+      "r_outer_start": 240.0977944606124,
+      "r_inner_end": 190.44612060705006,
+      "r_outer_end": 238.44612060705006
+    },
+    {
+      "cell_number": 18,
+      "theta_start": 1.9050983575884746,
+      "theta_end": 2.122967169496416,
+      "r_inner_start": 190.44612060705006,
+      "r_outer_start": 238.44612060705006,
+      "r_inner_end": 188.7817254857361,
+      "r_outer_end": 236.7817254857361
+    },
+    {
+      "cell_number": 19,
+      "theta_start": 2.122967169496416,
+      "theta_end": 2.342540168109293,
+      "r_inner_start": 188.7817254857361,
+      "r_outer_start": 236.7817254857361,
+      "r_inner_end": 187.10431133699615,
+      "r_outer_end": 235.10431133699615
+    },
+    {
+      "cell_number": 20,
+      "theta_start": 2.342540168109293,
+      "theta_end": 2.5638578722292342,
+      "r_inner_start": 187.10431133699615,
+      "r_outer_start": 235.10431133699615,
+      "r_inner_end": 185.41356861998312,
+      "r_outer_end": 233.41356861998312
+    },
+    {
+      "cell_number": 21,
+      "theta_start": 2.5638578722292342,
+      "theta_end": 2.7869624295070325,
+      "r_inner_start": 185.41356861998312,
+      "r_outer_start": 233.41356861998312,
+      "r_inner_end": 183.70917535036278,
+      "r_outer_end": 231.70917535036278
+    },
+    {
+      "cell_number": 22,
+      "theta_start": 2.7869624295070325,
+      "theta_end": 3.0118977095018433,
+      "r_inner_start": 183.70917535036278,
+      "r_outer_start": 231.70917535036278,
+      "r_inner_end": 181.99079638938997,
+      "r_outer_end": 229.99079638938997
+    },
+    {
+      "cell_number": 23,
+      "theta_start": 3.0118977095018433,
+      "theta_end": 3.2387094036835915,
+      "r_inner_start": 181.99079638938997,
+      "r_outer_start": 229.99079638938997,
+      "r_inner_end": 180.25808267994648,
+      "r_outer_end": 228.25808267994648
+    },
+    {
+      "cell_number": 24,
+      "theta_start": 3.2387094036835915,
+      "theta_end": 3.467445133021328,
+      "r_inner_start": 180.25808267994648,
+      "r_outer_start": 228.25808267994648,
+      "r_inner_end": 178.5106704246266,
+      "r_outer_end": 226.5106704246266
+    },
+    {
+      "cell_number": 25,
+      "theta_start": 3.467445133021328,
+      "theta_end": 3.698154563872353,
+      "r_inner_start": 178.5106704246266,
+      "r_outer_start": 226.5106704246266,
+      "r_inner_end": 176.74818020040942,
+      "r_outer_end": 224.74818020040942
+    },
+    {
+      "cell_number": 26,
+      "theta_start": 3.698154563872353,
+      "theta_end": 3.9308895329678775,
+      "r_inner_start": 176.74818020040942,
+      "r_outer_start": 224.74818020040942,
+      "r_inner_end": 174.97021600383857,
+      "r_outer_end": 222.97021600383857
+    },
+    {
+      "cell_number": 27,
+      "theta_start": 3.9308895329678775,
+      "theta_end": 4.165704182382661,
+      "r_inner_start": 174.97021600383857,
+      "r_outer_start": 222.97021600383857,
+      "r_inner_end": 173.17636421993043,
+      "r_outer_end": 221.17636421993043
+    },
+    {
+      "cell_number": 28,
+      "theta_start": 4.165704182382661,
+      "theta_end": 4.4026551054801795,
+      "r_inner_start": 173.17636421993043,
+      "r_outer_start": 221.17636421993043,
+      "r_inner_end": 171.36619250723487,
+      "r_outer_end": 219.36619250723487
+    },
+    {
+      "cell_number": 29,
+      "theta_start": 4.4026551054801795,
+      "theta_end": 4.641801504943305,
+      "r_inner_start": 171.36619250723487,
+      "r_outer_start": 219.36619250723487,
+      "r_inner_end": 169.53924859056997,
+      "r_outer_end": 217.53924859056997
+    },
+    {
+      "cell_number": 30,
+      "theta_start": 4.641801504943305,
+      "theta_end": 4.88320536413552,
+      "r_inner_start": 169.53924859056997,
+      "r_outer_start": 217.53924859056997,
+      "r_inner_end": 167.69505895191872,
+      "r_outer_end": 215.69505895191872
+    },
+    {
+      "cell_number": 31,
+      "theta_start": 4.88320536413552,
+      "theta_end": 5.126931633192063,
+      "r_inner_start": 167.69505895191872,
+      "r_outer_start": 215.69505895191872,
+      "r_inner_end": 165.8331274087974,
+      "r_outer_end": 213.8331274087974
+    },
+    {
+      "cell_number": 32,
+      "theta_start": 5.126931633192063,
+      "theta_end": 5.3730484314172395,
+      "r_inner_start": 165.8331274087974,
+      "r_outer_start": 213.8331274087974,
+      "r_inner_end": 163.952933568054,
+      "r_outer_end": 211.952933568054
+    },
+    {
+      "cell_number": 33,
+      "theta_start": 5.3730484314172395,
+      "theta_end": 5.621627267767289,
+      "r_inner_start": 163.952933568054,
+      "r_outer_start": 211.952933568054,
+      "r_inner_end": 162.0539311415032,
+      "r_outer_end": 210.0539311415032
+    },
+    {
+      "cell_number": 34,
+      "theta_start": 5.621627267767289,
+      "theta_end": 5.87274328143212,
+      "r_inner_start": 162.0539311415032,
+      "r_outer_start": 210.0539311415032,
+      "r_inner_end": 160.1355461080173,
+      "r_outer_end": 208.1355461080173
+    },
+    {
+      "cell_number": 35,
+      "theta_start": 5.87274328143212,
+      "theta_end": 6.126475504799344,
+      "r_inner_start": 160.1355461080173,
+      "r_outer_start": 208.1355461080173,
+      "r_inner_end": 158.19717470462894,
+      "r_outer_end": 206.19717470462894
+    },
+    {
+      "cell_number": 36,
+      "theta_start": 6.126475504799344,
+      "theta_end": 6.38290715139687,
+      "r_inner_start": 158.19717470462894,
+      "r_outer_start": 206.19717470462894,
+      "r_inner_end": 156.2381812268118,
+      "r_outer_end": 204.2381812268118
+    },
+    {
+      "cell_number": 37,
+      "theta_start": 6.38290715139687,
+      "theta_end": 6.642125931773549,
+      "r_inner_start": 156.2381812268118,
+      "r_outer_start": 204.2381812268118,
+      "r_inner_end": 154.25789561533017,
+      "r_outer_end": 202.25789561533017
+    },
+    {
+      "cell_number": 38,
+      "theta_start": 6.642125931773549,
+      "theta_end": 6.904224400700539,
+      "r_inner_start": 154.25789561533017,
+      "r_outer_start": 202.25789561533017,
+      "r_inner_end": 152.25561080381587,
+      "r_outer_end": 200.25561080381587
+    },
+    {
+      "cell_number": 39,
+      "theta_start": 6.904224400700539,
+      "theta_end": 7.16930033957053,
+      "r_inner_start": 152.25561080381587,
+      "r_outer_start": 200.25561080381587,
+      "r_inner_end": 150.23057979745343,
+      "r_outer_end": 198.23057979745343
+    },
+    {
+      "cell_number": 40,
+      "theta_start": 7.16930033957053,
+      "theta_end": 7.437457178451737,
+      "r_inner_start": 150.23057979745343,
+      "r_outer_start": 198.23057979745343,
+      "r_inner_end": 148.18201244872506,
+      "r_outer_end": 196.18201244872506
+    },
+    {
+      "cell_number": 41,
+      "theta_start": 7.437457178451737,
+      "theta_end": 7.708804462935582,
+      "r_inner_start": 148.18201244872506,
+      "r_outer_start": 196.18201244872506,
+      "r_inner_end": 146.10907189095707,
+      "r_outer_end": 194.10907189095707
+    },
+    {
+      "cell_number": 42,
+      "theta_start": 7.708804462935582,
+      "theta_end": 7.983458371722259,
+      "r_inner_start": 146.10907189095707,
+      "r_outer_start": 194.10907189095707,
+      "r_inner_end": 144.01087058425736,
+      "r_outer_end": 192.01087058425736
+    },
+    {
+      "cell_number": 43,
+      "theta_start": 7.983458371722259,
+      "theta_end": 8.26154229184274,
+      "r_inner_start": 144.01087058425736,
+      "r_outer_start": 192.01087058425736,
+      "r_inner_end": 141.88646592114316,
+      "r_outer_end": 189.88646592114316
+    },
+    {
+      "cell_number": 44,
+      "theta_start": 8.26154229184274,
+      "theta_end": 8.543187459551207,
+      "r_inner_start": 141.88646592114316,
+      "r_outer_start": 189.88646592114316,
+      "r_inner_end": 139.7348553304832,
+      "r_outer_end": 187.7348553304832
+    },
+    {
+      "cell_number": 45,
+      "theta_start": 8.543187459551207,
+      "theta_end": 8.828533676278385,
+      "r_inner_start": 139.7348553304832,
+      "r_outer_start": 187.7348553304832,
+      "r_inner_end": 137.55497080801754,
+      "r_outer_end": 185.55497080801754
+    },
+    {
+      "cell_number": 46,
+      "theta_start": 8.828533676278385,
+      "theta_end": 9.11773011066384,
+      "r_inner_start": 137.55497080801754,
+      "r_outer_start": 185.55497080801754,
+      "r_inner_end": 135.3456727892817,
+      "r_outer_end": 183.3456727892817
+    },
+    {
+      "cell_number": 47,
+      "theta_start": 9.11773011066384,
+      "theta_end": 9.410936199646935,
+      "r_inner_start": 135.3456727892817,
+      "r_outer_start": 183.3456727892817,
+      "r_inner_end": 133.10574326577927,
+      "r_outer_end": 181.10574326577927
+    },
+    {
+      "cell_number": 48,
+      "theta_start": 9.410936199646935,
+      "theta_end": 9.708322663971705,
+      "r_inner_start": 133.10574326577927,
+      "r_outer_start": 181.10574326577927,
+      "r_inner_end": 130.83387802709564,
+      "r_outer_end": 178.83387802709564
+    },
+    {
+      "cell_number": 49,
+      "theta_start": 9.708322663971705,
+      "theta_end": 10.010072656352243,
+      "r_inner_start": 130.83387802709564,
+      "r_outer_start": 178.83387802709564,
+      "r_inner_end": 128.52867788956104,
+      "r_outer_end": 176.52867788956104
+    },
+    {
+      "cell_number": 50,
+      "theta_start": 10.010072656352243,
+      "theta_end": 10.31638306408261,
+      "r_inner_start": 128.52867788956104,
+      "r_outer_start": 176.52867788956104,
+      "r_inner_end": 126.18863874504348,
+      "r_outer_end": 174.18863874504348
+    },
+    {
+      "cell_number": 51,
+      "theta_start": 10.31638306408261,
+      "theta_end": 10.627465992227645,
+      "r_inner_start": 126.18863874504348,
+      "r_outer_start": 174.18863874504348,
+      "r_inner_end": 123.8121402302059,
+      "r_outer_end": 171.8121402302059
+    },
+    {
+      "cell_number": 52,
+      "theta_start": 10.627465992227645,
+      "theta_end": 10.943550458917327,
+      "r_inner_start": 123.8121402302059,
+      "r_outer_start": 171.8121402302059,
+      "r_inner_end": 121.39743277541095,
+      "r_outer_end": 169.39743277541095
+    },
+    {
+      "cell_number": 53,
+      "theta_start": 10.943550458917327,
+      "theta_end": 11.264884340974882,
+      "r_inner_start": 121.39743277541095,
+      "r_outer_start": 169.39743277541095,
+      "r_inner_end": 118.94262274121726,
+      "r_outer_end": 166.94262274121726
+    },
+    {
+      "cell_number": 54,
+      "theta_start": 11.264884340974882,
+      "theta_end": 11.591736616516998,
+      "r_inner_start": 118.94262274121726,
+      "r_outer_start": 166.94262274121726,
+      "r_inner_end": 116.4456552861759,
+      "r_outer_end": 164.4456552861759
+    },
+    {
+      "cell_number": 55,
+      "theta_start": 11.591736616516998,
+      "theta_end": 11.924399961778374,
+      "r_inner_start": 116.4456552861759,
+      "r_outer_start": 164.4456552861759,
+      "r_inner_end": 113.90429452855187,
+      "r_outer_end": 161.90429452855187
+    },
+    {
+      "cell_number": 56,
+      "theta_start": 11.924399961778374,
+      "theta_end": 12.263193772911297,
+      "r_inner_start": 113.90429452855187,
+      "r_outer_start": 161.90429452855187,
+      "r_inner_end": 111.31610046147603,
+      "r_outer_end": 159.31610046147603
+    },
+    {
+      "cell_number": 57,
+      "theta_start": 12.263193772911297,
+      "theta_end": 12.608467700814847,
+      "r_inner_start": 111.31610046147603,
+      "r_outer_start": 159.31610046147603,
+      "r_inner_end": 108.678401948839,
+      "r_outer_end": 156.678401948839
+    },
+    {
+      "cell_number": 58,
+      "theta_start": 12.608467700814847,
+      "theta_end": 12.960605809419297,
+      "r_inner_start": 108.678401948839,
+      "r_outer_start": 156.678401948839,
+      "r_inner_end": 105.98826495833842,
+      "r_outer_end": 153.98826495833842
+    },
+    {
+      "cell_number": 59,
+      "theta_start": 12.960605809419297,
+      "theta_end": 13.320031497037325,
+      "r_inner_start": 105.98826495833842,
+      "r_outer_start": 153.98826495833842,
+      "r_inner_end": 103.242454965125,
+      "r_outer_end": 151.242454965125
+    },
+    {
+      "cell_number": 60,
+      "theta_start": 13.320031497037325,
+      "theta_end": 13.687213358843831,
+      "r_inner_start": 103.242454965125,
+      "r_outer_start": 151.242454965125,
+      "r_inner_end": 100.43739216575587,
+      "r_outer_end": 148.43739216575585
+    },
+    {
+      "cell_number": 61,
+      "theta_start": 13.687213358843831,
+      "theta_end": 14.062672219735825,
+      "r_inner_start": 100.43739216575587,
+      "r_outer_start": 148.43739216575585,
+      "r_inner_end": 97.56909775110243,
+      "r_outer_end": 145.56909775110245
+    },
+    {
+      "cell_number": 62,
+      "theta_start": 14.062672219735825,
+      "theta_end": 14.446989635750386,
+      "r_inner_start": 97.56909775110243,
+      "r_outer_start": 145.56909775110245,
+      "r_inner_end": 94.63312896030139,
+      "r_outer_end": 142.6331289603014
+    },
+    {
+      "cell_number": 63,
+      "theta_start": 14.446989635750386,
+      "theta_end": 14.840818256173604,
+      "r_inner_start": 94.63312896030139,
+      "r_outer_start": 142.6331289603014,
+      "r_inner_end": 91.62449992007338,
+      "r_outer_end": 139.6244999200734
+    },
+    {
+      "cell_number": 64,
+      "theta_start": 14.840818256173604,
+      "theta_end": 15.244894568263357,
+      "r_inner_start": 91.62449992007338,
+      "r_outer_start": 139.6244999200734,
+      "r_inner_end": 88.53758428221286,
+      "r_outer_end": 136.53758428221286
+    },
+    {
+      "cell_number": 65,
+      "theta_start": 15.244894568263357,
+      "theta_end": 15.660054728426042,
+      "r_inner_start": 88.53758428221286,
+      "r_outer_start": 136.53758428221286,
+      "r_inner_end": 85.36599428230656,
+      "r_outer_end": 133.36599428230656
+    },
+    {
+      "cell_number": 66,
+      "theta_start": 15.660054728426042,
+      "theta_end": 16.087254442757022,
+      "r_inner_start": 85.36599428230656,
+      "r_outer_start": 133.36599428230656,
+      "r_inner_end": 82.10242886359194,
+      "r_outer_end": 130.10242886359194
+    },
+    {
+      "cell_number": 67,
+      "theta_start": 16.087254442757022,
+      "theta_end": 16.527594235307774,
+      "r_inner_start": 82.10242886359194,
+      "r_outer_start": 130.10242886359194,
+      "r_inner_end": 78.73848064161538,
+      "r_outer_end": 126.73848064161538
+    },
+    {
+      "cell_number": 68,
+      "theta_start": 16.527594235307774,
+      "theta_end": 16.98235199718186,
+      "r_inner_start": 78.73848064161538,
+      "r_outer_start": 126.73848064161538,
+      "r_inner_end": 75.26438724745532,
+      "r_outer_end": 123.26438724745532
+    },
+    {
+      "cell_number": 69,
+      "theta_start": 16.98235199718186,
+      "theta_end": 17.453025546986325,
+      "r_inner_start": 75.26438724745532,
+      "r_outer_start": 123.26438724745532,
+      "r_inner_end": 71.66870618982378,
+      "r_outer_end": 119.66870618982378
+    },
+    {
+      "cell_number": 70,
+      "theta_start": 17.453025546986325,
+      "theta_end": 17.94138922802349,
+      "r_inner_start": 71.66870618982378,
+      "r_outer_start": 119.66870618982378,
+      "r_inner_end": 67.9378824843701,
+      "r_outer_end": 115.9378824843701
+    },
+    {
+      "cell_number": 71,
+      "theta_start": 17.94138922802349,
+      "theta_end": 18.449570624553566,
+      "r_inner_start": 67.9378824843701,
+      "r_outer_start": 115.9378824843701,
+      "r_inner_end": 64.0556625846051,
+      "r_outer_end": 112.0556625846051
+    },
+    {
+      "cell_number": 72,
+      "theta_start": 18.449570624553566,
+      "theta_end": 18.980156848580158,
+      "r_inner_start": 64.0556625846051,
+      "r_outer_start": 112.0556625846051,
+      "r_inner_end": 60.002282410670915,
+      "r_outer_end": 108.00228241067092
+    },
+    {
+      "cell_number": 73,
+      "theta_start": 18.980156848580158,
+      "theta_end": 19.536345563626192,
+      "r_inner_start": 60.002282410670915,
+      "r_outer_start": 108.00228241067092,
+      "r_inner_end": 55.75331361267865,
+      "r_outer_end": 103.75331361267865
+    },
+    {
+      "cell_number": 74,
+      "theta_start": 19.536345563626192,
+      "theta_end": 20.122166006671677,
+      "r_inner_start": 55.75331361267865,
+      "r_outer_start": 103.75331361267865,
+      "r_inner_end": 51.277975087479916,
+      "r_outer_end": 99.27797508747992
+    },
+    {
+      "cell_number": 75,
+      "theta_start": 20.122166006671677,
+      "theta_end": 20.742813964598696,
+      "r_inner_start": 51.277975087479916,
+      "r_outer_start": 99.27797508747992,
+      "r_inner_end": 46.53657394712911,
+      "r_outer_end": 94.53657394712911
+    },
+    {
+      "cell_number": 76,
+      "theta_start": 20.742813964598696,
+      "theta_end": 21.40518128555683,
+      "r_inner_start": 46.53657394712911,
+      "r_outer_start": 94.53657394712911,
+      "r_inner_end": 41.47646035002401,
+      "r_outer_end": 89.47646035002401
+    },
+    {
+      "cell_number": 77,
+      "theta_start": 21.40518128555683,
+      "theta_end": 22.11873729125969,
+      "r_inner_start": 41.47646035002401,
+      "r_outer_start": 89.47646035002401,
+      "r_inner_end": 36.02529400695906,
+      "r_outer_end": 84.02529400695906
+    },
+    {
+      "cell_number": 78,
+      "theta_start": 22.11873729125969,
+      "theta_end": 22.89709452028898,
+      "r_inner_start": 36.02529400695906,
+      "r_outer_start": 84.02529400695906,
+      "r_inner_end": 30.07908278337561,
+      "r_outer_end": 78.07908278337561
+    }
+  ],
+  "geometry": {
+    "R_HOLE": 25,
+    "R_MAX": 265,
+    "N_TURNS": 4
+  }
+};
+  </script>
+  <script>"use strict";
+(() => {
+  // shared/normalize.mjs
+  function foldLetters(str) {
+    return str.normalize("NFKD").replace(/\p{M}/gu, "");
+  }
+  function normalize(str) {
+    return foldLetters(str).toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  // shared/sha256hex.mjs
+  function sha256hex(str) {
+    const K = [
+      1116352408,
+      1899447441,
+      3049323471,
+      3921009573,
+      961987163,
+      1508970993,
+      2453635748,
+      2870763221,
+      3624381080,
+      310598401,
+      607225278,
+      1426881987,
+      1925078388,
+      2162078206,
+      2614888103,
+      3248222580,
+      3835390401,
+      4022224774,
+      264347078,
+      604807628,
+      770255983,
+      1249150122,
+      1555081692,
+      1996064986,
+      2554220882,
+      2821834349,
+      2952996808,
+      3210313671,
+      3336571891,
+      3584528711,
+      113926993,
+      338241895,
+      666307205,
+      773529912,
+      1294757372,
+      1396182291,
+      1695183700,
+      1986661051,
+      2177026350,
+      2456956037,
+      2730485921,
+      2820302411,
+      3259730800,
+      3345764771,
+      3516065817,
+      3600352804,
+      4094571909,
+      275423344,
+      430227734,
+      506948616,
+      659060556,
+      883997877,
+      958139571,
+      1322822218,
+      1537002063,
+      1747873779,
+      1955562222,
+      2024104815,
+      2227730452,
+      2361852424,
+      2428436474,
+      2756734187,
+      3204031479,
+      3329325298
+    ];
+    let h0 = 1779033703, h1 = 3144134277, h2 = 1013904242, h3 = 2773480762;
+    let h4 = 1359893119, h5 = 2600822924, h6 = 528734635, h7 = 1541459225;
+    const bytes = [];
+    for (let i = 0; i < str.length; i++) {
+      let c = str.charCodeAt(i);
+      if (c < 128) {
+        bytes.push(c);
+      } else if (c < 2048) {
+        bytes.push(192 | c >> 6, 128 | c & 63);
+      } else if (c < 55296 || c >= 57344) {
+        bytes.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
+      } else {
+        c = 65536 + ((c & 1023) << 10 | str.charCodeAt(++i) & 1023);
+        bytes.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
+      }
+    }
+    const bitLen = bytes.length * 8;
+    bytes.push(128);
+    while (bytes.length % 64 !== 56) bytes.push(0);
+    bytes.push(0, 0, 0, 0, bitLen >>> 24 & 255, bitLen >>> 16 & 255, bitLen >>> 8 & 255, bitLen & 255);
+    for (let offset = 0; offset < bytes.length; offset += 64) {
+      const w = new Array(64);
+      for (let i = 0; i < 16; i++) {
+        w[i] = bytes[offset + i * 4] << 24 | bytes[offset + i * 4 + 1] << 16 | bytes[offset + i * 4 + 2] << 8 | bytes[offset + i * 4 + 3];
+      }
+      for (let i = 16; i < 64; i++) {
+        const s0 = (w[i - 15] >>> 7 | w[i - 15] << 25) ^ (w[i - 15] >>> 18 | w[i - 15] << 14) ^ w[i - 15] >>> 3;
+        const s1 = (w[i - 2] >>> 17 | w[i - 2] << 15) ^ (w[i - 2] >>> 19 | w[i - 2] << 13) ^ w[i - 2] >>> 10;
+        w[i] = w[i - 16] + s0 + w[i - 7] + s1 | 0;
+      }
+      let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+      for (let i = 0; i < 64; i++) {
+        const S1 = (e >>> 6 | e << 26) ^ (e >>> 11 | e << 21) ^ (e >>> 25 | e << 7);
+        const ch = e & f ^ ~e & g;
+        const t1 = h + S1 + ch + K[i] + w[i] | 0;
+        const S0 = (a >>> 2 | a << 30) ^ (a >>> 13 | a << 19) ^ (a >>> 22 | a << 10);
+        const maj = a & b ^ a & c ^ b & c;
+        const t2 = S0 + maj | 0;
+        h = g;
+        g = f;
+        f = e;
+        e = d + t1 | 0;
+        d = c;
+        c = b;
+        b = a;
+        a = t1 + t2 | 0;
+      }
+      h0 = h0 + a | 0;
+      h1 = h1 + b | 0;
+      h2 = h2 + c | 0;
+      h3 = h3 + d | 0;
+      h4 = h4 + e | 0;
+      h5 = h5 + f | 0;
+      h6 = h6 + g | 0;
+      h7 = h7 + h | 0;
+    }
+    return [h0, h1, h2, h3, h4, h5, h6, h7].map((n) => (n >>> 0).toString(16).padStart(8, "0")).join("");
+  }
+
+  // shared/boardString.mjs
+  var CELL_DELIM = ".";
+  function joinCells(cells) {
+    return cells.join(CELL_DELIM);
+  }
+
+  // shared/engine-state.mjs
+  function setupTimer({ onPause, listenVisibility, now: _now = () => performance.now() } = {}) {
+    let activeMs = 0;
+    let runningSince = null;
+    let started = false;
+    let stopped = false;
+    function onFirstInput() {
+      if (started || stopped) return;
+      started = true;
+      runningSince = _now();
+    }
+    function reset() {
+      started = false;
+      stopped = false;
+      runningSince = null;
+      activeMs = 0;
+    }
+    function stop() {
+      if (runningSince !== null) activeMs += _now() - runningSince;
+      runningSince = null;
+      started = false;
+      stopped = true;
+    }
+    function getElapsedMs() {
+      return activeMs + (runningSince !== null ? _now() - runningSince : 0);
+    }
+    function restoreMs(ms) {
+      activeMs = typeof ms === "number" && ms >= 0 ? ms : 0;
+    }
+    function handleVisibility(hidden) {
+      if (hidden) {
+        if (runningSince !== null) {
+          activeMs += _now() - runningSince;
+          runningSince = null;
+        }
+        if (started && onPause) onPause();
+      } else {
+        if (started && runningSince === null) runningSince = _now();
+      }
+    }
+    const register = listenVisibility ?? ((fn) => document.addEventListener("visibilitychange", () => fn(document.hidden)));
+    register(handleVisibility);
+    return { onFirstInput, reset, stop, getElapsedMs, restoreMs };
+  }
+  function makeHelpRecord() {
+    let checks = 0;
+    let reveals = 0;
+    const asCount = (v) => Number.isInteger(v) && v >= 0 ? v : 0;
+    return {
+      countCheck() {
+        checks++;
+      },
+      countReveal() {
+        reveals++;
+      },
+      reset() {
+        checks = 0;
+        reveals = 0;
+      },
+      get() {
+        return { checks, reveals };
+      },
+      saveFields() {
+        return { help: { checks, reveals } };
+      },
+      restoreFields(saved) {
+        const h = saved.help !== null && typeof saved.help === "object" ? saved.help : {};
+        checks = asCount(h.checks);
+        reveals = asCount(h.reveals);
+      }
+    };
+  }
+  function makeCompletionLatch({
+    puzzleRoot,
+    kind,
+    title,
+    date,
+    getBoardHash,
+    getSolution,
+    getElapsedMs,
+    getHelp,
+    onComplete,
+    embedOrigin,
+    _postMessage
+  }) {
+    let fired = false;
+    const pm = _postMessage ?? ((msg, targetOrigin) => window.parent?.postMessage(msg, targetOrigin));
+    function sealIfSolved(isSolved) {
+      if (isSolved) fired = true;
+    }
+    function reset() {
+      fired = false;
+    }
+    function check(isSolved) {
+      if (fired || !isSolved) return;
+      fired = true;
+      const timeMs = getElapsedMs();
+      const solution = getSolution();
+      const boardHash = getBoardHash();
+      const { checks, reveals } = getHelp();
+      const detail = { boardHash, kind, title, date, timeMs, solution, checks, reveals };
+      puzzleRoot.dispatchEvent(new CustomEvent("varietypack:complete", {
+        bubbles: true,
+        composed: true,
+        detail
+      }));
+      const base = { type: "varietypack:complete", boardHash, kind, title, date, timeMs, checks, reveals };
+      if (embedOrigin) pm({ ...base, solution }, embedOrigin);
+      else pm(base, "*");
+      if (onComplete) onComplete(timeMs);
+    }
+    return { check, sealIfSolved, reset, get solved() {
+      return fired;
+    } };
+  }
+  function setupSolveTracking({
+    puzzleRoot,
+    data,
+    getSolution,
+    saveState,
+    onComplete,
+    now,
+    listenVisibility,
+    _postMessage
+  }) {
+    const timer = setupTimer({ onPause: saveState, now, listenVisibility });
+    const helpRecord = makeHelpRecord();
+    const latch = makeCompletionLatch({
+      puzzleRoot,
+      kind: data.kind,
+      title: data.title,
+      date: data.date,
+      getBoardHash: () => data.boardHash,
+      getSolution,
+      getElapsedMs: () => timer.getElapsedMs(),
+      getHelp: () => helpRecord.get(),
+      onComplete: (timeMs) => {
+        timer.stop();
+        if (onComplete) onComplete(timeMs);
+      },
+      embedOrigin: data.embedOrigin,
+      _postMessage
+    });
+    return { timer, latch, helpRecord };
+  }
+  function makeSavePayload({ cells, helpRecord, timer, composer }) {
+    return {
+      getState() {
+        return {
+          ...cells.saveFields(),
+          ...helpRecord.saveFields(),
+          activeMs: timer.getElapsedMs(),
+          composing: composer.getComposing()
+        };
+      },
+      fits: cells.fitsSave,
+      applyState(saved) {
+        cells.restoreFields(saved);
+        timer.restoreMs(saved.activeMs);
+        helpRecord.restoreFields(saved);
+        composer.restore(saved.composing);
+      }
+    };
+  }
+  function syncSolveState({ checker, latch, doneWrong }) {
+    const solved = checker.isSolved();
+    doneWrong.hidden = !(checker.isBoardFilled() && !solved);
+    if (solved) checker.markSolved();
+    latch.check(solved);
+  }
+  var LEN_CLASSES = ["len-2", "len-3", "len-long"];
+  function letterLenClass(text) {
+    if (text.length < 2) return null;
+    if (text.length === 2) return "len-2";
+    if (text.length === 3) return "len-3";
+    return "len-long";
+  }
+  function setLetterText(el, text) {
+    if (!el) return;
+    el.textContent = text.toUpperCase();
+    el.style.transformOrigin = `${el.getAttribute("x")}px ${el.getAttribute("y")}px`;
+    const want = letterLenClass(text);
+    for (const c of LEN_CLASSES) el.classList.toggle(c, c === want);
+  }
+  var RIGHT_MARKS = /* @__PURE__ */ new Set(["checked", "revealed"]);
+  var KNOWN_MARKS = /* @__PURE__ */ new Set([...RIGHT_MARKS, "wrong"]);
+  function applyMark(el, mark) {
+    if (mark) el.dataset.mark = mark;
+    else delete el.dataset.mark;
+  }
+  function makeCellStore({ ids, cellEl, letterEl, show = setLetterText, drawMark = () => {
+  } }) {
+    const letters = /* @__PURE__ */ new Map();
+    const known = new Set(ids);
+    function setMark(n, mark) {
+      for (const el of [cellEl(n), letterEl(n)]) applyMark(el, mark);
+      drawMark(n, mark);
+    }
+    function getMark(n) {
+      return cellEl(n).dataset.mark || null;
+    }
+    function isConfirmedRight(n) {
+      return RIGHT_MARKS.has(getMark(n));
+    }
+    function isMarkedWrong(n) {
+      return getMark(n) === "wrong";
+    }
+    function isLocked(n) {
+      return isConfirmedRight(n);
+    }
+    function getCellLetter(n) {
+      return letters.get(n) || "";
+    }
+    function setCellLetter(n, letter) {
+      if (isLocked(n)) return;
+      if (letter) letters.set(n, letter);
+      else letters.delete(n);
+      show(letterEl(n), letter);
+      setMark(n, null);
+    }
+    function savedMarks(saved) {
+      const { marks } = saved;
+      if (marks === null || typeof marks !== "object" || Array.isArray(marks)) return [];
+      return Object.entries(marks).map(([k, mark]) => [Number(k), mark]);
+    }
+    return {
+      getCellLetter,
+      setCellLetter,
+      setMark,
+      getMark,
+      isConfirmedRight,
+      isMarkedWrong,
+      isLocked,
+      // Clear and Play again: unmark first, so locked cells empty too.
+      clearCells() {
+        for (const n of ids) {
+          setMark(n, null);
+          setCellLetter(n, "");
+        }
+      },
+      // The save's `letters` (an object keyed by cell id) and `marks` (cell id → value,
+      // marked cells only).
+      saveFields() {
+        const marks = {};
+        for (const n of ids) {
+          const mark = getMark(n);
+          if (mark) marks[n] = mark;
+        }
+        return { letters: Object.fromEntries(letters), marks };
+      },
+      // Whether every cell a save names (its letters, marks and composing cell) is one of
+      // this board's: setupStorage's `fits`. Two boards can share a storageKey, and
+      // restoring the other's save would write to cells that don't exist here.
+      fitsSave(saved) {
+        const composing = saved.composing;
+        return saved.letters !== null && typeof saved.letters === "object" && Object.keys(saved.letters).every((k) => known.has(Number(k))) && savedMarks(saved).every(([n]) => known.has(n)) && (composing === null || composing === void 0 || known.has(composing));
+      },
+      // saveFields' inverse. Letters first: each one clears its cell's mark.
+      restoreFields(saved) {
+        for (const [k, letter] of Object.entries(saved.letters)) setCellLetter(Number(k), letter);
+        for (const [n, mark] of savedMarks(saved)) if (KNOWN_MARKS.has(mark)) setMark(n, mark);
+      }
+    };
+  }
+  var MAX_COMPOSE_LEN = 12;
+  function makeComposer({ getContent, setContent, onCommit, isSolved, isLocked = () => false }) {
+    let composingId = null;
+    function isComposing(n) {
+      return composingId !== null && n === composingId;
+    }
+    function isCellFilled(n) {
+      return getContent(n) !== "" && n !== composingId;
+    }
+    function commit() {
+      if (composingId === null) return;
+      composingId = null;
+      onCommit();
+    }
+    function commitIfMoved(n) {
+      if (composingId !== null && composingId !== n) commit();
+    }
+    function typeLetter(n, text) {
+      if (isLocked(n)) return true;
+      if (isComposing(n)) {
+        setContent(n, (getContent(n) + text).slice(0, MAX_COMPOSE_LEN));
+        return false;
+      }
+      setContent(n, text.slice(-1));
+      return true;
+    }
+    function backspace(n) {
+      if (!isComposing(n)) return false;
+      const cur = getContent(n);
+      if (cur === "") return false;
+      setContent(n, cur.slice(0, -1));
+      return true;
+    }
+    function toggle(n) {
+      if (isComposing(n)) {
+        commit();
+        return;
+      }
+      if (!canCompose(n)) return;
+      composingId = n;
+    }
+    function canCompose(n) {
+      return !isSolved() && !isLocked(n);
+    }
+    function reset() {
+      composingId = null;
+    }
+    function getComposing() {
+      return composingId;
+    }
+    function restore(n) {
+      if (n === null || n === void 0) return;
+      composingId = n;
+    }
+    return {
+      isCellFilled,
+      isComposing,
+      canCompose,
+      typeLetter,
+      backspace,
+      toggle,
+      commitIfMoved,
+      reset,
+      getComposing,
+      restore
+    };
+  }
+  function makeBoardChecker({
+    cellIds,
+    getContent,
+    isCellFilled,
+    isCellConfirmedRight,
+    isCellMarkedWrong = () => false,
+    checkComposing = false,
+    hashed,
+    getExpected,
+    getBoardHash,
+    markSolved,
+    syncUI
+  }) {
+    function isBoardFilled() {
+      return cellIds.every((n) => isCellFilled(n));
+    }
+    function isEntryFilled(cells) {
+      return cells.every((n) => isCellFilled(n));
+    }
+    function isSolved() {
+      return isBoardFilled() && boardIsCorrect();
+    }
+    function getSolution() {
+      return joinCells(cellIds.map((n) => getContent(n)));
+    }
+    function canCheck(n) {
+      const hasContent = checkComposing ? getContent(n) !== "" : isCellFilled(n);
+      return hasContent && !isCellConfirmedRight(n) && !isCellMarkedWrong(n);
+    }
+    function checkCell(n) {
+      return canCheck(n) ? getContent(n) === getExpected(n) : null;
+    }
+    function checkCells(ids) {
+      const right = [];
+      const wrong = [];
+      for (const n of new Set(ids)) {
+        const ok = checkCell(n);
+        if (ok === true) right.push(n);
+        else if (ok === false) wrong.push(n);
+      }
+      return { right, wrong };
+    }
+    function canReveal(n) {
+      return !isCellConfirmedRight(n);
+    }
+    function boardIsCorrect() {
+      return hashed ? sha256hex(getSolution()) === getBoardHash() : cellIds.every((n) => getContent(n) === getExpected(n));
+    }
+    function checkIfFilled() {
+      if (!isBoardFilled()) return;
+      if (!boardIsCorrect()) {
+        syncUI();
+        return;
+      }
+      markSolved();
+      syncUI();
+    }
+    function repaintIfSolved() {
+      if (isSolved()) markSolved();
+    }
+    return {
+      isBoardFilled,
+      isEntryFilled,
+      isSolved,
+      markSolved,
+      getSolution,
+      canCheck,
+      checkCell,
+      checkCells,
+      canReveal,
+      getContent,
+      getExpected,
+      cellIds,
+      checkIfFilled,
+      repaintIfSolved
+    };
+  }
+  function revealCells({ ids, composer, getContent, getExpected, canReveal, setCellLetter, setMark }) {
+    const composing = composer.getComposing();
+    if (composing !== null && ids.includes(composing) && canReveal(composing)) composer.reset();
+    for (const n of ids) {
+      if (!canReveal(n)) continue;
+      if (getContent(n) !== getExpected(n)) setCellLetter(n, getExpected(n));
+      setMark(n, "revealed");
+    }
+  }
+  function makeHelpActions({
+    checker,
+    composer,
+    helpRecord,
+    setCellLetter,
+    setMark,
+    saveState,
+    syncUI,
+    refocus,
+    flashWrong: flashWrong2,
+    beforeCheck = () => {
+    },
+    afterReveal = () => {
+      syncUI();
+      refocus();
+    }
+  }) {
+    function checkSet(ids) {
+      beforeCheck();
+      if (checker.isSolved()) {
+        refocus();
+        return;
+      }
+      const { right, wrong } = checker.checkCells(ids);
+      if (right.length + wrong.length === 0) {
+        refocus();
+        return;
+      }
+      helpRecord.countCheck();
+      for (const n of right) setMark(n, "checked");
+      for (const n of wrong) setMark(n, "wrong");
+      checker.checkIfFilled();
+      saveState();
+      flashWrong2(wrong);
+      syncUI();
+      refocus();
+    }
+    function revealSet(ids) {
+      if (checker.isSolved() || !ids.some(checker.canReveal)) {
+        refocus();
+        return;
+      }
+      revealCells({
+        ids,
+        composer,
+        getContent: checker.getContent,
+        getExpected: checker.getExpected,
+        canReveal: checker.canReveal,
+        setCellLetter,
+        setMark
+      });
+      helpRecord.countReveal();
+      checker.checkIfFilled();
+      saveState();
+      afterReveal();
+    }
+    return { checkSet, revealSet };
+  }
+  function restoreAndSeal({ restoreState, checker, latch, composer }) {
+    restoreState();
+    latch.sealIfSolved(checker.isSolved());
+    checker.repaintIfSolved();
+    return composer.getComposing();
+  }
+  function resetAndRefocus({ composer, clearBoard, clearState, timer, latch, helpRecord, focusInitial }) {
+    composer.reset();
+    clearBoard();
+    clearState();
+    timer.reset();
+    latch.reset();
+    helpRecord.reset();
+    focusInitial();
+  }
+  function stepToUnfilled(order, from, dir, cellsOf, isFilled) {
+    const n = order.length;
+    const at = order.indexOf(from);
+    for (let k = 1; k <= n; k++) {
+      const entry2 = order[((at + dir * k) % n + n) % n];
+      const cell = cellsOf(entry2).find((c) => !isFilled(c));
+      if (cell !== void 0) return { entry: entry2, cell };
+    }
+    const entry = order[((at + dir) % n + n) % n];
+    return { entry, cell: cellsOf(entry)[0] };
+  }
+
+  // shared/markShapes.mjs
+  var CORNER_TIE_FRAC = 0.02;
+  function pathCorners(d) {
+    const tokens = d.match(/[A-Za-z]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/g) || [];
+    const corners = [];
+    let i = 0;
+    const num = () => {
+      const v = Number(tokens[i++]);
+      if (!Number.isFinite(v)) throw new Error(`pathCorners: expected a number in "${d}"`);
+      return v;
+    };
+    while (i < tokens.length) {
+      const cmd = tokens[i++];
+      if (cmd === "Z") continue;
+      if (cmd === "M" || cmd === "L") corners.push([num(), num()]);
+      else if (cmd === "A") {
+        i += 5;
+        corners.push([num(), num()]);
+      } else throw new Error(`pathCorners: unsupported command "${cmd}" in "${d}"`);
+    }
+    const [first, last] = [corners[0], corners[corners.length - 1]];
+    if (corners.length > 1 && first[0] === last[0] && first[1] === last[1]) corners.pop();
+    return corners;
+  }
+  function rectCorners(x, y, w, h) {
+    return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  }
+  function sizeOf(corners) {
+    let size = 0;
+    for (const a of corners) for (const b of corners) size = Math.max(size, Math.hypot(a[0] - b[0], a[1] - b[1]));
+    return size;
+  }
+  function flagCornerIndex(corners) {
+    const score = ([x, y]) => x - y;
+    const best = Math.max(...corners.map(score));
+    const tie = CORNER_TIE_FRAC * sizeOf(corners);
+    let pick = -1;
+    corners.forEach((c, i) => {
+      if (score(c) < best - tie) return;
+      const p = corners[pick];
+      if (pick === -1 || c[1] < p[1] || c[1] === p[1] && c[0] > p[0]) pick = i;
+    });
+    return pick;
+  }
+  function flagPolygon(corners, i, frac = 0.3) {
+    const len = corners.length;
+    const c = corners[i];
+    const a = corners[(i - 1 + len) % len];
+    const b = corners[(i + 1) % len];
+    const dist = (u, v) => Math.hypot(u[0] - v[0], u[1] - v[1]);
+    const leg = frac * Math.min(dist(a, c), dist(b, c));
+    const toward = (u) => {
+      const l = dist(u, c);
+      return [c[0] + (u[0] - c[0]) * leg / l, c[1] + (u[1] - c[1]) * leg / l];
+    };
+    const p = toward(a);
+    const q = toward(b);
+    let n = [-(q[1] - p[1]), q[0] - p[0]];
+    const nl = Math.hypot(n[0], n[1]);
+    n = [n[0] / nl, n[1] / nl];
+    if (n[0] * (c[0] - p[0]) + n[1] * (c[1] - p[1]) < 0) n = [-n[0], -n[1]];
+    const m = sizeOf(corners);
+    const out = ([x, y]) => [x + n[0] * m, y + n[1] * m];
+    return [p, q, out(q), out(p)];
+  }
+  function slashLine(corners, i) {
+    const c = corners[i];
+    let far = c;
+    for (const p of corners) {
+      if (Math.hypot(p[0] - c[0], p[1] - c[1]) > Math.hypot(far[0] - c[0], far[1] - c[1])) far = p;
+    }
+    return [c, far];
+  }
+
+  // shared/engine-chrome.mjs
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  function svgEl(tag, attrs = {}) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  }
+  function htmlEl(tag, attrs = {}, ...children) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    el.append(...children);
+    return el;
+  }
+  function setClueHtml(el, clue) {
+    el.innerHTML = clue;
+  }
+  function clueTextEl(clue) {
+    const el = htmlEl("span", { class: "clue-text" });
+    setClueHtml(el, clue);
+    return el;
+  }
+  function onClueClick(el, handler, { capture = false } = {}) {
+    el.addEventListener("click", (e) => {
+      if (!e.target.closest("a, .list-cell")) handler(e);
+    }, capture);
+  }
+  function renderByline(data) {
+    const byline = document.querySelector(".byline");
+    if (!byline) return;
+    const parts = [];
+    if (data.author !== void 0) parts.push("by " + data.author);
+    if (data.date !== void 0) parts.push(String(data.date));
+    byline.textContent = parts.join(" \xB7 ");
+    byline.hidden = parts.length === 0;
+  }
+  function renderInstructions(data) {
+    const el = document.getElementById("instructions");
+    if (!data.instructions || !el) return;
+    el.innerHTML = data.instructions;
+    el.hidden = false;
+  }
+  var HELP_BTN_ID = "help-btn";
+  var MENU_BTN_ID = "menu-btn";
+  function inMenu(el) {
+    return !!(el && el.closest && el.closest('[role="menu"]'));
+  }
+  function isKeyboardFocus(el) {
+    return el.matches(":focus-visible");
+  }
+  function setupArmedButton(btn, onConfirmed, refocus) {
+    const restLabel = btn.textContent;
+    let armed = false;
+    let timer = null;
+    function disarm() {
+      clearTimeout(timer);
+      armed = false;
+      btn.textContent = restLabel;
+      btn.classList.remove("armed");
+    }
+    btn.addEventListener("click", () => {
+      if (!armed) {
+        armed = true;
+        btn.textContent = "Are you sure?";
+        btn.classList.add("armed");
+        timer = setTimeout(disarm, 3e3);
+        if (refocus && !isKeyboardFocus(btn)) refocus();
+      } else {
+        disarm();
+        onConfirmed();
+      }
+    });
+    return { disarm };
+  }
+  function setupRebusButton(btn, { onToggle, isComposing, canCompose = () => true, refocus }) {
+    function sync() {
+      const composing = isComposing();
+      const want = composing ? "Done" : "Rebus";
+      if (btn.textContent !== want) btn.textContent = want;
+      btn.disabled = !composing && !canCompose();
+    }
+    btn.addEventListener("mousedown", (e) => e.preventDefault());
+    btn.addEventListener("click", (e) => {
+      if (e && (e.metaKey || e.ctrlKey)) return;
+      onToggle();
+      sync();
+      if (refocus) refocus();
+    });
+    sync();
+    return { sync };
+  }
+  var SCROLL_DELTAS = {
+    ArrowUp: () => -80,
+    ArrowDown: () => 80,
+    PageUp: () => -window.innerHeight * 0.9,
+    PageDown: () => window.innerHeight * 0.9
+  };
+  function scrollByKey(key) {
+    const delta = SCROLL_DELTAS[key];
+    if (!delta) return false;
+    window.scrollBy({ top: delta(), behavior: "auto" });
+    return true;
+  }
+  function setupClueBar() {
+    const row = (id) => {
+      const el = document.getElementById(id);
+      const part = (cls) => el.querySelector(".active-clue-" + cls);
+      return { el, dir: part("dir"), num: part("num"), text: part("text") };
+    };
+    const primary = row("active-clue-primary"), secondary = row("active-clue-secondary");
+    function fill(r, { dir, num, clue }) {
+      if (r.dir) r.dir.textContent = dir;
+      r.num.textContent = num + ".";
+      setClueHtml(r.text, clue);
+    }
+    return {
+      el: document.getElementById("active-clue-bar"),
+      text: primary.text,
+      show(main, crossing) {
+        fill(primary, main);
+        if (crossing) fill(secondary, crossing);
+        secondary.el.hidden = !crossing;
+      }
+    };
+  }
+  var PHONE_CLASS = "phone";
+  function storageKey(prefix, data) {
+    return "vp:" + prefix + ":" + data.boardHash;
+  }
+  var FLASH_WRONG_MS = 600;
+  function flashWrong(cellEl, flashLayer) {
+    const flashEl = cellEl.cloneNode(false);
+    flashEl.removeAttribute("id");
+    flashEl.setAttribute("class", "flash-wrong-overlay");
+    flashLayer.appendChild(flashEl);
+    setTimeout(() => flashEl.remove(), FLASH_WRONG_MS);
+  }
+  function setupMarkLayer(layer, cellEl) {
+    const shapes = /* @__PURE__ */ new Map();
+    function cornersOf(el) {
+      if (el.tagName.toLowerCase() === "rect") {
+        const a = (name) => Number(el.getAttribute(name));
+        return rectCorners(a("x"), a("y"), a("width"), a("height"));
+      }
+      return pathCorners(el.getAttribute("d"));
+    }
+    function draw(n, mark) {
+      shapes.get(n)?.remove();
+      shapes.delete(n);
+      if (mark !== "revealed" && mark !== "wrong") return;
+      const cell = cellEl(n);
+      const corners = cornersOf(cell);
+      const corner = flagCornerIndex(corners);
+      const clipId = `mark-clip-${n}`;
+      const outline = cell.cloneNode(false);
+      outline.removeAttribute("id");
+      outline.removeAttribute("class");
+      const clip = svgEl("clipPath", { id: clipId });
+      clip.appendChild(outline);
+      let shape;
+      if (mark === "revealed") {
+        const points = flagPolygon(corners, corner).map((p) => p.join(",")).join(" ");
+        shape = svgEl("polygon", { class: "mark-flag", points });
+      } else {
+        const [[x1, y1], [x2, y2]] = slashLine(corners, corner);
+        shape = svgEl("line", { class: "mark-slash", x1, y1, x2, y2 });
+      }
+      const g = svgEl("g", { class: `mark-shape mark-${mark}`, "clip-path": `url(#${clipId})` });
+      g.append(clip, shape);
+      layer.appendChild(g);
+      shapes.set(n, g);
+    }
+    return { draw };
+  }
+  var SAVE_VERSION = 2;
+  function setupStorage(key, { getState, fits, applyState }) {
+    function saveState() {
+      try {
+        localStorage.setItem(key, JSON.stringify({ v: SAVE_VERSION, ...getState() }));
+      } catch (_) {
+      }
+    }
+    function readSave() {
+      let saved;
+      try {
+        saved = JSON.parse(localStorage.getItem(key));
+      } catch (_) {
+      }
+      return saved && saved.v === SAVE_VERSION && fits(saved) ? saved : null;
+    }
+    function restoreState() {
+      const saved = readSave();
+      if (saved) applyState(saved);
+    }
+    function clearState() {
+      try {
+        localStorage.removeItem(key);
+      } catch (_) {
+      }
+    }
+    return { saveState, restoreState, clearState, hasSave: () => readSave() !== null };
+  }
+  function setupKeydown(handler, { keysOverlay, refocus }) {
+    let strayEvent = null;
+    document.addEventListener("keydown", (e) => {
+      for (const el of [document.activeElement, e.target]) {
+        if (el && el.closest && el.closest('[role="menu"][hidden], dialog:not([open])')) {
+          el.blur();
+          strayEvent = e;
+        }
+      }
+    }, true);
+    document.addEventListener("keydown", (e) => {
+      if (!document.hasFocus()) return;
+      if (keysOverlay && keysOverlay.open) return;
+      if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229 && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        const t = e === strayEvent ? document.body : e.target;
+        if (inMenu(t) || t.closest && t.closest("dialog")) return;
+        if (document.querySelector('[role="menu"]:not([hidden])')) return;
+        e.preventDefault();
+        if (t === document.getElementById("hidden-input") || t === document.body) {
+          const first = document.getElementById(HELP_BTN_ID) || document.getElementById(MENU_BTN_ID);
+          if (first) first.focus();
+        } else {
+          refocus();
+        }
+        return;
+      }
+      if (e.metaKey && e.key === "ArrowLeft") {
+        history.back();
+        return;
+      }
+      if (e.metaKey && e.key === "ArrowRight") {
+        history.forward();
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) return;
+      if (document.activeElement && (document.activeElement.tagName === "BUTTON" || inMenu(document.activeElement))) return;
+      if (!document.activeElement || document.activeElement === document.body) refocus();
+      handler(e);
+    });
+  }
+  function setupCellClicks(svg, handler) {
+    svg.addEventListener("click", (e) => {
+      const cell = e.target.closest(".cell");
+      if (cell) handler(Number(cell.id.slice("cell-".length)));
+    });
+  }
+  function formatMs(ms) {
+    const s = Math.round(ms / 1e3);
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+  function setupCongratsDialog({ title, date, onPlayAgain }) {
+    const timeEl = htmlEl("p", { id: "congrats-time" });
+    const copyBtn = htmlEl(
+      "button",
+      { id: "congrats-copy-btn", type: "button" },
+      "Copy result"
+    );
+    const viewBtn = htmlEl(
+      "button",
+      { id: "congrats-view-btn", type: "button" },
+      "View puzzle"
+    );
+    const playBtn = htmlEl(
+      "button",
+      { id: "congrats-play-btn", type: "button", autofocus: "" },
+      "Play again"
+    );
+    const dialog = htmlEl(
+      "dialog",
+      { id: "congrats-dialog", "aria-label": "Puzzle solved" },
+      htmlEl(
+        "div",
+        { id: "congrats" },
+        htmlEl("p", { id: "congrats-msg" }, "Puzzle solved!"),
+        timeEl,
+        htmlEl("div", { id: "congrats-actions" }, copyBtn, viewBtn, playBtn)
+      )
+    );
+    document.body.appendChild(dialog);
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) dialog.close();
+    });
+    viewBtn.addEventListener("click", () => dialog.close());
+    let copyText = "";
+    copyBtn.addEventListener("click", async () => {
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(copyText);
+        copied = true;
+      } catch (_) {
+      }
+      copyBtn.textContent = copied ? "Copied!" : "Couldn't copy";
+      setTimeout(() => {
+        copyBtn.textContent = "Copy result";
+      }, 1500);
+    });
+    playBtn.addEventListener("click", () => {
+      dialog.close();
+      onPlayAgain();
+    });
+    function open(timeMs) {
+      const timeStr = formatMs(timeMs);
+      timeEl.textContent = "Solved in " + timeStr;
+      const prefix = title && date ? title + " \xB7 " + String(date) + "\n" : "";
+      copyText = prefix + "Solved in " + timeStr;
+      if (!dialog.open) dialog.showModal();
+    }
+    return { open };
+  }
+  function setupKeysOverlay(shortcuts, refocus) {
+    const btn = htmlEl(
+      "button",
+      { id: "keys-btn", type: "button", "aria-label": "Keyboard shortcuts" },
+      "?"
+    );
+    document.body.appendChild(btn);
+    const closeBtn = htmlEl(
+      "button",
+      { id: "keys-close", type: "button", autofocus: "", "aria-label": "Close" },
+      "\u2715"
+    );
+    const dialog = htmlEl(
+      "dialog",
+      { id: "keys-overlay", "aria-label": "Keyboard shortcuts" },
+      htmlEl(
+        "div",
+        { id: "keys-modal" },
+        htmlEl(
+          "div",
+          { id: "keys-modal-header" },
+          htmlEl("span", {}, "Keyboard shortcuts"),
+          closeBtn
+        ),
+        htmlEl("table", {}, ...shortcuts.map(([keys, desc]) => htmlEl(
+          "tr",
+          {},
+          htmlEl("td", {}, htmlEl("kbd", {}, keys)),
+          htmlEl("td", {}, desc)
+        )))
+      )
+    );
+    document.body.appendChild(dialog);
+    const open = () => {
+      refocus();
+      dialog.showModal();
+    };
+    const close = () => dialog.close();
+    btn.addEventListener("click", () => dialog.open ? close() : open());
+    closeBtn.addEventListener("click", close);
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (!document.hasFocus()) return;
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        dialog.open ? close() : open();
+      }
+    });
+    return dialog;
+  }
+  function setupOptionsMenu(refocus) {
+    const btn = htmlEl("button", {
+      id: MENU_BTN_ID,
+      type: "button",
+      "aria-label": "Menu",
+      "aria-haspopup": "true",
+      "aria-expanded": "false"
+    }, "\u2630");
+    const keysBtn = document.getElementById("keys-btn");
+    document.body.insertBefore(btn, keysBtn);
+    const clearBtn = htmlEl(
+      "button",
+      { id: "clear-btn", type: "button", role: "menuitem" },
+      "Clear puzzle"
+    );
+    const panel = htmlEl("div", { id: "menu-panel", role: "menu", hidden: "" }, clearBtn);
+    document.body.insertBefore(panel, keysBtn);
+    const { close, onClosed } = setupPopupMenu(btn, panel, refocus);
+    return { clearBtn, close, onClosed };
+  }
+  function setupHelpMenu(refocus, rows, selfClosing = []) {
+    const ring = svgEl("svg", { viewBox: "0 0 24 24", width: 24, height: 24, "aria-hidden": "true" });
+    const stroke = { fill: "none", stroke: "currentColor", "stroke-width": 1.8, "stroke-linecap": "round" };
+    ring.append(svgEl("circle", { cx: 12, cy: 12, r: 9, ...stroke }), svgEl("circle", { cx: 12, cy: 12, r: 4, ...stroke }));
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      ring.append(svgEl("line", {
+        x1: 12 + sx * 2.9,
+        y1: 12 + sy * 2.9,
+        x2: 12 + sx * 6.4,
+        y2: 12 + sy * 6.4,
+        ...stroke
+      }));
+    }
+    const btn = htmlEl("button", {
+      id: HELP_BTN_ID,
+      type: "button",
+      "aria-label": "Help",
+      "aria-haspopup": "true",
+      "aria-expanded": "false"
+    }, ring);
+    const panel = htmlEl("div", { id: "help-panel", role: "menu", hidden: "" }, ...rows);
+    const menuBtn = document.getElementById(MENU_BTN_ID);
+    for (const el of [btn, panel]) document.body.insertBefore(el, menuBtn);
+    document.body.classList.add("has-help-btn");
+    const { close, onClosed } = setupPopupMenu(btn, panel, refocus);
+    for (const row of rows) {
+      if (!selfClosing.includes(row)) row.addEventListener("click", () => close());
+    }
+    return { btn, panel, close, onClosed };
+  }
+  function nextMenuItem(enabled, current, key) {
+    const n = enabled.length;
+    if (key === "Home") return enabled.indexOf(true);
+    if (key === "End") return enabled.lastIndexOf(true);
+    const step = key === "ArrowUp" ? -1 : 1;
+    const from = current < 0 && step < 0 ? n : current;
+    for (let k = 1; k <= n; k++) {
+      const i = ((from + step * k) % n + n) % n;
+      if (enabled[i]) return i;
+    }
+    return -1;
+  }
+  function setupPopupMenu(btn, panel, refocus) {
+    const closedHooks = [];
+    function isOpen() {
+      return !panel.hidden;
+    }
+    function rows() {
+      return [...panel.querySelectorAll("button, input")];
+    }
+    function enabledFlags(list) {
+      return list.map((r) => {
+        const h = r.closest("[hidden]");
+        return !r.disabled && (!h || h === panel);
+      });
+    }
+    function close(focusTo = "puzzle") {
+      if (!isOpen()) return;
+      panel.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+      for (const fn of closedHooks) fn();
+      if (focusTo === "puzzle") refocus();
+      else if (focusTo === "trigger") btn.focus();
+    }
+    function open(viaKeyboard) {
+      let first = -1;
+      const list = rows();
+      if (viaKeyboard) {
+        first = nextMenuItem(enabledFlags(list), -1, "ArrowDown");
+        if (first < 0) return;
+      }
+      panel.hidden = false;
+      btn.setAttribute("aria-expanded", "true");
+      if (viaKeyboard) list[first].focus();
+      else refocus();
+    }
+    btn.addEventListener("click", (e) => isOpen() ? close() : open(e.detail === 0));
+    btn.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowDown" || isOpen()) return;
+      e.preventDefault();
+      open(true);
+    });
+    panel.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close("trigger");
+        return;
+      }
+      if (e.key === "Tab") {
+        close("none");
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      const list = rows();
+      const i = nextMenuItem(enabledFlags(list), list.indexOf(document.activeElement), e.key);
+      if (i >= 0) list[i].focus();
+    });
+    panel.addEventListener("mousedown", (e) => e.preventDefault());
+    document.addEventListener("click", (e) => {
+      if (!isOpen()) return;
+      if (panel.contains(e.target) || btn.contains(e.target)) return;
+      close();
+    });
+    const MODIFIERS = ["Shift", "Alt", "Meta", "Control", "CapsLock"];
+    document.addEventListener("keydown", (e) => {
+      if (!isOpen() || MODIFIERS.includes(e.key) || e.metaKey || e.ctrlKey) return;
+      if (panel.contains(e.target)) return;
+      if (e.target === btn && e.key === "ArrowDown") return;
+      close();
+    });
+    return { close, onClosed: (fn) => closedHooks.push(fn) };
+  }
+  function menuToggle(id, text) {
+    const input = htmlEl("input", { type: "checkbox", id, role: "menuitemcheckbox" });
+    const label = htmlEl("label", { id: id + "-label", class: "menu-toggle" }, input, " " + text);
+    return { label, input };
+  }
+  function boolPref(prefKey, fallback, storage) {
+    const store = () => storage || localStorage;
+    function load() {
+      try {
+        const v = JSON.parse(store().getItem(prefKey));
+        return typeof v === "boolean" ? v : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+    function save(b) {
+      try {
+        store().setItem(prefKey, JSON.stringify(b));
+      } catch (_) {
+      }
+    }
+    return { load, save };
+  }
+  function setupControls({
+    checker,
+    hashed,
+    helpActions,
+    activeCell,
+    clueCells,
+    clueNoun = () => "clue",
+    onClear,
+    refocus
+  }) {
+    const { clearBtn, close, onClosed } = setupOptionsMenu(refocus);
+    const clear = setupArmedButton(clearBtn, () => {
+      onClear();
+      close();
+    }, refocus);
+    onClosed(clear.disarm);
+    if (hashed) return { syncHelp() {
+    }, helpMenu: null };
+    const canCheck = (n) => checker.canCheck(n);
+    const canReveal = (n) => checker.canReveal(n);
+    const rows = [
+      {
+        id: "check-btn",
+        label: () => "Check cell",
+        cells: () => [activeCell()],
+        act: (ids) => helpActions.checkSet(ids),
+        can: canCheck
+      },
+      {
+        id: "reveal-btn",
+        label: () => "Reveal cell",
+        cells: () => [activeCell()],
+        act: (ids) => helpActions.revealSet(ids),
+        can: canReveal
+      },
+      {
+        id: "check-clue-btn",
+        label: () => "Check " + clueNoun(),
+        cells: clueCells,
+        act: (ids) => helpActions.checkSet(ids),
+        can: canCheck
+      },
+      {
+        id: "reveal-clue-btn",
+        label: () => "Reveal " + clueNoun(),
+        cells: clueCells,
+        act: (ids) => helpActions.revealSet(ids),
+        can: canReveal
+      },
+      {
+        id: "check-puzzle-btn",
+        label: () => "Check puzzle",
+        cells: () => checker.cellIds,
+        act: (ids) => helpActions.checkSet(ids),
+        can: canCheck
+      },
+      {
+        id: "reveal-puzzle-btn",
+        label: () => "Reveal puzzle",
+        cells: () => checker.cellIds,
+        act: (ids) => helpActions.revealSet(ids),
+        can: canReveal
+      }
+    ];
+    const revealPuzzle = rows.find((row) => row.id === "reveal-puzzle-btn");
+    for (const row of rows) {
+      row.btn = htmlEl(
+        "button",
+        { id: row.id, type: "button", role: "menuitem", disabled: "" },
+        row.label()
+      );
+      if (row !== revealPuzzle) row.btn.addEventListener("click", () => row.act(row.cells()));
+    }
+    const revealPuzzleBtn = revealPuzzle.btn;
+    const revealArm = setupArmedButton(
+      revealPuzzleBtn,
+      () => {
+        revealPuzzle.act(revealPuzzle.cells());
+        helpMenu.close();
+      },
+      refocus
+    );
+    const helpMenu = setupHelpMenu(refocus, rows.map((row) => row.btn), [revealPuzzleBtn]);
+    helpMenu.onClosed(revealArm.disarm);
+    const setLabel = (btn, text) => {
+      if (btn.textContent !== text) btn.textContent = text;
+    };
+    return {
+      syncHelp() {
+        const solved = checker.isSolved();
+        for (const row of rows) {
+          setLabel(row.btn, row.label());
+          row.btn.disabled = solved || !row.cells().some(row.can);
+        }
+      },
+      helpMenu
+    };
+  }
+  function setupEmbedResize({ win = window, root = document.documentElement, RO = win.ResizeObserver } = {}) {
+    if (!win.parent || win.parent === win || !RO) return null;
+    let last = -1;
+    const ro = new RO(() => {
+      const height = Math.ceil(root.getBoundingClientRect().height);
+      if (height === last) return;
+      last = height;
+      const msg = { type: "varietypack:resize", height };
+      if (root.classList.contains(PHONE_CLASS)) msg.fill = true;
+      win.parent.postMessage(msg, "*");
+    });
+    ro.observe(root);
+    return ro;
+  }
+
+  // shared/svg-zoom-gestures.mjs
+  var DEFAULTS = { tapSlop: 10, doubleTapMs: 300, doubleTapSlop: 15 };
+  function createGestureTracker(options = {}) {
+    const { tapSlop, doubleTapMs, doubleTapSlop } = { ...DEFAULTS, ...options };
+    const pointers = /* @__PURE__ */ new Map();
+    let gesture = false;
+    let double = false;
+    let lastTap = null;
+    let prevDist = 0;
+    let prevMid = { x: 0, y: 0 };
+    let anchor = null;
+    function pair() {
+      const [a, b] = [...pointers.values()];
+      return {
+        dist: Math.hypot(b.x - a.x, b.y - a.y),
+        mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      };
+    }
+    function endSequence() {
+      gesture = false;
+      double = false;
+      lastTap = null;
+      anchor = null;
+    }
+    function endGesture() {
+      const end = { type: "gestureEnd", anchor };
+      endSequence();
+      return [end];
+    }
+    function down(id, x, y, t) {
+      if (pointers.has(id) || pointers.size >= 2) return [];
+      const p = { x0: x, y0: y, x, y, panning: false };
+      if (pointers.size === 0) {
+        gesture = false;
+        double = Boolean(
+          lastTap && t - lastTap.t <= doubleTapMs && Math.hypot(x - lastTap.x, y - lastTap.y) <= doubleTapSlop
+        );
+        lastTap = null;
+        pointers.set(id, p);
+        return [];
+      }
+      gesture = true;
+      double = false;
+      p.panning = true;
+      for (const other of pointers.values()) other.panning = true;
+      pointers.set(id, p);
+      ({ dist: prevDist, mid: prevMid } = pair());
+      anchor = prevMid;
+      return [];
+    }
+    function move(id, x, y) {
+      const p = pointers.get(id);
+      if (!p) return [];
+      if (pointers.size === 2) {
+        p.x = x;
+        p.y = y;
+        const { dist, mid } = pair();
+        const action2 = {
+          type: "pinch",
+          from: prevMid,
+          to: mid,
+          scale: prevDist > 0 ? dist / prevDist : 1
+        };
+        prevDist = dist;
+        prevMid = mid;
+        anchor = mid;
+        return [action2];
+      }
+      if (!p.panning) {
+        if (Math.hypot(x - p.x0, y - p.y0) <= tapSlop) return [];
+        p.panning = true;
+        gesture = true;
+      }
+      const action = { type: "pan", dx: x - p.x, dy: y - p.y };
+      p.x = x;
+      p.y = y;
+      return [action];
+    }
+    function up(id, x, y, t) {
+      if (!pointers.has(id)) return [];
+      const wasPair = pointers.size === 2;
+      pointers.delete(id);
+      if (wasPair) {
+        return [];
+      }
+      if (gesture) return endGesture();
+      if (double) {
+        endSequence();
+        return [{ type: "doubleTap", x, y }];
+      }
+      lastTap = { x, y, t };
+      return [{ type: "tap", x, y }];
+    }
+    function cancel(id) {
+      if (!pointers.has(id)) return [];
+      pointers.delete(id);
+      if (pointers.size > 0) return [];
+      if (gesture) return endGesture();
+      endSequence();
+      return [];
+    }
+    function forget() {
+      lastTap = null;
+    }
+    return { down, move, up, cancel, forget };
+  }
+
+  // shared/svg-zoom-geometry.mjs
+  function initialView(frame) {
+    const { base } = frame;
+    return { zoom: 1, cx: base.x + base.width / 2, cy: base.y + base.height / 2 };
+  }
+  function fitScale(frame) {
+    return Math.min(frame.pane.width / frame.base.width, frame.pane.height / frame.base.height);
+  }
+  function visibleSize(view, frame) {
+    const k = fitScale(frame) * view.zoom;
+    return { width: frame.pane.width / k, height: frame.pane.height / k };
+  }
+  function axisRange(visible, start, extent, extra) {
+    if (visible >= extent) return { fits: true, lo: start + extent / 2, hi: start + extent / 2 };
+    const pad = Math.min(extra, (extent - visible) / 2);
+    return { fits: false, lo: start - pad + visible / 2, hi: start + extent + pad - visible / 2 };
+  }
+  function limitsAt(zoom, frame) {
+    const size = visibleSize({ zoom }, frame);
+    const k = fitScale(frame) * zoom;
+    const extra = Math.max(frame.bleed || 0, (frame.marginPx || 0) / k);
+    const { base } = frame;
+    return {
+      x: axisRange(size.width, base.x, base.width, extra),
+      y: axisRange(size.height, base.y, base.height, extra)
+    };
+  }
+  var clampTo = (value, range) => Math.min(Math.max(value, range.lo), range.hi);
+  function clampView(view, frame) {
+    const zoom = Math.min(Math.max(view.zoom, 1), frame.maxZoom);
+    const lim = limitsAt(zoom, frame);
+    return { zoom, cx: clampTo(view.cx, lim.x), cy: clampTo(view.cy, lim.y) };
+  }
+  function viewBoxOf(view, frame) {
+    const size = visibleSize(view, frame);
+    return {
+      x: view.cx - size.width / 2,
+      y: view.cy - size.height / 2,
+      width: size.width,
+      height: size.height
+    };
+  }
+  function zoomAround(view, frame, { from, to, zoom }, { clamp = true } = {}) {
+    const next = clamp ? Math.min(Math.max(zoom, 1), frame.maxZoom) : zoom;
+    const fit = fitScale(frame);
+    const kOld = fit * view.zoom;
+    const kNew = fit * next;
+    const box = viewBoxOf(view, frame);
+    const px = box.x + from.x / kOld;
+    const py = box.y + from.y / kOld;
+    const moved = {
+      zoom: next,
+      cx: px - to.x / kNew + frame.pane.width / (2 * kNew),
+      cy: py - to.y / kNew + frame.pane.height / (2 * kNew)
+    };
+    return clamp ? clampView(moved, frame) : moved;
+  }
+  function revealAxis(center, visible, start, extent, margin) {
+    const m = Math.max(0, Math.min(margin, (visible - extent) / 2));
+    const lo = center - visible / 2;
+    const hi = center + visible / 2;
+    if (start - m < lo) return start - m - lo;
+    if (start + extent + m > hi) return start + extent + m - hi;
+    return 0;
+  }
+  function reveal(view, frame, rects, margin) {
+    const size = visibleSize(view, frame);
+    const pick = (extentOf) => rects.find((rect) => extentOf(rect) <= extentOf(size)) || rects[rects.length - 1];
+    const rx = pick((b) => b.width);
+    const ry = pick((b) => b.height);
+    return clampView({
+      zoom: view.zoom,
+      cx: view.cx + revealAxis(view.cx, size.width, rx.x, rx.width, margin),
+      cy: view.cy + revealAxis(view.cy, size.height, ry.y, ry.height, margin)
+    }, frame);
+  }
+  var RUBBER_C = 0.55;
+  function rubberBand(excess, dim, c = RUBBER_C) {
+    if (dim <= 0) return 0;
+    const x = Math.abs(excess);
+    return Math.sign(excess) * (1 - 1 / (x * c / dim + 1)) * dim;
+  }
+  var UNBAND_MAX = 0.999;
+  function unrubberBand(shown, dim, c = RUBBER_C) {
+    if (dim <= 0) return 0;
+    const b = Math.min(Math.abs(shown), dim * UNBAND_MAX);
+    return Math.sign(shown) * (b / (1 - b / dim)) / c;
+  }
+  function bandOutside(value, lo, hi, scale, band) {
+    if (value < lo) return lo + band((value - lo) * scale) / scale;
+    if (value > hi) return hi + band((value - hi) * scale) / scale;
+    return value;
+  }
+  function stretchView(raw, frame) {
+    const zoom = Math.exp(bandOutside(
+      Math.log(raw.zoom),
+      0,
+      Math.log(frame.maxZoom),
+      1,
+      (e) => rubberBand(e, frame.zoomStretch || 0)
+    ));
+    return stretchCenter(raw, zoom, frame, rubberBand);
+  }
+  function unstretchView(shown, frame) {
+    const zoom = Math.exp(bandOutside(
+      Math.log(shown.zoom),
+      0,
+      Math.log(frame.maxZoom),
+      1,
+      (e) => unrubberBand(e, frame.zoomStretch || 0)
+    ));
+    return { ...stretchCenter(shown, shown.zoom, frame, unrubberBand), zoom };
+  }
+  function followFingers(raw, frame, { from, to, scale }) {
+    const zoom = raw.zoom * scale;
+    const shown = stretchView(raw, frame);
+    const shownZoom = stretchView({ ...raw, zoom }, frame).zoom;
+    const moved = zoomAround(shown, frame, { from, to, zoom: shownZoom }, { clamp: false });
+    return { zoom, cx: raw.cx + moved.cx - shown.cx, cy: raw.cy + moved.cy - shown.cy };
+  }
+  function stretchCenter(view, zoom, frame, band) {
+    const lim = limitsAt(zoom, frame);
+    const k = fitScale(frame) * zoom;
+    const axis = (c, range, dim) => bandOutside(c, range.lo, range.hi, k, (e) => band(e, dim));
+    return {
+      zoom,
+      cx: axis(view.cx, lim.x, frame.pane.width),
+      cy: axis(view.cy, lim.y, frame.pane.height)
+    };
+  }
+  var EDGE_EPS = 0.5;
+  function edgesOf(view, frame) {
+    if (view.zoom <= 1) return { top: false, right: false, bottom: false, left: false };
+    const box = viewBoxOf(view, frame);
+    const { base } = frame;
+    return {
+      top: box.y > base.y + EDGE_EPS,
+      right: box.x + box.width < base.x + base.width - EDGE_EPS,
+      bottom: box.y + box.height < base.y + base.height - EDGE_EPS,
+      left: box.x > base.x + EDGE_EPS
+    };
+  }
+
+  // shared/svg-zoom-motion.mjs
+  var SPRING_OMEGA = 22;
+  var MAX_DT = 1 / 30;
+  var SETTLE_PX = 0.25;
+  var SETTLE_LZ = 1e-3;
+  var FRAME = 1 / 60;
+  function springStep(x, v, target, dt, omega = SPRING_OMEGA) {
+    const x0 = x - target;
+    const b = v + omega * x0;
+    const decay = Math.exp(-omega * dt);
+    return {
+      x: target + (x0 + b * dt) * decay,
+      v: (v - omega * b * dt) * decay
+    };
+  }
+  function screenOf(p, view, frame) {
+    const k = fitScale(frame) * view.zoom;
+    const box = viewBoxOf(view, frame);
+    return { x: (p.x - box.x) * k, y: (p.y - box.y) * k };
+  }
+  function viewFrom(zoom, p, s, frame) {
+    const k = fitScale(frame) * zoom;
+    return {
+      zoom,
+      cx: p.x - s.x / k + frame.pane.width / (2 * k),
+      cy: p.y - s.y / k + frame.pane.height / (2 * k)
+    };
+  }
+  function startMotion(view, frame, anchorPx) {
+    const a = anchorPx || { x: frame.pane.width / 2, y: frame.pane.height / 2 };
+    const k = fitScale(frame) * view.zoom;
+    const box = viewBoxOf(view, frame);
+    return {
+      p: { x: box.x + a.x / k, y: box.y + a.y / k },
+      lz: Math.log(view.zoom),
+      sx: a.x,
+      sy: a.y,
+      vlz: 0,
+      vsx: 0,
+      vsy: 0
+    };
+  }
+  function stepMotion(motion, target, frame, dt) {
+    const t = Math.min(Math.max(dt, 0), MAX_DT);
+    const goalLz = Math.log(target.zoom);
+    const goal = screenOf(motion.p, target, frame);
+    const lz = springStep(motion.lz, motion.vlz, goalLz, t);
+    const sx = springStep(motion.sx, motion.vsx, goal.x, t);
+    const sy = springStep(motion.sy, motion.vsy, goal.y, t);
+    const still = (c, to, eps) => Math.abs(c.x - to) < eps && Math.abs(c.v) * FRAME < eps;
+    if (still(lz, goalLz, SETTLE_LZ) && still(sx, goal.x, SETTLE_PX) && still(sy, goal.y, SETTLE_PX)) {
+      return {
+        motion: { p: motion.p, lz: goalLz, sx: goal.x, sy: goal.y, vlz: 0, vsx: 0, vsy: 0 },
+        view: { ...target },
+        settled: true
+      };
+    }
+    const next = { p: motion.p, lz: lz.x, sx: sx.x, sy: sy.x, vlz: lz.v, vsx: sx.v, vsy: sy.v };
+    return { motion: next, view: viewFrom(Math.exp(lz.x), motion.p, { x: sx.x, y: sy.x }, frame), settled: false };
+  }
+
+  // shared/svg-zoom.mjs
+  var STRAY_CLICK_MS = 400;
+  var DOUBLE_TAP_MS = 300;
+  var DOUBLE_TAP_PX = 15;
+  var TAP_SLOP_PX = 10;
+  var EDGE_BLEED = 2;
+  function attachSvgZoom(svg, {
+    pane,
+    maxZoom = 5,
+    doubleTapZoom = 2.5,
+    marginPx = 0,
+    zoomStretch = 0,
+    onEdges = () => {
+    },
+    onView = () => {
+    },
+    win = window
+  }) {
+    const original = svg.getAttribute("viewBox");
+    const baseVal = svg.viewBox.baseVal;
+    const inert = { reveal() {
+    }, refresh() {
+    }, zoomed: () => false, destroy() {
+    } };
+    if (!original || !baseVal || baseVal.width <= 0 || baseVal.height <= 0) return inert;
+    const frame = {
+      base: { x: baseVal.x, y: baseVal.y, width: baseVal.width, height: baseVal.height },
+      pane: { width: 0, height: 0 },
+      maxZoom,
+      bleed: EDGE_BLEED,
+      marginPx,
+      zoomStretch
+    };
+    let current = initialView(frame);
+    let target = current;
+    let motion = null;
+    let raw = null;
+    let frameId = null;
+    let lastTime = null;
+    let measured = false;
+    let printing = false;
+    let lastEdges = "";
+    const ownOverflow = svg.style.overflow;
+    const noEdges = { top: false, right: false, bottom: false, left: false };
+    const sameView = (a, b) => a.zoom === b.zoom && a.cx === b.cx && a.cy === b.cy;
+    const whole = initialView(frame);
+    function apply() {
+      if (!measured) return;
+      if (printing || sameView(current, whole)) {
+        svg.setAttribute("viewBox", original);
+        svg.style.overflow = ownOverflow;
+      } else {
+        const b = viewBoxOf(current, frame);
+        svg.setAttribute("viewBox", `${b.x} ${b.y} ${b.width} ${b.height}`);
+        svg.style.overflow = "hidden";
+        onView({ ...b, scale: frame.pane.width / b.width });
+      }
+      const edges = printing ? noEdges : edgesOf(current, frame);
+      const key = JSON.stringify(edges);
+      if (key !== lastEdges) {
+        lastEdges = key;
+        onEdges(edges);
+      }
+    }
+    const motionQuery = win.matchMedia ? win.matchMedia("(prefers-reduced-motion: reduce)") : null;
+    const reducedMotion = () => Boolean(motionQuery && motionQuery.matches);
+    function onMotionPref() {
+      if (reducedMotion() && motion) snap();
+    }
+    function cancelFrame() {
+      if (frameId !== null) win.cancelAnimationFrame(frameId);
+      frameId = null;
+    }
+    function tick(time) {
+      frameId = null;
+      const dt = lastTime === null ? 1 / 60 : (time - lastTime) / 1e3;
+      const r = stepMotion(motion, target, frame, dt);
+      lastTime = time;
+      current = r.view;
+      motion = r.settled ? null : r.motion;
+      apply();
+      if (motion) frameId = win.requestAnimationFrame(tick);
+    }
+    function animateTo(next, anchorPx) {
+      target = next;
+      if (!measured || reducedMotion()) return snap();
+      if (!motion && sameView(current, target)) return;
+      if (anchorPx || !motion) motion = startMotion(current, frame, anchorPx);
+      if (frameId === null) {
+        lastTime = null;
+        frameId = win.requestAnimationFrame(tick);
+      }
+    }
+    function freeze() {
+      cancelFrame();
+      motion = null;
+      target = current;
+    }
+    function snap() {
+      cancelFrame();
+      motion = null;
+      current = target;
+      apply();
+    }
+    function measure() {
+      const r = svg.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return false;
+      frame.pane = { width: r.width, height: r.height };
+      measured = true;
+      return true;
+    }
+    function refresh() {
+      if (printing || !measure()) return;
+      target = clampView(target, frame);
+      if (motion) {
+        motion = startMotion(current, frame);
+        return;
+      }
+      current = clampView(current, frame);
+      apply();
+    }
+    function zoomed() {
+      return target.zoom > 1;
+    }
+    function reveal2(rects, margin) {
+      if (!measured || touching.size > 0) return;
+      animateTo(reveal(target, frame, rects, margin));
+    }
+    const tracker = createGestureTracker({
+      tapSlop: TAP_SLOP_PX,
+      doubleTapMs: DOUBLE_TAP_MS,
+      doubleTapSlop: DOUBLE_TAP_PX
+    });
+    let strayUntil = 0;
+    let eatNextUntil = 0;
+    const touching = /* @__PURE__ */ new Set();
+    let origin = null;
+    let swept = false;
+    function onClick(e) {
+      if (!pane.contains(e.target)) return;
+      const eat = () => {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      };
+      if (e.timeStamp <= strayUntil) return eat();
+      if (e.timeStamp <= eatNextUntil) {
+        eatNextUntil = 0;
+        return eat();
+      }
+    }
+    function local(e) {
+      return { x: e.clientX - origin.left, y: e.clientY - origin.top };
+    }
+    function showRaw() {
+      current = stretchView(raw, frame);
+      target = current;
+      apply();
+    }
+    function run(actions, t) {
+      for (const a of actions) {
+        if (a.type === "pan") {
+          const before = current;
+          raw = followFingers(raw, frame, { from: { x: 0, y: 0 }, to: { x: a.dx, y: a.dy }, scale: 1 });
+          showRaw();
+          if (current.cx !== before.cx || current.cy !== before.cy) swept = true;
+        } else if (a.type === "pinch") {
+          raw = followFingers(raw, frame, a);
+          showRaw();
+          swept = true;
+        } else if (a.type === "doubleTap") {
+          eatNextUntil = t + STRAY_CLICK_MS;
+          const next = zoomed() ? initialView(frame) : zoomAround(target, frame, { from: a, to: a, zoom: doubleTapZoom });
+          animateTo(next, { x: a.x, y: a.y });
+        } else if (a.type === "gestureEnd") {
+          if (swept) strayUntil = t + STRAY_CLICK_MS;
+          swept = false;
+        }
+      }
+    }
+    function onDown(e) {
+      if (!measured && !measure()) return;
+      eatNextUntil = 0;
+      if (touching.size > 0) swept = true;
+      else {
+        origin = svg.getBoundingClientRect();
+        freeze();
+        raw = unstretchView(current, frame);
+      }
+      touching.add(e.pointerId);
+      const p = local(e);
+      run(tracker.down(e.pointerId, p.x, p.y, e.timeStamp), e.timeStamp);
+    }
+    function onMove(e) {
+      if (!touching.has(e.pointerId)) return;
+      const p = local(e);
+      run(tracker.move(e.pointerId, p.x, p.y, e.timeStamp), e.timeStamp);
+    }
+    function onUp(e) {
+      if (!touching.delete(e.pointerId)) return;
+      const p = local(e);
+      const actions = tracker.up(e.pointerId, p.x, p.y, e.timeStamp);
+      endSequence(actions);
+      run(actions, e.timeStamp);
+    }
+    function onCancel(e) {
+      if (!touching.delete(e.pointerId)) return;
+      const actions = tracker.cancel(e.pointerId);
+      endSequence(actions);
+      run(actions, e.timeStamp);
+    }
+    function endSequence(actions) {
+      if (touching.size > 0) return;
+      raw = null;
+      const end = actions.find((a) => a.type === "gestureEnd");
+      const anchor = end && end.anchor;
+      if (!anchor) return animateTo(clampView(current, frame));
+      const settledView = zoomAround(current, frame, { from: anchor, to: anchor, zoom: current.zoom });
+      animateTo(settledView, anchor);
+    }
+    function onOutsideDown(e) {
+      if (!pane.contains(e.target)) tracker.forget();
+    }
+    function stopGesture(e) {
+      e.preventDefault();
+    }
+    const saved = { pane: pane.style.touchAction, svgTouch: svg.style.touchAction };
+    pane.style.touchAction = "none";
+    svg.style.touchAction = "none";
+    const passive = { passive: true };
+    pane.addEventListener("pointerdown", onDown, passive);
+    pane.addEventListener("pointermove", onMove, passive);
+    win.addEventListener("pointerup", onUp, true);
+    win.addEventListener("pointercancel", onCancel, true);
+    pane.addEventListener("gesturestart", stopGesture, { passive: false });
+    pane.addEventListener("gesturechange", stopGesture, { passive: false });
+    win.addEventListener("click", onClick, true);
+    win.addEventListener("pointerdown", onOutsideDown, true);
+    if (motionQuery) motionQuery.addEventListener("change", onMotionPref);
+    let observer = null;
+    if (win.ResizeObserver) {
+      observer = new win.ResizeObserver(refresh);
+      observer.observe(svg);
+    } else {
+      win.addEventListener("resize", refresh);
+    }
+    const setPrinting = (on) => () => {
+      if (on) snap();
+      printing = on;
+      apply();
+    };
+    const beforePrint = setPrinting(true);
+    const afterPrint = setPrinting(false);
+    win.addEventListener("beforeprint", beforePrint);
+    win.addEventListener("afterprint", afterPrint);
+    refresh();
+    function destroy() {
+      cancelFrame();
+      svg.setAttribute("viewBox", original);
+      pane.style.touchAction = saved.pane;
+      svg.style.touchAction = saved.svgTouch;
+      svg.style.overflow = ownOverflow;
+      pane.removeEventListener("pointerdown", onDown);
+      pane.removeEventListener("pointermove", onMove);
+      win.removeEventListener("pointerup", onUp, true);
+      win.removeEventListener("pointercancel", onCancel, true);
+      pane.removeEventListener("gesturestart", stopGesture);
+      pane.removeEventListener("gesturechange", stopGesture);
+      win.removeEventListener("click", onClick, true);
+      win.removeEventListener("pointerdown", onOutsideDown, true);
+      if (motionQuery) motionQuery.removeEventListener("change", onMotionPref);
+      if (observer) observer.disconnect();
+      else win.removeEventListener("resize", refresh);
+      win.removeEventListener("beforeprint", beforePrint);
+      win.removeEventListener("afterprint", afterPrint);
+    }
+    return { reveal: reveal2, refresh, zoomed, destroy };
+  }
+
+  // shared/engine-phone.mjs
+  var TOUCH_FIRST = "(hover: none) and (pointer: coarse)";
+  var LANDSCAPE_PHONE = "(orientation: landscape) and (max-height: 500px)";
+  var MAX_ZOOM = 5;
+  var DOUBLE_TAP_ZOOM = 2.5;
+  var EDGE_MARGIN_PX = 12;
+  var ZOOM_STRETCH = Math.log(2);
+  var EDGE_SHADOW_PX = 16;
+  var EDGE_SHADOW_STOPS = [[0, 1], [0.25, 0.56], [0.5, 0.25], [0.75, 0.06], [1, 0]];
+  var EDGE_SIDES = ["top", "right", "bottom", "left"];
+  var GRID_SHAPES = ".cell, .cell-block, .cell-center";
+  function addEdgeShadows(svg) {
+    const clip = svgEl("clipPath", { id: "edge-shadow-clip" });
+    for (const shape of svg.querySelectorAll(GRID_SHAPES)) {
+      const copy = shape.cloneNode(false);
+      for (const name of ["id", "class", "style"]) copy.removeAttribute(name);
+      clip.append(copy);
+    }
+    const from = { top: [0, 0, 0, 1], right: [1, 0, 0, 0], bottom: [0, 1, 0, 0], left: [0, 0, 1, 0] };
+    const gradients = EDGE_SIDES.map((side) => {
+      const [x1, y1, x2, y2] = from[side];
+      const gradient = svgEl("linearGradient", { id: `edge-shadow-${side}`, x1, y1, x2, y2 });
+      gradient.append(...EDGE_SHADOW_STOPS.map(([offset, opacity]) => svgEl("stop", { offset, class: "edge-shadow-stop", "stop-opacity": opacity })));
+      return gradient;
+    });
+    const defs = svgEl("defs");
+    defs.append(clip, ...gradients);
+    const strips = Object.fromEntries(EDGE_SIDES.map((side) => [side, svgEl("rect", {
+      class: "edge-shadow",
+      "data-side": side,
+      fill: `url(#edge-shadow-${side})`
+    })]));
+    const layer = svgEl("g", { class: "edge-shadows", "aria-hidden": "true", "clip-path": "url(#edge-shadow-clip)" });
+    layer.append(...Object.values(strips));
+    svg.append(defs, layer);
+    return ({ x, y, width, height, scale }) => {
+      const t = EDGE_SHADOW_PX / scale;
+      const place = (side, attrs) => {
+        for (const [name, value] of Object.entries(attrs)) strips[side].setAttribute(name, value);
+      };
+      place("top", { x, y, width, height: t });
+      place("bottom", { x, y: y + height - t, width, height: t });
+      place("left", { x, y, width: t, height });
+      place("right", { x: x + width - t, y, width: t, height });
+    };
+  }
+  function isTouchFirst(win = window) {
+    return win.matchMedia(TOUCH_FIRST).matches;
+  }
+  function scrollWithin(container, el) {
+    const box = container.getBoundingClientRect(), r = el.getBoundingClientRect();
+    if (r.top < box.top) container.scrollTop -= box.top - r.top;
+    else if (r.bottom > box.bottom) container.scrollTop += Math.min(r.bottom - box.bottom, r.top - box.top);
+  }
+  var ARROW_TURN = { up: 0, right: 90, down: 180, left: 270 };
+  function arrowIcon(dir) {
+    const svg = svgEl("svg", { viewBox: "0 0 10 10", class: "kb-arrow", "aria-hidden": "true" });
+    svg.append(svgEl("path", {
+      d: "M5,1.5 L9.5,8.5 L0.5,8.5 Z",
+      transform: `rotate(${ARROW_TURN[dir]} 5 5)`
+    }));
+    return svg;
+  }
+  function buildKeyboard(bottomRow) {
+    const row = (...keys) => htmlEl("div", { class: "kb-row" }, ...keys);
+    const chars = (s) => [...s].map((ch) => htmlEl("button", { type: "button", "data-char": ch }, ch));
+    const backspace = () => htmlEl(
+      "button",
+      { type: "button", class: "kb-mod", "data-key": "Backspace", "aria-label": "Backspace" },
+      "\u232B"
+    );
+    const layerKey = (label) => htmlEl("button", { type: "button", class: "kb-mod", "data-layer": "" }, label);
+    const letters = htmlEl(
+      "div",
+      { class: "kb-layer" },
+      row(...chars("QWERTYUIOP")),
+      row(...chars("ASDFGHJKL")),
+      row(layerKey("123"), ...chars("ZXCVBNM"), backspace())
+    );
+    const digits = htmlEl(
+      "div",
+      { class: "kb-layer", hidden: "" },
+      row(...chars("1234567890")),
+      row(),
+      row(layerKey("ABC"), htmlEl("span", { class: "kb-spacer" }), backspace())
+    );
+    const bottom = row(...bottomRow.map((item) => {
+      if (item.el) {
+        if (item.label !== void 0) item.el.textContent = item.label;
+        return item.el;
+      }
+      const attrs = { type: "button" };
+      if (item.key !== void 0) attrs["data-key"] = item.key;
+      if (item.shift) attrs["data-shift"] = "";
+      if (item.ariaLabel) attrs["aria-label"] = item.ariaLabel;
+      if (item.wide) attrs.class = "kb-wide";
+      const btn = htmlEl("button", attrs, item.arrow ? arrowIcon(item.arrow) : item.label);
+      if (item.onTap) btn.addEventListener("click", item.onTap);
+      return btn;
+    }));
+    bottom.classList.add("kb-bottom");
+    return { keyboard: htmlEl("div", { id: "drawn-kb" }, letters, digits, bottom), letters, digits };
+  }
+  function setupClueExpand(barRow, clueText, win) {
+    const full = htmlEl("div", { id: "clue-full", hidden: "" });
+    barRow.append(full);
+    let current = null;
+    let opened = null;
+    onClueClick(clueText, (e) => {
+      if (clueText.scrollHeight <= clueText.clientHeight + 1) return;
+      e.stopPropagation();
+      opened = current;
+      full.replaceChildren(...Array.from(clueText.childNodes, (n) => n.cloneNode(true)));
+      full.hidden = false;
+    });
+    win.document.addEventListener("click", () => {
+      full.hidden = true;
+    }, true);
+    return function showingClue(entry) {
+      current = entry;
+      if (entry !== opened) full.hidden = true;
+    };
+  }
+  function setupPhoneLayout({
+    hiddenInput,
+    refocus,
+    grid,
+    lists,
+    clueBar,
+    helpMenu,
+    firstVisit,
+    ownSteps = false,
+    fillList = null,
+    onGridShown = () => {
+    },
+    bottomRow,
+    win = window
+  }) {
+    if (!isTouchFirst(win)) return null;
+    const doc = win.document;
+    doc.documentElement.classList.add(PHONE_CLASS);
+    hiddenInput.setAttribute("inputmode", "none");
+    const instructions = doc.getElementById("instructions");
+    doc.querySelector(".puzzle-header").after(instructions);
+    const instructionsCopy = (cls) => {
+      if (instructions.hidden) return null;
+      const copy = instructions.cloneNode(true);
+      copy.removeAttribute("id");
+      copy.classList.add(cls);
+      return copy;
+    };
+    const byline = doc.querySelector(".byline");
+    const head = htmlEl(
+      "div",
+      { class: "solve-head" },
+      htmlEl("span", { class: "solve-title" }, doc.querySelector(".title").textContent)
+    );
+    if (byline && !byline.hidden) head.append(htmlEl("span", { class: "solve-byline" }, byline.textContent));
+    const cluesBtn = htmlEl("button", { id: "clues-btn", type: "button" }, "Clues");
+    const headSlot = htmlEl("div", { class: "solve-head-slot" }, head, doc.getElementById("done-wrong"));
+    const top = htmlEl(
+      "div",
+      { class: "solve-top" },
+      headSlot,
+      cluesBtn,
+      ...helpMenu ? [helpMenu.btn, helpMenu.panel] : [],
+      doc.getElementById(MENU_BTN_ID),
+      doc.getElementById("menu-panel")
+    );
+    const gridPane = htmlEl("div", { id: "grid-pane" }, grid);
+    const listPane = htmlEl("div", { id: "list-pane", hidden: "" }, ...lists);
+    const listInstructions = instructionsCopy("list-instructions");
+    if (listInstructions) listPane.prepend(listInstructions);
+    const stage = htmlEl("div", { id: "solve-stage" }, gridPane, listPane);
+    const { keyboard, letters, digits } = buildKeyboard(bottomRow);
+    function typeChar(ch) {
+      hiddenInput.value = ch;
+      hiddenInput.dispatchEvent(new win.Event("input", { bubbles: true }));
+    }
+    function press(key, shiftKey = false) {
+      doc.dispatchEvent(new win.KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true }));
+    }
+    keyboard.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const { char, key } = btn.dataset;
+      if (char !== void 0) typeChar(char);
+      else if (key !== void 0) press(key, btn.dataset.shift !== void 0);
+      else if (btn.dataset.layer !== void 0) {
+        letters.hidden = !letters.hidden;
+        digits.hidden = !digits.hidden;
+      }
+    });
+    const barRow = htmlEl("div", { id: "solve-bar" });
+    if (ownSteps) {
+      barRow.append(clueBar.el);
+    } else {
+      const step = (id, label, ariaLabel, shiftKey) => {
+        const btn = htmlEl("button", { id, type: "button", class: "bar-step", "aria-label": ariaLabel }, label);
+        btn.addEventListener("click", () => press("Tab", shiftKey));
+        return btn;
+      };
+      barRow.append(
+        step("clue-prev", "\u2039", "Previous clue", true),
+        clueBar.el,
+        step("clue-next", "\u203A", "Next clue", false)
+      );
+      onClueClick(clueBar.el, () => press("."));
+    }
+    const showingClue = setupClueExpand(barRow, clueBar.text, win);
+    const solveView = htmlEl("div", { id: "solve-view" }, top, stage, barRow, keyboard);
+    doc.querySelector(".puzzle-main").append(solveView);
+    const svgNode = grid.matches("svg") ? grid : grid.querySelector("svg");
+    const placeShadows = addEdgeShadows(svgNode);
+    const zoom = attachSvgZoom(svgNode, {
+      pane: gridPane,
+      maxZoom: MAX_ZOOM,
+      doubleTapZoom: DOUBLE_TAP_ZOOM,
+      marginPx: EDGE_MARGIN_PX,
+      zoomStretch: ZOOM_STRETCH,
+      win,
+      onEdges: (edges) => {
+        const more = EDGE_SIDES.filter((side) => edges[side]).join(" ");
+        if (more) gridPane.dataset.more = more;
+        else delete gridPane.dataset.more;
+      },
+      onView: placeShadows
+    });
+    const introText = firstVisit && instructionsCopy("intro-text");
+    if (introText) {
+      const intro = htmlEl(
+        "div",
+        { id: "intro" },
+        htmlEl("div", { class: "intro-card" }, introText, htmlEl("button", { type: "button" }, "Start"))
+      );
+      intro.addEventListener("click", () => {
+        intro.hidden = true;
+      });
+      solveView.append(intro);
+    }
+    solveView.addEventListener("mousedown", (e) => e.preventDefault());
+    let wrapLabel = null;
+    function setListOpen(open) {
+      gridPane.hidden = open;
+      barRow.hidden = open;
+      if (!fillList) keyboard.hidden = open;
+      listPane.hidden = !open;
+      if (wrapLabel) wrapLabel.hidden = !open;
+      cluesBtn.textContent = open ? "Grid" : "Clues";
+    }
+    function isListOpen() {
+      return !listPane.hidden;
+    }
+    function showList() {
+      setListOpen(true);
+      const active = listPane.querySelector(".active-clue");
+      if (active) scrollWithin(listPane, active);
+    }
+    function hideList() {
+      setListOpen(false);
+      zoom.refresh();
+      if (pendingFollow) actOnFollow(...pendingFollow);
+      pendingFollow = null;
+      onGridShown();
+    }
+    cluesBtn.addEventListener("click", () => isListOpen() ? hideList() : showList());
+    let lastFollowKey = null;
+    let pendingFollow = null;
+    const unionOf = (boxes) => {
+      const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y));
+      return {
+        x,
+        y,
+        width: Math.max(...boxes.map((b) => b.x + b.width)) - x,
+        height: Math.max(...boxes.map((b) => b.y + b.height)) - y
+      };
+    };
+    function actOnFollow(entryCells, cursorCell, cursorContent) {
+      const key = `${cursorCell}|${cursorContent}|${entryCells.join(",")}`;
+      if (key === lastFollowKey) return;
+      lastFollowKey = key;
+      if (!zoom.zoomed()) return;
+      const box = (n) => svgNode.querySelector("#cell-" + n).getBBox();
+      const cursor = box(cursorCell);
+      zoom.reveal([
+        unionOf(entryCells.map(box)),
+        unionOf([box(entryCells[0]), cursor]),
+        cursor
+      ], Math.min(cursor.width, cursor.height));
+    }
+    function follow(entryCells, cursorCell, cursorContent) {
+      if (isListOpen()) pendingFollow = [entryCells, cursorCell, cursorContent];
+      else actOnFollow(entryCells, cursorCell, cursorContent);
+    }
+    let fill = null;
+    if (fillList) {
+      fill = setupFillList(fillList.items, { ...fillList, scroller: listPane });
+      wrapLabel = setupListWrapPref(
+        { root: doc.documentElement, panel: doc.getElementById("menu-panel"), refocus }
+      ).label;
+      wrapLabel.hidden = !isListOpen();
+    }
+    const keyboardSideLabel = setupKeyboardSidePref(
+      { root: doc.documentElement, panel: doc.getElementById("menu-panel"), refocus }
+    ).label;
+    const landscape = win.matchMedia(LANDSCAPE_PHONE);
+    keyboardSideLabel.hidden = !landscape.matches;
+    landscape.addEventListener("change", (e) => {
+      keyboardSideLabel.hidden = !e.matches;
+    });
+    return { listPane, hideList, fillList: fill, showingClue, follow };
+  }
+  function setupFillList(items, { scroller, getLetter, getMark, isComposing = () => false, onCellTap }) {
+    const letterEls = items.map(({ li, cells }, i) => {
+      const letters = cells.map(() => htmlEl("span", { class: "list-letter" }));
+      const cellEls = letters.map((letter, j) => {
+        const cell = htmlEl("span", { class: "list-cell" }, letter);
+        cell.addEventListener("click", () => onCellTap(i, j));
+        return cell;
+      });
+      li.append(htmlEl("div", { class: "list-cells" }, ...cellEls));
+      return { letters, cellEls };
+    });
+    let lastActive = null;
+    let lastCursor = null;
+    const caret = htmlEl("span", { class: "list-caret" });
+    let caretHost = null, caretAt = -1;
+    function placeCaret(host, pos) {
+      if (caretHost && caretHost !== host && caretHost.contains(caret)) {
+        const text2 = caretHost.textContent;
+        caretHost.textContent = text2;
+      }
+      caretHost = host;
+      if (!host || host.contains(caret) && caretAt === pos) return;
+      const text = host.textContent;
+      host.replaceChildren(text.slice(0, pos), caret, text.slice(pos));
+      caretAt = pos;
+    }
+    function sync(activeCell, activeLi, caretPos) {
+      let cursor = null, cursorLetter = null, edited = false;
+      items.forEach(({ li, cells }, i) => cells.forEach((n, j) => {
+        const letter = getLetter(n).toUpperCase(), el = letterEls[i].letters[j];
+        const active = li === activeLi;
+        if (el.textContent !== letter) {
+          el.textContent = letter;
+          el.style.setProperty("--len", Math.max(1, letter.length));
+          if (active) edited = true;
+        }
+        applyMark(letterEls[i].cellEls[j], getMark(n));
+        const isCursor = active && n === activeCell;
+        letterEls[i].cellEls[j].classList.toggle("list-cursor", isCursor);
+        letterEls[i].cellEls[j].classList.toggle("composing", isCursor && isComposing(n));
+        if (isCursor) {
+          cursor = letterEls[i].cellEls[j];
+          cursorLetter = el;
+        }
+      }));
+      placeCaret(caretPos === void 0 ? null : cursorLetter, caretPos);
+      if (activeLi !== lastActive) {
+        lastActive = activeLi;
+        scrollWithin(scroller, activeLi);
+      } else if (cursor && (cursor !== lastCursor || edited)) {
+        scrollWithin(scroller, cursor);
+      }
+      lastCursor = cursor;
+    }
+    let flashing = [];
+    let flashTimer = null;
+    function endFlash() {
+      clearTimeout(flashTimer);
+      flashTimer = null;
+      for (const el of flashing) el.classList.remove("flash-wrong");
+      flashing = [];
+    }
+    function flash(ids) {
+      const hit = new Set(ids);
+      const els = [];
+      items.forEach(({ cells }, i) => cells.forEach((n, j) => {
+        if (hit.has(n)) els.push(letterEls[i].cellEls[j]);
+      }));
+      if (els.length === 0) return;
+      endFlash();
+      void els[0].offsetWidth;
+      for (const el of els) el.classList.add("flash-wrong");
+      flashing = els;
+      flashTimer = setTimeout(endFlash, FLASH_WRONG_MS);
+    }
+    return { sync, flash };
+  }
+  function setupMenuPref({ key, fallback, id, text, apply, storage, panel, refocus }) {
+    const pref = boolPref(key, fallback, storage);
+    const { label, input } = menuToggle(id, text);
+    panel.insertBefore(label, panel.querySelector("#clear-btn"));
+    input.checked = pref.load();
+    apply(input.checked);
+    input.addEventListener("change", () => {
+      apply(input.checked);
+      pref.save(input.checked);
+      if (!isKeyboardFocus(input)) refocus();
+    });
+    input.addEventListener("focus", () => {
+      if (!isKeyboardFocus(input)) refocus();
+    });
+    return { pref, label };
+  }
+  var LIST_WRAP_KEY = "vp:pref:listWrap";
+  function setupListWrapPref({ storage, root = document.documentElement, panel, refocus }) {
+    return setupMenuPref({
+      key: LIST_WRAP_KEY,
+      fallback: true,
+      id: "list-wrap-toggle",
+      text: "Wrap long rows of cells",
+      apply: (on) => root.classList.toggle("list-nowrap", !on),
+      storage,
+      panel,
+      refocus
+    });
+  }
+  var KEYBOARD_LEFT_KEY = "vp:pref:keyboardLeft";
+  function setupKeyboardSidePref({ storage, root = document.documentElement, panel, refocus }) {
+    return setupMenuPref({
+      key: KEYBOARD_LEFT_KEY,
+      fallback: false,
+      id: "keyboard-left-toggle",
+      text: "Keyboard on the left",
+      apply: (on) => root.classList.toggle("kb-left", on),
+      storage,
+      panel,
+      refocus
+    });
+  }
+
+  // spiral/src/layout.mjs
+  var SEAM = -Math.PI / 2;
+  function polar(r, a) {
+    return [r * Math.cos(a), r * Math.sin(a)];
+  }
+  function fmt3(n) {
+    return n.toFixed(3);
+  }
+  function cellPath(cell) {
+    const {
+      theta_start: ts,
+      theta_end: te,
+      r_inner_start: ris,
+      r_outer_start: ros,
+      r_inner_end: rie,
+      r_outer_end: roe
+    } = cell;
+    const laf = te - ts > Math.PI ? 1 : 0;
+    const r_out_arc = (ros + roe) / 2;
+    const r_in_arc = (ris + rie) / 2;
+    const [ax, ay] = polar(ris, ts);
+    const [bx, by] = polar(ros, ts);
+    const [cx, cy] = polar(roe, te);
+    const [dx, dy] = polar(rie, te);
+    return `M${fmt3(ax)},${fmt3(ay)} L${fmt3(bx)},${fmt3(by)} A${fmt3(r_out_arc)},${fmt3(r_out_arc)} 0 ${laf},1 ${fmt3(cx)},${fmt3(cy)} L${fmt3(dx)},${fmt3(dy)} A${fmt3(r_in_arc)},${fmt3(r_in_arc)} 0 ${laf},0 ${fmt3(ax)},${fmt3(ay)}Z`;
+  }
+  function letterCenter(cell) {
+    const a_mid = (cell.theta_start + cell.theta_end) / 2;
+    const r_mid = 0.55 * cell.r_inner_start + 0.45 * cell.r_outer_start;
+    return polar(r_mid, a_mid);
+  }
+  function circleCenter(cell) {
+    const a_mid = (cell.theta_start + cell.theta_end) / 2;
+    const r_out = (cell.r_outer_start + cell.r_outer_end) / 2;
+    const r_in = (cell.r_inner_start + cell.r_inner_end) / 2;
+    return polar((r_out + r_in) / 2, a_mid);
+  }
+  function numberPosition(cell) {
+    const r_num = 0.78 * cell.r_outer_start + 0.22 * cell.r_inner_start;
+    const a_num = cell.theta_start + 0.18 * (cell.theta_end - cell.theta_start);
+    return polar(r_num, a_num);
+  }
+  function sizesFor({ R_HOLE, R_MAX, N_TURNS }) {
+    return {
+      band: (R_MAX - R_HOLE) / (N_TURNS + 1),
+      numSize: (R_MAX - R_HOLE) / (N_TURNS * 6.5),
+      letterSize: (R_MAX - R_HOLE) / (N_TURNS * 3.2),
+      circleRadius: (R_MAX - R_HOLE) / (N_TURNS + 1) / 2
+    };
+  }
+  function curlPath(lastCell) {
+    const curlStartR = lastCell.r_inner_end;
+    const curlStartTheta = lastCell.theta_end;
+    const curlSteps = 300;
+    const curlAngle = 1.75 * 2 * Math.PI;
+    let curlD = "";
+    for (let i = 0; i <= curlSteps; i++) {
+      const t = i / curlSteps;
+      const [x, y] = polar(curlStartR * (1 - t * 0.97), curlStartTheta + t * curlAngle);
+      curlD += `${i === 0 ? "M" : "L"}${fmt3(x)},${fmt3(y)} `;
+    }
+    return curlD;
+  }
+  function cellsOfEntries(lengths, firstCell, step) {
+    let cell = firstCell;
+    return lengths.map((length) => Array.from({ length }, () => {
+      const n = cell;
+      cell += step;
+      return n;
+    }));
+  }
+
+  // spiral/src/template/engine.js
+  function init() {
+    const data = window.PUZZLE_DATA;
+    const totalCells = data.cells.length;
+    function f(n) {
+      return n.toFixed(3);
+    }
+    function indexEntries(entries, firstCell, step) {
+      const entryCells = cellsOfEntries(entries.map((e) => e.length), firstCell, step);
+      const map = {};
+      entryCells.forEach((cells2, i) => cells2.forEach((cell, j) => {
+        map[cell] = { entryIndex: i, posInEntry: j };
+      }));
+      return { map, entryCells };
+    }
+    const { map: inwardMap, entryCells: inwardEntryCells } = indexEntries(data.inward, 1, 1);
+    const { map: outwardMap, entryCells: outwardEntryCells } = indexEntries(data.outward, totalCells, -1);
+    const DIRS = {
+      inward: {
+        map: inwardMap,
+        entries: data.inward,
+        entryCells: inwardEntryCells,
+        step: 1,
+        listId: "inward-clues",
+        label: "Inward",
+        opposite: "outward"
+      },
+      outward: {
+        map: outwardMap,
+        entries: data.outward,
+        entryCells: outwardEntryCells,
+        step: -1,
+        listId: "outward-clues",
+        label: "Outward",
+        opposite: "inward"
+      }
+    };
+    const FIRST_CELL = 1;
+    let activeCell = FIRST_CELL;
+    let direction = "inward";
+    const CELL_IDS = inwardEntryCells.flat();
+    const cells = makeCellStore({
+      ids: CELL_IDS,
+      cellEl: (n) => cellPaths[n],
+      letterEl: (n) => letterTexts[n],
+      drawMark: (n, mark) => markShapes.draw(n, mark)
+    });
+    const { getCellLetter, setCellLetter, setMark, getMark, isConfirmedRight, isLocked } = cells;
+    const composer = makeComposer({
+      getContent: (n) => getCellLetter(n),
+      setContent: (n, s) => setCellLetter(n, s),
+      onCommit: () => {
+        syncUI();
+        checker.checkIfFilled();
+        saveState();
+      },
+      isSolved: () => latch.solved,
+      isLocked
+    });
+    const checker = makeBoardChecker({
+      cellIds: CELL_IDS,
+      getContent: (n) => getCellLetter(n),
+      isCellFilled: (n) => composer.isCellFilled(n),
+      isCellConfirmedRight: isConfirmedRight,
+      isCellMarkedWrong: (n) => cells.isMarkedWrong(n),
+      hashed: !!data.hashed,
+      getExpected: (n) => data.letters && data.letters[n - 1],
+      getBoardHash: () => data.boardHash,
+      markSolved: () => {
+        svg.classList.add("solved");
+        clueItems.forEach((li) => li.classList.add("correct"));
+      },
+      syncUI: () => syncUI()
+    });
+    function entryFirstCell(dir, entryIndex) {
+      return DIRS[dir].entryCells[entryIndex][0];
+    }
+    function entryLastCell(dir, entryIndex) {
+      const cells2 = DIRS[dir].entryCells[entryIndex];
+      return cells2[cells2.length - 1];
+    }
+    function nextInDir(cellNum, dir) {
+      const { map, entries, step } = DIRS[dir];
+      const { entryIndex, posInEntry } = map[cellNum];
+      if (posInEntry < entries[entryIndex].length - 1) return cellNum + step;
+      return entryFirstCell(dir, (entryIndex + 1) % entries.length);
+    }
+    function prevInDir(cellNum, dir) {
+      const { map, entries, step } = DIRS[dir];
+      const { entryIndex, posInEntry } = map[cellNum];
+      if (posInEntry > 0) return cellNum - step;
+      return entryLastCell(dir, (entryIndex - 1 + entries.length) % entries.length);
+    }
+    function cellRangeLabel(cells2) {
+      return `${Math.min(...cells2)}\u2013${Math.max(...cells2)}`;
+    }
+    function focusCell(n) {
+      composer.commitIfMoved(n);
+      activeCell = n;
+      refocus();
+      syncUI();
+    }
+    function toggleRebus() {
+      composer.toggle(activeCell);
+      syncUI();
+    }
+    function chevronPathD(ac, isInward) {
+      const theta_e = isInward ? ac.theta_end : ac.theta_start;
+      const r_inner_e = isInward ? ac.r_inner_end : ac.r_inner_start;
+      const r_outer_e = isInward ? ac.r_outer_end : ac.r_outer_start;
+      const [ix, iy] = polar(r_inner_e, theta_e);
+      const [ox, oy] = polar(r_outer_e, theta_e);
+      const [mx, my] = polar((r_inner_e + r_outer_e) / 2, theta_e);
+      const [tsx, tsy] = polar((ac.r_inner_start + ac.r_outer_start) / 2, ac.theta_start);
+      const [tex, tey] = polar((ac.r_inner_end + ac.r_outer_end) / 2, ac.theta_end);
+      let tdx = tex - tsx, tdy = tey - tsy;
+      if (!isInward) {
+        tdx = -tdx;
+        tdy = -tdy;
+      }
+      const tlen = Math.sqrt(tdx * tdx + tdy * tdy);
+      const prot = BAND * 0.15;
+      return `M${f(ix)},${f(iy)} L${f(mx + tdx / tlen * prot)},${f(my + tdy / tlen * prot)} L${f(ox)},${f(oy)}`;
+    }
+    function syncUI() {
+      directionBtns.forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.dir === direction);
+      });
+      rebusBtn.sync();
+      const cur = DIRS[direction];
+      const opp = DIRS[cur.opposite];
+      const curMap = cur.map;
+      const curEntryIdx = curMap[activeCell].entryIndex;
+      const activeEntryCells = new Set(activeContextCells());
+      data.cells.forEach((cell) => {
+        const el = cellPaths[cell.cell_number];
+        el.classList.toggle("active-entry", activeEntryCells.has(cell.cell_number));
+        el.classList.toggle("active-cell", cell.cell_number === activeCell);
+        el.classList.toggle("composing", composer.isComposing(cell.cell_number));
+      });
+      cellsLayer.appendChild(cellPaths[activeCell]);
+      const oppDir = cur.opposite;
+      const oppEntryIdx = opp.map[activeCell].entryIndex;
+      let activeItem = null;
+      clueItems.forEach((item) => {
+        const itemDir = item.dataset.direction;
+        const itemIdx = Number(item.dataset.entryIndex);
+        const isActive = itemDir === direction && itemIdx === curEntryIdx;
+        if (isActive) activeItem = item;
+        item.classList.toggle("active-clue", isActive);
+        item.classList.toggle(
+          "secondary-entry",
+          itemDir === oppDir && itemIdx === oppEntryIdx
+        );
+        item.classList.toggle(
+          "filled",
+          checker.isEntryFilled(DIRS[itemDir].entryCells[itemIdx])
+        );
+      });
+      if (phone) phone.fillList.sync(activeCell, activeItem);
+      if (phone) phone.follow(activeContextCells(), activeCell, getCellLetter(activeCell));
+      clueBar.show(
+        { dir: cur.label, num: cellRangeLabel(cur.entryCells[curEntryIdx]), clue: cur.entries[curEntryIdx].clue },
+        { dir: opp.label, num: cellRangeLabel(opp.entryCells[oppEntryIdx]), clue: opp.entries[oppEntryIdx].clue }
+      );
+      if (phone) phone.showingClue(cur.entries[curEntryIdx]);
+      controls.syncHelp();
+      const ac = data.cells[activeCell - 1];
+      chevronEl.setAttribute("d", chevronPathD(ac, direction === "inward"));
+      syncSolveState({ checker, latch, doneWrong });
+    }
+    function activeContextCells() {
+      const cur = DIRS[direction];
+      return cur.entryCells[cur.map[activeCell].entryIndex];
+    }
+    const congratsDialog = setupCongratsDialog({
+      title: data.title,
+      date: data.date,
+      onPlayAgain: () => resetBoard()
+    });
+    const { timer, latch, helpRecord } = setupSolveTracking({
+      puzzleRoot: document.querySelector(".puzzle-main"),
+      data,
+      getSolution: () => checker.getSolution(),
+      saveState: () => saveState(),
+      // defined below: the save payload needs timer and helpRecord
+      onComplete: (timeMs) => congratsDialog.open(timeMs)
+    });
+    const saveKey = storageKey("sp", data);
+    const { saveState, restoreState, clearState, hasSave } = setupStorage(
+      saveKey,
+      makeSavePayload({ cells, helpRecord, timer, composer })
+    );
+    const svg = document.getElementById("spiral-svg");
+    const { R_MAX } = data.geometry;
+    const PAD = 18;
+    svg.setAttribute(
+      "viewBox",
+      `${-(R_MAX + PAD)} ${-(R_MAX + PAD)} ${2 * (R_MAX + PAD)} ${2 * (R_MAX + PAD)}`
+    );
+    const lastCell = data.cells[data.cells.length - 1];
+    svg.appendChild(svgEl("path", { id: "center-curl", d: curlPath(lastCell) }));
+    const cellsLayer = svgEl("g", {});
+    const circlesLayer = svgEl("g", {});
+    const flashLayer = svgEl("g", {});
+    const markLayer = svgEl("g", { class: "mark-layer" });
+    const markShapes = setupMarkLayer(markLayer, (n) => cellPaths[n]);
+    const lettersLayer = svgEl("g", {});
+    svg.append(cellsLayer, circlesLayer, flashLayer, markLayer, lettersLayer);
+    const { band: BAND, numSize, letterSize, circleRadius } = sizesFor(data.geometry);
+    const cellCenters = {};
+    const cellCircleCenters = {};
+    const cellPaths = {};
+    const letterTexts = {};
+    for (let i = data.cells.length - 1; i >= 0; i--) {
+      const cell = data.cells[i];
+      const n = cell.cell_number;
+      const path = svgEl("path", { id: `cell-${n}`, class: "cell", d: cellPath(cell) });
+      cellsLayer.appendChild(path);
+      cellPaths[n] = path;
+      cellCenters[n] = letterCenter(cell);
+      cellCircleCenters[n] = circleCenter(cell);
+    }
+    const circledCells = /* @__PURE__ */ new Set();
+    function renderEntryCircles(entries, entryCells) {
+      entries.forEach((entry, i) => {
+        if (!entry.styles || !Array.isArray(entry.styles.circle)) return;
+        entry.styles.circle.forEach((posInEntry) => {
+          const n = entryCells[i][posInEntry];
+          if (n === void 0 || circledCells.has(n)) return;
+          circledCells.add(n);
+          const [cx, cy] = cellCircleCenters[n];
+          circlesLayer.appendChild(svgEl("circle", {
+            class: "style-circle",
+            cx: f(cx),
+            cy: f(cy),
+            r: f(circleRadius)
+          }));
+        });
+      });
+    }
+    renderEntryCircles(data.inward, inwardEntryCells);
+    renderEntryCircles(data.outward, outwardEntryCells);
+    for (let i = data.cells.length - 1; i >= 0; i--) {
+      const cell = data.cells[i];
+      const n = cell.cell_number;
+      const [nx, ny] = numberPosition(cell);
+      const numText = svgEl("text", {
+        id: `cellnum-${n}`,
+        class: "cell-num",
+        x: f(nx),
+        y: f(ny),
+        "font-size": f(numSize)
+      });
+      numText.textContent = n;
+      lettersLayer.appendChild(numText);
+      const [tx, ty] = cellCenters[n];
+      const letterText = svgEl("text", {
+        id: `letter-${n}`,
+        class: "cell-letter",
+        x: f(tx),
+        y: f(ty),
+        "font-size": f(letterSize)
+      });
+      lettersLayer.appendChild(letterText);
+      letterTexts[n] = letterText;
+    }
+    const chevronEl = svgEl("path", { id: "direction-chevron" });
+    svg.appendChild(chevronEl);
+    renderByline(data);
+    renderInstructions(data);
+    const clueItems = [];
+    const fillItems = [];
+    function renderCluesFor(dir) {
+      const { listId, entries, entryCells: entryCellsFor } = DIRS[dir];
+      const list = document.getElementById(listId);
+      entries.forEach((entry, i) => {
+        const li = htmlEl(
+          "li",
+          { class: "clue-item", "data-direction": dir, "data-entry-index": i },
+          htmlEl("span", { class: "clue-num clue-range" }, cellRangeLabel(entryCellsFor[i]) + "."),
+          clueTextEl(entry.clue)
+        );
+        onClueClick(li, () => {
+          direction = dir;
+          focusCell(entryCellsFor[i][0]);
+        });
+        list.appendChild(li);
+        clueItems.push(li);
+        fillItems.push({ li, dir, cells: entryCellsFor[i] });
+      });
+    }
+    function renderClues() {
+      renderCluesFor("inward");
+      renderCluesFor("outward");
+    }
+    renderClues();
+    const hiddenInput = document.getElementById("hidden-input");
+    const refocus = () => hiddenInput.focus({ preventScroll: true });
+    const clueBar = setupClueBar();
+    const directionBtns = Array.from(document.querySelectorAll("#direction-toggle .toggle-opt"));
+    const doneWrong = document.getElementById("done-wrong");
+    const rebusBtn = setupRebusButton(document.getElementById("rebus-btn"), {
+      onToggle: toggleRebus,
+      isComposing: () => composer.isComposing(activeCell),
+      canCompose: () => composer.canCompose(activeCell),
+      refocus
+    });
+    setupEmbedResize();
+    directionBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        direction = btn.dataset.dir;
+        focusCell(activeCell);
+      });
+    });
+    const keysOverlay = setupKeysOverlay(
+      [
+        ["Tab", "Next entry"],
+        ["Shift+Tab", "Previous entry"],
+        ["\u2190 \u2192", "Move along entry"],
+        ["\u232B", "Clear current cell"],
+        ["Space", "Clear and advance"],
+        ["Enter", "Multi-letter cell"],
+        [".", "Toggle inward / outward"],
+        ["Esc", "Go to the menus"]
+      ],
+      refocus
+    );
+    setupKeydown((e) => {
+      if (latch.solved && e.key !== "Tab") return;
+      if (e.key === ".") {
+        e.preventDefault();
+        direction = DIRS[direction].opposite;
+        focusCell(activeCell);
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const { map, entries, entryCells } = DIRS[direction];
+        const { cell } = stepToUnfilled(
+          entries.map((_, i) => i),
+          map[activeCell].entryIndex,
+          e.shiftKey ? -1 : 1,
+          (i) => entryCells[i],
+          composer.isCellFilled
+        );
+        focusCell(cell);
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        focusCell(nextInDir(activeCell, direction));
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        focusCell(prevInDir(activeCell, direction));
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        toggleRebus();
+        return;
+      }
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        if (composer.backspace(activeCell)) {
+          syncUI();
+          saveState();
+          return;
+        }
+        if (getCellLetter(activeCell) && !isLocked(activeCell)) {
+          setCellLetter(activeCell, "");
+          syncUI();
+        } else {
+          const prev = prevInDir(activeCell, direction);
+          setCellLetter(prev, "");
+          focusCell(prev);
+        }
+        saveState();
+        return;
+      }
+      if (e.key === " ") {
+        e.preventDefault();
+        setCellLetter(activeCell, "");
+        focusCell(nextInDir(activeCell, direction));
+        saveState();
+        return;
+      }
+      if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "PageUp" || e.key === "PageDown") {
+        e.preventDefault();
+        scrollByKey(e.key);
+      }
+    }, { keysOverlay, refocus });
+    hiddenInput.addEventListener("input", () => {
+      const typed = normalize(hiddenInput.value);
+      hiddenInput.value = "";
+      if (latch.solved || !typed) return;
+      timer.onFirstInput();
+      if (composer.typeLetter(activeCell, typed)) focusCell(nextInDir(activeCell, direction));
+      else syncUI();
+      checker.checkIfFilled();
+      saveState();
+    });
+    setupCellClicks(svg, (n) => {
+      if (n === activeCell) direction = DIRS[direction].opposite;
+      focusCell(n);
+    });
+    svg.addEventListener("click", (e) => {
+      if (e.target === svg) refocus();
+    });
+    function resetBoard() {
+      resetAndRefocus({
+        composer,
+        clearState,
+        timer,
+        latch,
+        helpRecord,
+        clearBoard() {
+          cells.clearCells();
+          svg.classList.remove("solved");
+          clueItems.forEach((li) => li.classList.remove("correct"));
+          flashLayer.replaceChildren();
+          direction = "inward";
+        },
+        focusInitial: () => focusCell(FIRST_CELL)
+      });
+    }
+    const helpActions = makeHelpActions({
+      checker,
+      composer,
+      helpRecord,
+      setCellLetter,
+      setMark,
+      saveState,
+      syncUI,
+      refocus,
+      flashWrong(wrong) {
+        for (const n of wrong) flashWrong(cellPaths[n], flashLayer);
+        if (phone) phone.fillList.flash(wrong);
+      }
+    });
+    const controls = setupControls({
+      checker,
+      hashed: data.hashed,
+      helpActions,
+      activeCell: () => activeCell,
+      clueCells: activeContextCells,
+      onClear: resetBoard,
+      refocus
+    });
+    const phone = setupPhoneLayout({
+      hiddenInput,
+      helpMenu: controls.helpMenu,
+      refocus,
+      firstVisit: !hasSave(),
+      grid: document.getElementById("grid-wrap"),
+      lists: [document.querySelector(".clue-section-inward"), document.querySelector(".clue-section-outward")],
+      clueBar,
+      fillList: {
+        items: fillItems,
+        getLetter: getCellLetter,
+        getMark,
+        isComposing: composer.isComposing,
+        onCellTap: (i, j) => {
+          direction = fillItems[i].dir;
+          focusCell(fillItems[i].cells[j]);
+        }
+      },
+      bottomRow: [
+        { label: "Prev\ncell", key: "ArrowLeft", ariaLabel: "Previous cell" },
+        { el: document.getElementById("rebus-btn") },
+        { label: "In \u21C4 Out", key: ".", wide: true },
+        { label: "Next\ncell", key: "ArrowRight", ariaLabel: "Next cell" }
+      ]
+    });
+    const resumeCell = restoreAndSeal({ restoreState, checker, latch, composer });
+    focusCell(resumeCell === null ? FIRST_CELL : resumeCell);
+  }
+  document.addEventListener("DOMContentLoaded", init);
+})();
+</script>
+</body>
+</html>

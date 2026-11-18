@@ -4,6 +4,8 @@
 */test/fixtures/*.html
 **/puzzles/*.html
 examples/*.html
+examples/*/
+studio/index.html
 .DS_Store
 deploy.config.json
 .claude/settings.local.json

@@ -23,7 +23,9 @@
     "test:e2e:mac": "playwright test --project=chromium --project=webkit",
     "test:e2e:linux": "node e2e/run-linux.js",
     "capture:mobile": "node e2e/capture-mobile.js",
-    "build:studio": "node studio/build.js"
+    "build:studio": "node studio/build.js",
+    "build:site": "node scripts/build-site.js",
+    "capture:readme": "node e2e/capture-readme.js"
   },
   "dependencies": {
     "esbuild": "^0.28.2",
