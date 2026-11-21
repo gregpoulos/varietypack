@@ -11,6 +11,11 @@ const SHARED_DIR = path.join(__dirname, '..');
 // The cascade layers of a page's stylesheet, weakest first (composeThemeCss).
 const LAYERS = ['base', 'tool', 'theme', 'phone', 'print'];
 
+// One embedded @font-face; the studio page uses it for its own legend font too.
+function fontFaceCss({ family, weight, style }, base64) {
+  return `@font-face {\n  font-family: '${family}';\n  font-weight: ${weight};\n  font-style: ${style};\n  src: url('data:font/woff2;base64,${base64}') format('woff2');\n}\n`;
+}
+
 function buildFontCss(themeName, themeEntry, fontMode) {
   if (!themeEntry || !themeEntry.fonts) return '';
   if (!fontMode) fontMode = themeEntry.fonts.faces ? 'embed' : 'link';
@@ -34,7 +39,7 @@ function buildFontCss(themeName, themeEntry, fontMode) {
       throw new Error(`theme '${themeName}' embed failed: file not found: ${face.file}`);
     }
     const b64 = data.toString('base64');
-    return `@font-face {\n  font-family: '${face.family}';\n  font-weight: ${face.weight};\n  font-style: ${face.style};\n  src: url('data:font/woff2;base64,${b64}') format('woff2');\n}\n`;
+    return fontFaceCss(face, b64);
   }).join('\n');
 }
 
@@ -95,4 +100,4 @@ function composeThemeCss(templateDir, theme = 'broadsheet', fontMode, themeToken
     + layer('print', shared('themes/print-base.css') + '\n' + tool('print.css'));
 }
 
-module.exports = { composeThemeCss, buildFontCss };
+module.exports = { composeThemeCss, buildFontCss, fontFaceCss };

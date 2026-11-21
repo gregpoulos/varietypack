@@ -258,7 +258,7 @@ themeTokens:
   font-body: "Georgia, serif"
 ```
 
-Token names are the `--theme-*` custom properties declared in `shared/themes/theme-base.css`, written without the `--theme-` prefix. An unknown name is an error. Values are plain CSS values of at most 200 characters; anything that could end the declaration, open a comment or string that outlives it, or load something (`;`, `{`, `}`, `[`, `]`, `<`, `>`, `@`, `\`, `/*`, `url(`, unbalanced quotes or parentheses) is rejected. The studio edits the same map under Puzzle settings → Theme overrides.
+Token names are the `--theme-*` custom properties declared in `shared/themes/theme-base.css`, written without the `--theme-` prefix. An unknown name is an error. Values are plain CSS values of at most 200 characters; anything that could end the declaration, open a comment or string that outlives it, or load something (`;`, `{`, `}`, `[`, `]`, `<`, `>`, `@`, `\`, `/*`, `url(`, unbalanced quotes or parentheses) is rejected. The studio does not edit the map; set it in the YAML (the studio keeps it as written).
 
 See `docs/ARCHITECTURE.md` → "Themes and print" for how to add a new theme
 (a project-level, not puzzle-authoring, task).

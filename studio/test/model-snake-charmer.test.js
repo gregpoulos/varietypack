@@ -50,7 +50,7 @@ test('fromYaml: an odd total and muddled entries throw StructureErrors', () => {
   const odd = puzzle(); odd.entries[4].answer = 'EFG';
   assert.throws(() => imp(odd), (e) => e instanceof StructureError && /odd number of cells \(15\)/.test(e.message));
   const mud = puzzle(); delete mud.entries[0].answer; mud.entries[0].length = 3;
-  assert.throws(() => imp(mud), (e) => e instanceof StructureError && /muddled/.test(e.message));
+  assert.throws(() => imp(mud), (e) => e instanceof StructureError && /without answers/.test(e.message));
 });
 
 test('fromYaml: files that are not shaped like puzzles throw StructureErrors', () => {
@@ -126,14 +126,6 @@ test('toggleBreak: removing a break orphans its clue, and 0 and out-of-range do 
   assert.deepEqual(run(model, 'toggleBreak', 16), model);
 });
 
-test('lapsLabel: lap 1, lap 2, laps 1–2 and both laps', () => {
-  const { model } = imp();
-  assert.equal(sc.lapsLabel(model, 0), 'lap 1');
-  assert.equal(sc.lapsLabel(model, 3), 'lap 2');
-  assert.equal(sc.lapsLabel(model, 2), 'laps 1–2');
-  assert.equal(sc.lapsLabel(sc.newModel({ cells: 16 }), 0), 'both laps');
-});
-
 test('other commands: setShape, setClue, setDisplayAnswer, setHeader, attach and discard orphans', () => {
   const { model } = imp();
   assert.equal(run(model, 'setShape', 'turn').shape, 'turn');
@@ -182,9 +174,9 @@ test('navigation helpers: wrap at both ends, Tab jumps, and | at the caret', () 
   assert.equal(sc.stepPosition(model, 15, 1), 0);
   assert.equal(sc.stepPosition(model, 0, -1), 15);
   assert.equal(sc.entryStartPosition(model, 4, 1), 6);
-  assert.equal(sc.entryStartPosition(model, 13, 1), 0);
+  assert.equal(sc.entryStartPosition(model, 13, 1), null);   // past the last entry: Tab leaves the board
   assert.equal(sc.entryStartPosition(model, 4, -1), 3);
-  assert.equal(sc.entryStartPosition(model, 0, -1), 12);
+  assert.equal(sc.entryStartPosition(model, 0, -1), null);
   assert.deepEqual(sc.breakAtCaret(model, 9), { index: 9 });
   assert.deepEqual(sc.breakAtCaret(model, 0), { message: 'Entry 1 always starts at the first cell of lap 1.' });
   assert.equal(sc.entryAtPosition(model, 9), 2);

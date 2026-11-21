@@ -41,7 +41,7 @@ test('parseDraft rejects a yaml document with no text, and a muddled one with no
 
 test('parseDraft fills in missing options with the defaults', () => {
   const d = parseDraft('{"studio":1,"doc":{"id":"x","mode":"yaml","yaml":"a","options":{"font":"link"}}}');
-  assert.deepEqual(d.options, { font: 'link', hashedPreview: false, phoneWidth: false });
+  assert.deepEqual(d.options, { font: 'link', hashedPreview: false, phoneWidth: false, previewTheme: null });
   assert.equal(parseDraft('{"studio":1,"doc":{"id":"x","mode":"yaml","yaml":"a"}}').options.font, 'embed');
 });
 
@@ -96,3 +96,14 @@ test('parseDraft rejects a structured model whose cuts are not shaped like cuts'
   for (const mutate of bad) assert.throws(() => parseDraft(structuredDraft(mutate)), /Not a studio draft file/);
 });
 
+test('a draft saved without previewTheme loads with it null', () => {
+  const d = parseDraft('{"studio":1,"doc":{"id":"x","mode":"yaml","yaml":"a","options":{"font":"link","hashedPreview":true,"phoneWidth":false}}}');
+  assert.equal(d.options.previewTheme, null);
+});
+
+test('a draft with an unknown previewTheme loads with it null; a known one is kept', () => {
+  const draft = (t) => `{"studio":1,"doc":{"id":"x","mode":"yaml","yaml":"a","options":{"previewTheme":${JSON.stringify(t)}}}}`;
+  assert.equal(parseDraft(draft('nonsense')).options.previewTheme, null);
+  assert.equal(parseDraft(draft(7)).options.previewTheme, null);
+  assert.equal(parseDraft(draft('skeleton')).options.previewTheme, 'skeleton');
+});

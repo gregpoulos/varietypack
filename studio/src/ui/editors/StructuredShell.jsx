@@ -1,28 +1,39 @@
-import { useState } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
 import { EDITORS } from './index.js';
-import { HeaderForm } from './HeaderForm.jsx';
+import { PuzzleBox } from './PuzzleBox.jsx';
+import { GridSettings } from './GridSettings.jsx';
+import { FillCluesButton } from './FillCluesButton.jsx';
+import { focusBoardOnOpen as focusBoard } from './useBoardInput.js';
+import { isTouchFirst } from '../../../../shared/engine-phone.mjs';
+import { PopoverScope } from '../usePopover.js';
 
-// The Edit view of a structured document: the Editor / YAML switch, the kind's editor,
-// and last the header form, away from the editing controls. Key it by document id so a
-// new document starts on the Selected entry view.
-export function StructuredShell({ state, dispatch, focusRef, onEditYaml }) {
-  const { doc, completeness } = state;
+// A document opened into the Board phase starts with the board focused, so the author can
+// press arrows at once. Never over a field being typed in or an open dialog, and never on
+// a touch device, where focus would raise the soft keyboard.
+function maybeFocusBoard(view, dialog) {
+  if (view !== 'board' || dialog) return;
+  if (isTouchFirst()) return;
+  const a = document.activeElement;
+  if (a && a.matches('input, textarea, select, [contenteditable]')) return;
+  focusBoard();
+}
+
+// The Edit view of a structured document: the kind's editor, given the Puzzle box to head
+// its side column.
+// Key it by document id so a new document gets a fresh editor (caret and UI state).
+export function StructuredShell({ state, dispatch, focusRef }) {
+  const { doc, view } = state;
   const { Editor, Settings } = EDITORS[doc.kind];
-  const [clueView, setClueView] = useState('selected');
-  const canYaml = completeness.length === 0;
+  const settings = Settings ? <GridSettings Settings={Settings} model={doc.model} dispatch={dispatch} /> : null;
+  // Once per document: the shell is keyed by doc id, so this runs on open only.
+  useEffect(() => maybeFocusBoard(view, state.dialog), []);
+  const fillClues = <FillCluesButton model={doc.model} dispatch={dispatch} />;
+  const header = <PuzzleBox model={doc.model} dispatch={dispatch} />;
   return (
-    <div class="ed structured">
-      <div class="ed-head">
-        <span id="mode-switch" class="seg small" role="group" aria-label="Editing mode">
-          <button type="button" class="seg-btn" aria-pressed="true">Editor</button>
-          <button type="button" id="btn-edit-yaml" class="seg-btn" aria-pressed="false" disabled={!canYaml}
-            title={canYaml ? undefined : 'The YAML can only show a complete puzzle: finish the cells and clues first.'}
-            onClick={onEditYaml}>YAML</button>
-        </span>
-        <p class="ed-hint">Changes save as you go.</p>
+    <PopoverScope.Provider value={`${doc.id}:${view}`}>
+      <div class="ed structured">
+        <Editor state={state} dispatch={dispatch} model={doc.model} phase={view === 'clues' ? 'clues' : 'board'} focusRef={focusRef} settings={settings} fillClues={fillClues} header={header} />
       </div>
-      <Editor state={state} dispatch={dispatch} model={doc.model} clueView={clueView} setClueView={setClueView} focusRef={focusRef} />
-      <HeaderForm model={doc.model} dispatch={dispatch} Settings={Settings} />
-    </div>
+    </PopoverScope.Provider>
   );
 }

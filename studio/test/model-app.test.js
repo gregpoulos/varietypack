@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert   = require('node:assert/strict');
 const { deepFreeze } = require('./helpers');
 const { newDoc, puzzleText } = require('../src/model/doc');
-const { initialState, reduce, canExport, previewHtml, previewIsStale, problemsLabel } = require('../src/model/app');
+const { initialState, reduce, phaseForJump, canExport, previewHtml, previewIsStale, problemsLabel } = require('../src/model/app');
 
 const doc = newDoc({ id: 'a', now: 1, kind: null, yaml: 'kind: spiral\n' });
 const clean = { parseError: null, kind: 'spiral', muddled: false, theme: null, title: 'T', html: '<p>ok</p>', errors: [], warnings: [], notes: [] };
@@ -13,14 +13,14 @@ const failing = { ...clean, html: null, errors: ['bad'] };
 function opened() { return reduce(initialState(), { type: 'OPEN_DOC', doc }); }
 function checked(state, result, text = puzzleText(state.doc)) { return reduce(state, { type: 'CHECK_RESULT', text, result }); }
 
-test('OPEN_DOC: sets the doc, clears check state, starts on the Edit view', () => {
+test('OPEN_DOC: sets the doc, clears check state, starts on the board', () => {
   let s = checked(opened(), clean);
   s = reduce({ ...s, view: 'test', dialog: 'export' }, { type: 'OPEN_DOC', doc, message: 'hi' });
   assert.equal(s.doc, doc);
   assert.equal(s.check, null);
   assert.equal(s.checkedText, null);
   assert.equal(s.lastGoodHtml, null);
-  assert.equal(s.view, 'edit');
+  assert.equal(s.view, 'board');
   assert.equal(s.dialog, null);
   assert.equal(s.message, 'hi');
 });
@@ -90,12 +90,9 @@ test('SET_VIEW, dialogs, messages and drafts update their own field', () => {
   assert.deepEqual(s.drafts, [{ id: 'x' }]);
 });
 
-test('SET_OPTION and SET_MUDDLED_THEME edit the doc', () => {
+test('SET_OPTION edits the doc', () => {
   let s = reduce(opened(), { type: 'SET_OPTION', key: 'phoneWidth', value: true, now: 3 });
   assert.equal(s.doc.options.phoneWidth, true);
-  s = reduce({ ...s, doc: { ...s.doc, mode: 'muddled', muddled: { kind: 'spiral' } } },
-    { type: 'SET_MUDDLED_THEME', theme: 'skeleton', now: 4 });
-  assert.equal(s.doc.muddled.theme, 'skeleton');
 });
 
 test('CLOSE_DOC returns to the welcome screen', () => {
@@ -135,3 +132,36 @@ test('SET_UI edits an editor setting on the doc and is not an undo step', () => 
   assert.deepEqual(s.history, opened().history);
 });
 
+test("OPEN_DOC with view 'clues'", () => {
+  const structured = newDoc({ id: 's', now: 1, kind: 'spiral', size: { cells: 40 } });
+  const s = reduce(initialState(), { type: 'OPEN_DOC', doc: structured, view: 'clues' });
+  assert.equal(s.view, 'clues');
+});
+
+test("OPEN_DOC of a YAML doc maps 'clues' to 'board'", () => {
+  const s = reduce(initialState(), { type: 'OPEN_DOC', doc: { ...doc, mode: 'yaml' }, view: 'clues' });
+  assert.equal(s.view, 'board');
+});
+
+test('SET_VIEW clears an open dialog', () => {
+  const s = reduce({ ...opened(), dialog: 'export' }, { type: 'SET_VIEW', view: 'clues' });
+  assert.equal(s.view, 'clues');
+  assert.equal(s.dialog, null);
+});
+
+test("SWITCH_MODE lands on 'board'", () => {
+  const s = reduce({ ...opened(), view: 'clues' }, { type: 'SWITCH_MODE', doc: newDoc({ id: 's', now: 1, kind: 'spiral', size: { cells: 40 } }) });
+  assert.equal(s.view, 'board');
+});
+
+test('phaseForJump', () => {
+  const rows = [
+    [{ header: 'title' }, 'clues', 'clues'],
+    [{ header: 'title' }, 'test', 'board'],
+    [{ header: 'title' }, 'board', 'board'],
+    [{ cells: [1, 2] }, 'clues', 'board'],
+    [{ orphan: 'e1' }, 'board', 'clues'],
+    [{ key: 'A 0,0' }, 'board', 'clues'],
+  ];
+  for (const [target, view, want] of rows) assert.equal(phaseForJump(target, view), want, JSON.stringify([target, view]));
+});

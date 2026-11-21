@@ -119,13 +119,18 @@ test('landing on a cell with no entry in the current direction flips the directi
   assert.deepEqual([res.ui.r, res.ui.c, res.ui.dir], [0, 2, 'D']);
 });
 
-test('Tab goes to the first cell of the next entry in the direction, wrapping; Shift+Tab goes back', () => {
+test('Tab goes to the first cell of the next entry in the direction; past the last (Shift+Tab before the first) it is left to the browser', () => {
   const m = blank(3, 3);
   assert.deepEqual([E.pressKey(m, at(0, 1), key('Tab'), true).ui.r, E.pressKey(m, at(0, 1), key('Tab'), true).ui.c], [1, 0]);
-  const wrap = E.pressKey(m, at(2, 0), key('Tab'), true);
-  assert.deepEqual([wrap.ui.r, wrap.ui.c], [0, 0]);
-  const back = E.pressKey(m, at(0, 0), key('Tab', { shiftKey: true }), true);
-  assert.deepEqual([back.ui.r, back.ui.c], [2, 0]);
+  assert.equal(E.pressKey(m, at(2, 0), key('Tab'), true).handled, false);
+  assert.equal(E.pressKey(m, at(0, 0), key('Tab', { shiftKey: true }), true).handled, false);
+  const back = E.pressKey(m, at(1, 0), key('Tab', { shiftKey: true }), true);
+  assert.deepEqual([back.ui.r, back.ui.c], [0, 0]);
+});
+
+test('Tab on a block is left to the browser', () => {
+  const m = cw.commands.toggleBlock(blank(), 2, 2, false);
+  assert.equal(E.pressKey(m, at(2, 2), key('Tab'), false).handled, false);
 });
 
 test('# blocks the cell and its mirror, and moves the caret to the next open cell', () => {

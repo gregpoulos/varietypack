@@ -84,9 +84,16 @@ test('previewIsStale is true for an incomplete structured doc that has a lastGoo
   let s = structured();
   s = reduce(s, { type: 'CHECK_RESULT', text: puzzleText(s.doc), result: { parseError: null, kind: 'spiral', html: '<p>x</p>', errors: [], warnings: [], notes: [] } });
   assert.equal(previewIsStale(s), false);
-  s = cmd(s, 'setClue', ['inward', 0, '']);
+  s = cmd(s, 'setCell', [0, '']);
   assert.equal(puzzleText(s.doc), null);
   assert.equal(previewIsStale(s), true);
+});
+
+test('a missing clue alone does not make the preview stale: placeholders stand in', () => {
+  let s = structured();
+  s = reduce(s, { type: 'CHECK_RESULT', text: puzzleText(s.doc), result: { parseError: null, kind: 'spiral', html: '<p>x</p>', errors: [], warnings: [], notes: [] } });
+  s = cmd(s, 'setClue', ['inward', 0, '']);
+  assert.equal(previewIsStale(s), false);
 });
 
 test('problemsLabel counts completeness problems while the puzzle is incomplete', () => {
@@ -133,7 +140,23 @@ test('SWITCH_MODE replaces the doc, resets history and sets the message', () => 
   assert.equal(s.doc.mode, 'yaml');
   assert.equal(s.history, null);
   assert.equal(s.message, 'now YAML');
-  assert.equal(s.check, null);
+});
+
+test('SWITCH_MODE keeps a check of the same text (see the reducer)', () => {
+  const clean = { parseError: null, kind: 'spiral', html: '<p>ok</p>', errors: [], warnings: [], notes: [] };
+  let s = structured();
+  s = reduce(s, { type: 'CHECK_RESULT', text: puzzleText(s.doc), result: clean });
+  const y = toYamlMode(s.doc);
+  const inYaml = reduce(s, { type: 'SWITCH_MODE', doc: y });
+  assert.equal(inYaml.doc.mode, 'yaml');
+  assert.equal(problemsLabel(inYaml).tone, 'ok');
+  assert.ok(canExport(inYaml));
+  // And back: the same text stays checked; text that changed is waiting for a new check.
+  const back = reduce(inYaml, { type: 'SWITCH_MODE', doc: toStructuredMode(y).doc });
+  assert.equal(problemsLabel(back).tone, 'ok');
+  const changed = complete(); changed.inward[0].clue = 'other';
+  const edited = reduce(inYaml, { type: 'SWITCH_MODE', doc: toStructuredMode({ ...y, yaml: text(changed) }).doc });
+  assert.equal(problemsLabel(edited).tone, 'busy');
 });
 
 test('parseSize: a whole number within the field range', () => {

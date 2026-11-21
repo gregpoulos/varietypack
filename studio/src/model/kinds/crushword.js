@@ -19,6 +19,7 @@ const { deriveSlots, slotCells, uncluedCells, uncrossedCells, isSymmetric, isCon
 const { buildEntryMaps } = require('../../../../crushword/src/typing.mjs');
 const { DEFAULT_MAX_CELL_LETTERS, MIN_ANSWER_LETTERS } = require('../../../../crushword/src/validator');
 const { StructureError } = require('../errors');
+const { fillEmptyClues } = require('../placeholderClues');
 const { formatCell } = require('../cells');
 const { orphanOf } = require('../starts');
 const { newEntry, entryFromYaml, entryToYaml, circledPositions } = require('../entries');
@@ -279,6 +280,12 @@ const withClue = (model, key, patch) => ({ ...model, clues: { ...model.clues, [k
 const hasSlot = (model, key) => Object.hasOwn(model.clues, key);
 const sortCircles = (list) => [...list].sort(byCell);
 
+// A copy with every entry replaced by fn(entry) (placeholderClues.js).
+const mapEntries = (model, fn) => ({
+  ...model,
+  clues: Object.fromEntries(Object.entries(model.clues).map(([key, e]) => [key, fn(e)])),
+});
+
 const commands = {
   // Not truncated: an over-full cell is flagged by gridChecks instead.
   setCell(model, r, c, content) {
@@ -347,6 +354,8 @@ const commands = {
   },
 
   discardOrphan: (model, orphanId) => ({ ...model, orphans: model.orphans.filter(o => o.id !== orphanId) }),
+
+  fillEmptyClues: (model) => fillEmptyClues(model, mapEntries),
 };
 
 // Enough shape that the editor can open a model (a draft, say) without crashing.
@@ -365,6 +374,6 @@ function isModel(m) {
 }
 
 module.exports = {
-  kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands,
+  kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands, mapEntries,
   gridStrings, slots, entryMaps, capOf, mirror, gridChecks, resizeLosses, slotName, MIN_ANSWER_LETTERS,
 };

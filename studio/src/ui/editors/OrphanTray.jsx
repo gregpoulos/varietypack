@@ -22,7 +22,7 @@ export function OrphanTray({ orphans, targets, onAttach, onDiscard, note = 'a sp
                 {targets.map(t => <option value={t.value} key={t.value}>{t.label}</option>)}
               </select>
               <button type="button" class="btn orphan-attach" onClick={() => onAttach(o.id, value)}>Attach</button>
-              <button type="button" class="btn ghost orphan-discard" onClick={() => onDiscard(o.id)}>Discard</button>
+              <button type="button" class="btn quiet orphan-discard" onClick={() => onDiscard(o.id)}>Discard</button>
             </div>
           </div>
         );

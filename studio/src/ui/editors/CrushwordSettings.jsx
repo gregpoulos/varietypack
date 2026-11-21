@@ -3,9 +3,9 @@ import cw from '../../model/kinds/crushword.js';
 import { fieldValue } from '../../model/doc.js';
 import { CrushwordThumb } from './CrushwordSizePreview.jsx';
 import { useKeyedDraft } from './useKeyedDraft.js';
+import { plural } from './plural.js';
 
 const [rowsField, colsField] = cw.sizeFields;
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // What a resize does, in words: the cells it adds or removes, the clues it would orphan
 // and whether the pattern stays symmetric. Counted from the resize's own result.
@@ -77,7 +77,7 @@ export function CrushwordSettings({ model, dispatch }) {
           {unchanged && <p id="resize-summary" class="hint">That’s the current size.</p>}
           {preview}
           <div class="size-actions">
-            <button type="button" id="resize-apply" class="btn primary" disabled={!valid || unchanged}
+            <button type="button" id="resize-apply" class="btn dark" disabled={!valid || unchanged}
               onClick={() => { send('resize', [R2, C2]); setOpen(false); }}>Resize</button>
             <button type="button" id="resize-cancel" class="btn" onClick={() => setOpen(false)}>Cancel</button>
           </div>

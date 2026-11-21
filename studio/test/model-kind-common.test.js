@@ -40,7 +40,7 @@ test('parseEntryCells: cells per entry, with StructureErrors for anything off', 
   const bad = (entries, re) => assert.throws(() => common.parseEntryCells(entries, 'entries'), (e) => e instanceof StructureError && re.test(e.message));
   bad(undefined, /"entries" must be a list/);
   bad([null], /clue and an answer/);
-  bad([{ clue: 'c' }], /muddled/);
+  bad([{ clue: 'c' }], /without answers/);
   bad([{ clue: 'c', answer: 4 }], /answer must be text/);
   bad([{ clue: 1984, answer: 'AB' }], /clue must be text/);
   bad([{ clue: 'c', answer: 'A[' }], /unclosed/);

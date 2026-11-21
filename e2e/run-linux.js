@@ -36,6 +36,11 @@ const args = process.argv.slice(2);
 if (!args.some(a => a.startsWith('--project'))) {
   args.push('--project=firefox', ...PHONES.map(p => `--project=${p.project}`));
 }
+// One worker unless told otherwise: parallel workers overload the container, and long
+// solve tests time out.
+if (!args.some(a => a.startsWith('--workers') || a.startsWith('-j'))) {
+  args.push('--workers=1');
+}
 const passthrough = args.map(quote).join(' ');
 
 const script = `

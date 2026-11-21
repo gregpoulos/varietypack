@@ -1,64 +1,87 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import core from '../core/index.js';
+import { VALID_THEMES } from '../../../shared/build/themeRegistry.js';
 import { canExport } from '../model/app.js';
 import { puzzleText } from '../model/doc.js';
 import { exportFileName } from '../model/filenames.js';
-import { exportList, buildExport, themeOf, themeHasFont } from '../model/exporters.js';
+import { buildExport, yamlSaves, previewTheme, themeHasFont, themeApplies } from '../model/exporters.js';
 import { download } from './download.js';
-import { EmbedDialog } from './EmbedDialog.jsx';
+import { Latch } from './Latch.jsx';
 
 function kb(bytes) {
   return bytes < 1000 ? `${bytes} B` : `${Math.round(bytes / 1000)} KB`;
 }
 
-function blockedText(check) {
-  if (!check) return 'Still checking the puzzle. This takes a moment.';
-  const lead = check.parseError
-    ? 'Fix the YAML error first; nothing exports until it’s fixed.'
-    : `Fix the ${check.errors.length} problem${check.errors.length === 1 ? '' : 's'} first; nothing exports until they’re fixed. Warnings don’t block export.`;
-  return `${lead} Your work is safe: drafts save as you go, and Download draft file in the ⋯ menu keeps a copy.`;
+// Any valid ISO time will do: only the file's size is wanted from this one.
+const SIZING_TIME = '2000-01-01T00:00:00.000Z';
+
+// What a button would save: its file name and size, or null when it can't be built.
+function describe(target, doc, title, opts) {
+  try {
+    const out = buildExport(target, doc, { ...opts, savedAtIso: SIZING_TIME });
+    return { name: exportFileName(title, out.type), size: new Blob([out.text]).size };
+  } catch { return null; }
 }
 
-// A modal <dialog>: Escape or Close hide it, and every download is refused unless the
-// real validator reports no errors.
+// A modal <dialog>: Escape or Close hide it. Its theme and Hide answers start from the
+// preview's each time it opens (the panel mounts per opening) and never change the
+// preview. Downloading a page, or a hidden-answers YAML, is refused unless the real
+// validator reports no errors; plain YAML and drafts always save.
 export function ExportPanel({ state, dispatch, title }) {
   const { doc, check } = state;
   const ref = useRef(null);
-  const [embedOpen, setEmbedOpen] = useState(false);
   const muddled = doc.mode === 'muddled';
-  const can = canExport(state);
+  // Seeded once at mount. Accepted edge: a YAML-mode file whose theme: is known only from
+  // the check falls back to the default if Export opens before the first check lands.
+  const [theme, setTheme] = useState(() => previewTheme(doc, check));
+  const [hide, setHide] = useState(() => muddled || !!doc.options.hashedPreview);
+  const valid = canExport(state);
   const font = doc.options.font;
-  const theme = themeOf(doc, check);
-  const files = exportList(doc);
+  const saves = yamlSaves(doc);
   // The check for the text as it is now, or null while one is pending.
   const current = check && state.checkedText === puzzleText(doc) ? check : null;
+  // Hide answers counts as off while it is disabled, but its latch keeps its position.
+  const hideAnswers = muddled || (valid && hide);
+  const opts = { font, theme, hideAnswers };
 
   useEffect(() => {
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
 
-  // Each size comes from the same call its button makes.
-  const sizes = useMemo(() => {
-    if (!can) return {};
-    const out = {};
-    for (const f of files.filter(x => !x.dialog)) {
-      try { out[f.id] = new Blob([buildExport(f.id, doc, { font }).text]).size; } catch { /* shown without a size */ }
-    }
-    return out;
-  }, [can, font, doc]);
+  const pageInfo = useMemo(() => (valid ? describe('page', doc, title, opts) : null),
+    [valid, doc, title, font, theme, hideAnswers]);
+  const yamlInfo = useMemo(() => describe('yaml', doc, title, opts),
+    [doc, title, font, theme, hideAnswers]);
 
-  function onDownload(file) {
-    if (file.dialog) { setEmbedOpen(true); return; }
-    // The debounced check may be behind the editor, so check the current text again.
-    const fresh = core.checkText(puzzleText(doc), { font: 'embed' });
-    if (fresh.parseError || fresh.errors.length) {
-      dispatch({ type: 'SHOW_MESSAGE', text: 'Export stopped: the puzzle has problems. Fix them first.' });
-      dispatch({ type: 'HIDE_DIALOG' });
-      return;
+  const pageReason = saves === 'draft' ? 'Finish the puzzle first.'
+    : !current ? ''
+    : current.parseError ? 'Fix the YAML error first.'
+    : current.errors.length ? `Fix ${current.errors.length} problem${current.errors.length === 1 ? '' : 's'} first.`
+    : '';
+  const hideReason = muddled ? 'This file already has its answers hidden.' : '';
+  // Hide answers is offered only for a puzzle that can have them hidden: its row is
+  // gone for a draft or a current check with errors, and merely disabled while pending.
+  const hideUnavailable = !muddled && (saves === 'draft' || (!!current && !valid));
+  // From the text itself, so it is right while a check is pending.
+  const themeLocked = !themeApplies(doc);
+  const themeReason = themeLocked && saves !== 'draft' ? 'The YAML doesn’t parse, so it saves as typed.' : '';
+
+  function onDownload(target) {
+    // Building the page, or hiding the answers in a YAML, needs a puzzle that builds. The
+    // debounced check may be behind the editor, so check the current text again.
+    // A muddled doc's YAML is exempt: it only re-themes an already-muddled file and can't
+    // fail to build.
+    if (target === 'page' || (hideAnswers && !muddled)) {
+      const fresh = core.checkText(puzzleText(doc), { font: 'embed' });
+      if (fresh.parseError || fresh.errors.length) {
+        dispatch({ type: 'SHOW_MESSAGE', text: 'Export stopped: the puzzle has problems. Fix them first.' });
+        dispatch({ type: 'HIDE_DIALOG' });
+        return;
+      }
     }
     try {
-      const out = buildExport(file.id, doc, { font });
+      const out = buildExport(target, doc, { ...opts, savedAtIso: new Date().toISOString() });
       download(exportFileName(title, out.type), out.text, out.mime);
     } catch (err) {
       dispatch({ type: 'SHOW_MESSAGE', text: `Export failed: ${err.message}` });
@@ -70,43 +93,71 @@ export function ExportPanel({ state, dispatch, title }) {
     <dialog id="export-panel" ref={ref} aria-labelledby="export-title"
       onClose={() => dispatch({ type: 'HIDE_DIALOG' })}
       onClick={e => { if (e.target === e.currentTarget) e.currentTarget.close(); }}>
+      <span class="slot l" aria-hidden="true"></span>
+      <span class="slot r" aria-hidden="true"></span>
       <div class="sheet-head">
-        <div>
-          <h2 id="export-title">Export</h2>
-          <p>Theme: {theme}. {muddled
-            ? 'Change it beside the preview.'
-            : 'It’s saved with the puzzle: set it with the theme: line in the YAML.'}</p>
-        </div>
+        <h2 id="export-title" class="legend">Export</h2>
         <button type="button" id="export-close" class="btn" onClick={() => ref.current.close()}>Close</button>
       </div>
-      {!can && <div id="export-blocked">{blockedText(current)}</div>}
-      <ul class="files">
-        {files.map(f => (
-          <li class={'export-file' + (f.best ? ' best' : '')} key={f.id}>
-            <h3>{f.name} {f.best && <span class="best-tag">Best for sharing</span>}</h3>
-            <p>
-              <code>{exportFileName(title, f.type)}</code>{' '}
-              {sizes[f.id] != null && <span class="size">{kb(sizes[f.id])}</span>}
-              <br />{f.desc}
-            </p>
-            <button type="button" id={`export-${f.id}`} class={'btn' + (f.best ? ' primary' : '')}
-              disabled={!can} onClick={() => onDownload(f)}>{f.dialog ? 'Set up…' : 'Download'}</button>
-          </li>
-        ))}
-      </ul>
-      {themeHasFont(theme) && (
-        <fieldset id="export-font">
-          <legend>Font</legend>
-          <label><input type="radio" name="export-font" value="embed" checked={font === 'embed'}
-            onChange={() => dispatch({ type: 'SET_OPTION', key: 'font', value: 'embed', now: Date.now() })} />
-            <span><b>Built into the page.</b> Works offline.</span></label>
-          <label><input type="radio" name="export-font" value="link" checked={font === 'link'}
-            onChange={() => dispatch({ type: 'SET_OPTION', key: 'font', value: 'link', now: Date.now() })} />
-            <span><b>Loaded from Google Fonts</b> when the page opens.</span></label>
-          <p>This depends on where the page will live, not on the puzzle, so it isn’t part of the puzzle file.</p>
-        </fieldset>
-      )}
-      {embedOpen && <EmbedDialog doc={doc} font={font} title={title} dispatch={dispatch} onClose={() => setEmbedOpen(false)} />}
+      <fieldset id="export-file" class="engraved">
+        <legend>File</legend>
+        <div class="form">
+          <label class="legend" for="export-theme">Theme</label>
+          <div>
+            <select id="export-theme" class="readout" value={theme} disabled={themeLocked}
+              aria-describedby={themeReason ? 'export-theme-reason' : undefined}
+              onChange={e => setTheme(e.currentTarget.value)}>
+              {VALID_THEMES.map(t => <option value={t} key={t}>{t}</option>)}
+            </select>
+            {themeReason && <p id="export-theme-reason" class="note-line">{themeReason}</p>}
+          </div>
+          {/* One wrapper carries `hidden`; display: contents puts its three children in
+              the form's grid. */}
+          <div class="export-hide" hidden={hideUnavailable}>
+            <span class="legend" id="export-answers-label">Answers</span>
+            <div>
+              <Latch id="export-answers" label="Answers" value={(muddled || hide) ? 'hidden' : 'shown'}
+                disabled={muddled || !valid} describedBy="export-answers-note"
+                options={[{ value: 'shown', text: 'Shown', led: 'amber' }, { value: 'hidden', text: 'Hidden', led: 'amber' }]}
+                onChange={v => setHide(v === 'hidden')} />
+              <p id="export-answers-note" class="note-line">
+                {hideReason || 'Solvers can still check their answers, but can’t read them in the file.'}
+              </p>
+            </div>
+          </div>
+          {themeHasFont(theme) && (
+            <>
+              <span class="legend" id="export-font-label">Font</span>
+              <div>
+                <Latch id="export-font" label="Font" value={font} describedBy="export-font-note"
+                  options={[{ value: 'embed', text: 'Built in', led: 'amber' }, { value: 'link', text: 'Google Fonts', led: 'amber' }]}
+                  onChange={v => { if (v !== font) dispatch({ type: 'SET_OPTION', key: 'font', value: v, now: Date.now() }); }} />
+                <p id="export-font-note" class="note-line">
+                  Built in: works offline. Google Fonts: loaded when the page opens. This depends on where the page will live, not on the puzzle, so it isn’t part of the puzzle file.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </fieldset>
+      <fieldset id="export-download" class="engraved">
+        <legend>Download</legend>
+        <div class="dl">
+          <button type="button" id="export-page" class="btn red" disabled={!valid}
+            onClick={() => onDownload('page')}>Download web page</button>
+          <p id="export-page-note">
+            {pageInfo ? <span class="tape tag"><code>{pageInfo.name}</code> <span class="size">{kb(pageInfo.size)}</span></span> : pageReason}
+          </p>
+          <button type="button" id="export-yaml" class="btn" onClick={() => onDownload('yaml')}>
+            {saves === 'draft' ? 'Download draft' : 'Download YAML'}</button>
+          <p id="export-yaml-note">
+            {saves === 'draft' && 'Saves a draft you can reopen in the studio. '}
+            {yamlInfo && <span class="tape tag"><code>{yamlInfo.name}</code> <span class="size">{kb(yamlInfo.size)}</span></span>}
+            {saves !== 'draft' && !hideAnswers && !muddled && current && (current.parseError || current.errors.length > 0)
+              && ' Saved as it stands, problems included.'}
+          </p>
+        </div>
+      </fieldset>
     </dialog>
   );
 }

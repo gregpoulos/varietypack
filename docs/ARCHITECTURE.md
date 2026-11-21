@@ -106,6 +106,31 @@ joining the results with `joinCells` from `shared/boardString.mjs` (delimiter
 digits, so normalizing a joined string would eat the delimiter and silently
 collapse two cells into one.
 
+## The studio's editing model
+
+The studio's structured editors don't edit the source YAML or `PUZZLE_DATA`. They
+edit a model of their own (`studio/src/model/kinds/`) and convert it to source YAML,
+which they build through the same `buildFromObject()` as the CLI. A puzzle passes
+through three representations, each built for a different reader:
+
+- **Source YAML** is what an author writes and keeps. It stores each entry's answer,
+  so two crossing answers can disagree, which is an error the validator has to catch.
+- **The studio model** stores each cell once, plus where each entry starts. Answers
+  are derived from those, so crossing answers can't disagree: typing a crossing letter
+  changes both entries. It also has to hold what an editor lives with: a half-filled
+  board, missing clues, clues whose entry was edited away, undo history.
+- **`PUZZLE_DATA`** is the build's output for the solver. Clues and instructions in it
+  are already-escaped HTML, answers as written (`WAH-WAH`) are reduced to their cells,
+  and a hashed build carries no letters at all. It exists only for a valid puzzle.
+
+`PUZZLE_DATA` is cells-first too: it ships the cells and each entry's length, and the
+engine derives which cells each entry covers. So the two ends share the geometry rules,
+not a data format. Those rules are shared as functions: the studio's boards and kind
+modules call the engines' own geometry, numbering and typing code rather than
+re-implementing it. Building `PUZZLE_DATA` straight from the studio model would make a
+second build path, and the studio's builds would no longer be guaranteed byte-identical
+to the CLI's.
+
 ## Shared library
 
 `shared/` has two kinds of code, depending on where it runs.

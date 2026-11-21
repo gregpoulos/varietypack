@@ -34,4 +34,21 @@ function setHeaderField(header, field, value) {
   return next;
 }
 
-module.exports = { headerFromYaml, headerToYaml, setHeaderField };
+// The most characters each field takes in the studio, so the Puzzle box can't be pushed
+// into an unreadable shape. A file already past a limit opens as it is; the limit only
+// stops further typing.
+const HEADER_LIMITS = { title: 60, author: 40, date: 20 };
+
+// The title's font size in px: full size up to FULL_UNTIL characters, then shrinking in a
+// straight line to the floor at the title limit, so a long title wraps to a few lines of
+// the side column rather than many.
+const TITLE_MAX_PX = 21;
+const TITLE_MIN_PX = 16;
+const FULL_UNTIL = 20;
+function titleSizePx(length) {
+  if (length <= FULL_UNTIL) return TITLE_MAX_PX;
+  const t = Math.min(1, (length - FULL_UNTIL) / (HEADER_LIMITS.title - FULL_UNTIL));
+  return Math.round((TITLE_MAX_PX - t * (TITLE_MAX_PX - TITLE_MIN_PX)) * 10) / 10;
+}
+
+module.exports = { headerFromYaml, headerToYaml, setHeaderField, HEADER_LIMITS, TITLE_MAX_PX, TITLE_MIN_PX, titleSizePx };

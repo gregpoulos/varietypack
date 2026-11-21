@@ -13,6 +13,7 @@
 const { bandCells, rowCells, bandIndexOf, centerN, arrowTarget, onBandBottomEdge } = require('../../../../marching-bands/src/layout.mjs');
 const { sameCell } = require('../../../../shared/build/validateEntry');
 const { StructureError } = require('../errors');
+const { fillEmptyClues } = require('../placeholderClues');
 const { formatCell, formatSequence, parseSequence } = require('../cells');
 const { ranges, entryAt, addBreak, removeBreak, orphanOf } = require('../starts');
 const { newEntry, entryFromYaml, entryToYaml, circledPositions } = require('../entries');
@@ -57,22 +58,6 @@ function entryIds(model, group, g, j) {
   return path.slice(s, e);
 }
 
-// "columns 3–5" for a row entry; for a band entry the sides it runs along, in reading
-// order.
-function placeLabel(model, group, g, j) {
-  const ids = entryIds(model, group, g, j);
-  const N = model.size;
-  if (group === 'rows') return `columns ${colOf(N, ids[0]) + 1}–${colOf(N, ids[ids.length - 1]) + 1}`;
-  const n = N - 2 * g;
-  const [s, e] = ranges(model.bands[g].starts, 4 * (n - 1))[j];
-  const sides = [];
-  for (let p = s; p < e; p++) {
-    const side = p < n ? 'top' : p < 2 * n - 1 ? 'right' : p < 3 * n - 2 ? 'bottom' : 'left';
-    if (sides[sides.length - 1] !== side) sides.push(side);
-  }
-  return sides.join(' → ');
-}
-
 // ── navigation helpers the editor uses (ids are 1-based) ────────────────────
 
 // The next id along the group's path: a row stops at its ends (null), a band wraps.
@@ -97,10 +82,12 @@ function moveSpatial(model, id, dr, dc) {
   return arrowTarget(id, dr, dc, model.size);
 }
 
-// The first cell of the next (dir 1) or previous (-1) row or band, wrapping.
+// The first cell of the next (dir 1) or previous (-1) row or band; null past either end
+// (Tab then leaves the board).
 function stepGroup(model, group, id, dir) {
-  const n = model[group].length;
-  return pathIds(model, group, (groupOf(model, group, id) + dir + n) % n)[0];
+  const g = groupOf(model, group, id) + dir;
+  if (g < 0 || g >= model[group].length) return null;
+  return pathIds(model, group, g)[0];
 }
 
 // Why a row's or band's first entry can't be split off its start.
@@ -365,6 +352,12 @@ const withEntry = (model, group, g, j, patch) => {
 };
 const hasEntry = (model, group, g, j) => !!(model[group] && model[group][g] && model[group][g].entries[j]);
 
+// A copy with every entry replaced by fn(entry): rows, then bands (placeholderClues.js).
+const mapEntries = (model, fn) => {
+  const cuts = (list) => list.map(c => ({ ...c, entries: c.entries.map(e => fn(e)) }));
+  return { ...model, rows: cuts(model.rows), bands: cuts(model.bands) };
+};
+
 const commands = {
   setCell(model, id, content) {
     if (!(id >= 1 && id <= model.cells.length) || isCenter(model.size, id)) return model;
@@ -432,6 +425,8 @@ const commands = {
   },
 
   discardOrphan: (model, orphanId) => ({ ...model, orphans: model.orphans.filter(o => o.id !== orphanId) }),
+
+  fillEmptyClues: (model) => fillEmptyClues(model, mapEntries),
 };
 
 // Enough shape that the editor can open a model (a draft, say) without crashing.
@@ -446,7 +441,7 @@ function isModel(m) {
 }
 
 module.exports = {
-  kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands,
-  pathIds, isCenter, rowOf, colOf, groupOf, shortLabel, entryName, groupName, entryOfCell, entryIds, placeLabel, readsBackward,
+  kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands, mapEntries,
+  pathIds, isCenter, rowOf, colOf, groupOf, shortLabel, entryName, groupName, entryOfCell, entryIds, readsBackward,
   advance, stepBack, moveSpatial, stepGroup, breakAtCaret, FIRST_ENTRY_MESSAGE, resizeLosses, lineText, parseLine,
 };

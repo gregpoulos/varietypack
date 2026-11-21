@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { KINDS, kindName } from './kinds.js';
 import { STRUCTURED } from '../model/kinds/index.js';
 import { NewSizeForm } from './NewSizeForm.jsx';
@@ -28,12 +28,20 @@ function KindIcon({ kind }) {
   return <svg viewBox="0 0 44 44" aria-hidden="true">{cells}</svg>;
 }
 
-function when(updatedAt) {
-  return updatedAt ? new Date(updatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
-}
-
 export function Welcome({ drafts, onNew, onCreate, onExample, onOpenDraft, onDeleteDraft }) {
   const [confirming, setConfirming] = useState(null);
+  // The confirm replaces the Delete key that was pressed, so focus follows it to Keep,
+  // and back to that draft's Delete when Keep is pressed.
+  const focusAfter = useRef(null);   // 'keep' | { delete: id } | null
+  const seen = useRef(confirming);   // the mount effect can run after an early click
+  useEffect(() => {
+    if (seen.current === confirming) return;
+    seen.current = confirming;
+    const want = focusAfter.current; focusAfter.current = null;
+    if (!want) return;
+    const target = want === 'keep' ? '.draft-delete-no' : `tr[data-id="${want.delete}"] .draft-delete`;
+    document.querySelector(target)?.focus();
+  }, [confirming]);
   const [sizing, setSizing] = useState(null);   // the structured kind whose size prompt is open
   return (
     <section id="welcome" class="pane-scroll" aria-label="Start screen">
@@ -43,48 +51,71 @@ export function Welcome({ drafts, onNew, onCreate, onExample, onOpenDraft, onDel
       </div>
       <div class="start-cols">
         <div>
-          <h3 class="sec-title">New puzzle</h3>
+          <h3 class="sec-title legend">New puzzle</h3>
           {sizing && <NewSizeForm kind={sizing} onCreate={onCreate} onCancel={() => setSizing(null)} />}
           <div class="kinds">
             {KINDS.map(([kind, name, desc]) => (
               <div class="kind-card" key={kind}>
-                <KindIcon kind={kind} />
-                <h3>{name}</h3>
+                <span class="slot l" aria-hidden="true"></span>
+                <div class="win paper"><KindIcon kind={kind} /></div>
+                <h3 class="legend">{name}</h3>
                 <p>{desc}</p>
                 <div class="acts">
-                  <button type="button" class="btn primary" data-kind={kind} onClick={() => (Object.hasOwn(STRUCTURED, kind) ? setSizing(kind) : onNew(kind))}>New</button>
+                  <button type="button" class="btn dark" data-kind={kind} onClick={() => (Object.hasOwn(STRUCTURED, kind) ? setSizing(kind) : onNew(kind))}>New</button>
                   <button type="button" class="btn" data-template={kind} onClick={() => onExample(kind)}>Open the example</button>
                 </div>
+                <span class="slot r" aria-hidden="true"></span>
               </div>
             ))}
           </div>
         </div>
         <div>
-          <h3 class="sec-title">Drafts in this browser</h3>
-          {drafts.length === 0
-            ? <p class="empty">No drafts in this browser yet.</p>
-            : (
-              <ul class="drafts">
-                {drafts.map(d => (
-                  <li class="draft-item" key={d.id}>
-                    <span class="draft-text">
-                      <span class="draft-title">{d.title}</span>
-                      <span class="draft-meta">{kindName(d.kind)} · edited {when(d.updatedAt)}</span>
-                    </span>
-                    <button type="button" class="btn draft-open" onClick={() => onOpenDraft(d.id)}>Open</button>
-                    <button type="button" class="btn ghost draft-delete" onClick={() => setConfirming(d.id)}>Delete</button>
-                    {confirming === d.id && (
-                      <span class="draft-confirm">
-                        Delete this draft for good?
-                        <button type="button" class="btn draft-delete-yes" onClick={() => { setConfirming(null); onDeleteDraft(d.id); }}>Delete</button>
-                        <button type="button" class="btn ghost draft-delete-no" onClick={() => setConfirming(null)}>Keep</button>
-                      </span>
+          <div class="paper track-sheet">
+            <div class="ts-head">
+              <h3 class="ts-title" tabindex="0" aria-describedby="drafts-note">Drafts</h3>
+              <span class="ts-where">In this browser</span>
+              <span id="drafts-note" class="ts-tip" role="tooltip">Drafts save as you work, in this browser only, with the answers in plain text. To keep a copy or move to another computer, use Export.</span>
+            </div>
+            <div class="ts-scroll">
+            <table>
+              <thead><tr><th>No.</th><th>Title</th><th>Kind</th><th><span class="sr-only">Actions</span></th></tr></thead>
+              <tbody>
+                {drafts.map((d, i) => (
+                  <tr class={'draft-item' + (confirming === d.id ? ' confirming' : '')} key={d.id} data-id={d.id}>
+                    <td class="no">{String(i + 1).padStart(2, '0')}</td>
+                    <td class="draft-title"><button type="button" class="draft-open" onClick={() => onOpenDraft(d.id)}>{d.title}</button></td>
+                    {confirming === d.id ? (
+                      // The confirm takes the kind and actions cells, so it reads as one
+                      // short question over its two keys.
+                      <td class="actions confirm" colSpan={2}>
+                        <span class="draft-confirm">
+                          <span class="draft-confirm-text">Delete for good?</span>
+                          <span class="draft-confirm-keys">
+                            <button type="button" class="btn draft-delete-yes" onClick={() => { setConfirming(null); onDeleteDraft(d.id); }}>Delete</button>
+                            <button type="button" class="btn quiet draft-delete-no" onClick={() => { focusAfter.current = { delete: d.id }; setConfirming(null); }}>Keep</button>
+                          </span>
+                        </span>
+                      </td>
+                    ) : (
+                      <>
+                        <td class="kind" title={kindName(d.kind)}><KindIcon kind={d.kind} /><span class="sr-only">{kindName(d.kind)}</span></td>
+                        <td class="actions">
+                          <button type="button" class="btn draft-delete" onClick={() => { focusAfter.current = 'keep'; setConfirming(d.id); }}>Delete</button>
+                        </td>
+                      </>
                     )}
-                  </li>
+                  </tr>
                 ))}
-              </ul>
-            )}
-          <p id="drafts-note" class="note">Drafts save as you work, in this browser only, with the answers in plain text. To keep a copy or move to another computer, use Download draft file in the ⋯ menu.</p>
+                {Array.from({ length: Math.max(2, 5 - drafts.length) }, (_, k) => (
+                  <tr class="blank" key={`blank-${k}`} aria-hidden="true">
+                    <td class="no">{String(drafts.length + k + 1).padStart(2, '0')}</td><td></td><td></td><td></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+            {drafts.length === 0 && <p class="empty">No drafts in this browser yet.</p>}
+          </div>
         </div>
       </div>
     </section>

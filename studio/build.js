@@ -6,6 +6,7 @@ const path = require('path');
 const esbuild = require('esbuild');
 const { engineJs } = require('../shared/build/engineBundle');
 const { KINDS } = require('../shared/build/tools');
+const { fontFaceCss } = require('../shared/build/themes');
 
 const ROOT = path.resolve(__dirname, '..');
 const VIRTUAL_ROOT = '/varietypack';
@@ -114,6 +115,14 @@ function escapeInlineScript(js) {
   return js.replace(/<\/script/gi, '\\x3C/script').replace(/<!--/g, '\\x3C!--');
 }
 
+// The page's stylesheet, with the embedded Jost the legends fall back to where Futura is
+// missing. Node-only build code, so it may read the font file directly.
+function studioCss() {
+  const jost = fs.readFileSync(path.join(__dirname, 'src/page/fonts/jost-latin.woff2')).toString('base64');
+  const css = fs.readFileSync(path.join(__dirname, 'src/page/studio.css'), 'utf8');
+  return fontFaceCss({ family: 'Jost', weight: '400 600', style: 'normal' }, jost) + css;
+}
+
 // The page's own build, which the guard test bundles too, so it checks what ships.
 function pageOptions({ dev = false } = {}) {
   return {
@@ -131,8 +140,7 @@ async function buildPage({ dev = false } = {}) {
   const result = await esbuild.build(pageOptions({ dev }));
   const js = escapeInlineScript(result.outputFiles[0].text);
   const template = fs.readFileSync(path.join(__dirname, 'src/page/index.html'), 'utf8');
-  const css = fs.readFileSync(path.join(__dirname, 'src/page/studio.css'), 'utf8');
-  return template.replace('{{CSS}}', () => css).replace('{{JS}}', () => js);
+  return template.replace('{{CSS}}', () => studioCss()).replace('{{JS}}', () => js);
 }
 
 // CLI: node studio/build.js [--dev] [-o <file>]   (default: studio/build/index.html)
@@ -148,4 +156,4 @@ if (require.main === module) {
   }, err => { process.stderr.write(`${err.message}\n`); process.exit(1); });
 }
 
-module.exports = { ROOT, VIRTUAL_ROOT, toVirtual, collectAssets, esbuildOptions, bundleCore, pageOptions, buildPage, escapeInlineScript };
+module.exports = { ROOT, VIRTUAL_ROOT, toVirtual, collectAssets, esbuildOptions, bundleCore, pageOptions, buildPage, studioCss, escapeInlineScript };

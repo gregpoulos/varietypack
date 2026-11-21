@@ -52,7 +52,7 @@ function parseEntryCells(entries, listName) {
   if (!Array.isArray(entries)) throw new StructureError(`"${listName}" must be a list`);
   return entries.map(entry => {
     if (!entry || typeof entry !== 'object') throw new StructureError('every entry must have a clue and an answer');
-    if (entry.answer === undefined) throw new StructureError('muddled files open in build-only mode');
+    if (entry.answer === undefined) throw new StructureError('entries without answers can’t be edited on the board');
     if (typeof entry.answer !== 'string') throw new StructureError('every answer must be text');
     if (entry.clue !== undefined && typeof entry.clue !== 'string') throw new StructureError('every clue must be text (put numbers in quotes)');
     const parsed = parseAnswerCells(entry.answer);

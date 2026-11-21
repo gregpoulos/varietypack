@@ -1,14 +1,20 @@
 import spiral from '../../model/kinds/spiral.js';
 import { formatCell } from '../../model/cells.js';
 import { useBoardEditing } from './useBoardEditing.js';
-import { keepBoardFocus } from './useBoardInput.js';
+import { keepBoardFocus, boardHasFocus } from './useBoardInput.js';
 import { displayStatusFor } from './displayStatus.js';
-import { Meter } from './Meter.jsx';
 import { SequenceField } from './SequenceField.jsx';
 import { SpiralBoard } from './SpiralBoard.jsx';
-import { ClueSection } from './ClueSection.jsx';
-import { EntryPanel } from './EntryPanel.jsx';
-import { ClueList } from './ClueList.jsx';
+import { ClueLists } from './ClueList.jsx';
+import { plural } from './plural.js';
+import { PhaseLayout } from './PhaseLayout.jsx';
+import { WordList } from './WordList.jsx';
+import { Checks } from './Checks.jsx';
+import { KeyStrip, KeyList } from './KeyStrip.jsx';
+import { PasteLetters } from './PasteLetters.jsx';
+import { LooseCluesNotice } from './LooseCluesNotice.jsx';
+import { Latch } from '../Latch.jsx';
+import { CellMenu } from './CellMenu.jsx';
 
 const { commands, cutIndices, entryLabel, entryAtCell, entryFirstCell, stepRead, entryStart, breakAtCaret, gapToCutIndex, readsBackward } = spiral;
 const CUTS = ['inward', 'outward'];
@@ -24,7 +30,7 @@ function rangeOf(model, cut, j) {
 // The structured Spiral editor. caret, composing and activeCut are UI state, not part of
 // the undo history. Keys: a–z fill and advance; Enter composes a multi-letter cell;
 // Backspace/Delete; ←/→; Tab; | splits or joins; . switches cut; Ctrl/Cmd+Z undoes.
-export function SpiralEditor({ dispatch, model, clueView, setClueView, focusRef }) {
+export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillClues, header }) {
   const T = model.cells.length;
   const { ui, caret, moveTo, exec, run, focus, inputProps } = useBoardEditing({
     dispatch, model, commands, focusRef,
@@ -53,102 +59,119 @@ export function SpiralEditor({ dispatch, model, clueView, setClueView, focusRef 
 
   const circleSet = new Set(model.circles);
 
-  function cardFor(cutName) {
-    const j = entryAtCell(model, cutName, caret);
-    const idx = cutIndices(model, cutName, j);
-    const entry = model.cuts[cutName].entries[j];
-    const shown = entry.displayAnswer ?? '';
-    return {
-      cutName, j, id: entry.id,
-      name: capital(entryLabel(cutName, j)),
-      range: `cells ${rangeOf(model, cutName, j)}`,
-      tiles: idx.map(i => ({ i, number: i + 1, text: model.cells[i] === '' ? '·' : model.cells[i].toUpperCase(), circled: circleSet.has(i), here: i === caret })),
-      clue: entry.clue,
-      display: shown,
-      displayStatus: displayStatusFor(shown, idx.map(i => model.cells[i]), readsBackward(cutName)),
-    };
-  }
-
+  // The selected row also carries the spaced answer and its status (ClueList shows them
+  // on that row only).
   function rowsFor(cutName) {
     const here = entryAtCell(model, cutName, caret);
-    return model.cuts[cutName].entries.map((entry, j) => ({
-      id: entry.id, j, clue: entry.clue,
-      label: `${rangeOf(model, cutName, j)}.`,
-      answer: cutIndices(model, cutName, j).map(i => formatCell(model.cells[i])).join(''),
-      active: cutName === activeCut && j === here,
-    }));
+    const mine = cutName === activeCut;
+    return model.cuts[cutName].entries.map((entry, j) => {
+      const idx = cutIndices(model, cutName, j);
+      const row = {
+        id: entry.id, j, clue: entry.clue,
+        label: `${rangeOf(model, cutName, j)}.`,
+        answer: idx.map(i => formatCell(model.cells[i])).join(''),
+        active: mine && j === here,
+        crossing: !mine && j === here,
+      };
+      if (row.active) {
+        row.display = entry.displayAnswer ?? '';
+        row.displayStatus = displayStatusFor(row.display, idx.map(i => model.cells[i]), readsBackward(cutName));
+      }
+      return row;
+    });
   }
 
-  const select = (cutName) => (j) => {
+  // focusBoard: false is for a clue field gaining focus in the Clues phase, which must
+  // keep it so the keys typed there stay in the field.
+  const select = (cutName) => (j, { focusBoard = true } = {}) => {
     moveTo({ caret: entryFirstCell(model, cutName, j), activeCut: cutName, composing: false });
-    focus();
+    if (focusBoard) focus();
   };
-  function step(delta) {
-    const n = model.cuts[activeCut].entries.length;
-    const j = (entryAtCell(model, activeCut, caret) + delta + n) % n;
-    select(activeCut)(j);
-  }
 
   const targets = CUTS.flatMap(cut => model.cuts[cut].entries.map((_, j) => ({
     value: `${cut}:${j}`, label: `${capital(entryLabel(cut, j))} · cells ${rangeOf(model, cut, j)}`,
   })));
   const nIn = model.cuts.inward.entries.length;
   const nOut = model.cuts.outward.entries.length;
-  const entries = (n) => `${n} ${n === 1 ? 'entry' : 'entries'}`;
+
+  const lists = CUTS.map(cut => ({ cutName: cut, title: capital(cut), rowName: capital(cut), rows: rowsFor(cut) }));
+  // The cell-level actions, one menu. Insert and Delete cell only in the Board phase.
+  const cellItems = (structural) => [
+    { id: 'btn-circle', label: 'Toggle circle', checked: circleSet.has(caret), onSelect: () => run('toggleCircle', caret) },
+    { id: 'btn-rebus', label: composing ? 'Leave rebus mode' : 'Enter rebus mode', hint: 'Enter', checked: !!composing, onSelect: () => moveTo({ composing: !composing }) },
+    ...(structural ? [
+      { id: 'btn-insert-cell', label: 'Insert cell', onSelect: () => run('insertCell', caret) },
+      { id: 'btn-delete-cell', label: 'Delete cell', hint: 'Del', onSelect: () => run('deleteCell', caret) },
+    ] : []),
+  ];
 
   return (
-    <div class="editor spiral-editor">
-      <SequenceField cells={model.cells} onApply={cells => exec('setSequence', [cells])} />
-      <div class="board-tools">
-        <span id="cut-toggle" class="seg" role="group" aria-label="Direction">
-          {CUTS.map(cut => (
-            <button type="button" key={cut} data-cut={cut} class={`seg-btn ${cut === 'inward' ? 'in' : 'out'}` + (cut === activeCut ? ' active' : '')}
-              aria-pressed={cut === activeCut} onClick={() => { moveTo({ activeCut: cut, composing: false }); focus(); }}>{capital(cut)}</button>
-          ))}
-        </span>
+    <PhaseLayout phase={phase} settings={settings} fillClues={fillClues} header={header}
+      toggle={(
+        <Latch id="cut-toggle" label="Direction" value={activeCut}
+          options={CUTS.map((cut, i) => ({ value: cut, text: capital(cut), led: i === 0 ? 'ch1' : 'ch2', attrs: { 'data-cut': cut } }))}
+          onChange={cut => { moveTo({ activeCut: cut, composing: false }); focus(); }} />
+      )}
+      tools={(
         <span class="tools">
-          <button type="button" id="btn-insert-cell" class="btn" onClick={() => run('insertCell', caret)}>Insert cell</button>
-          <button type="button" id="btn-delete-cell" class="btn" onClick={() => run('deleteCell', caret)}>Delete cell</button>
-          <button type="button" id="btn-circle" class={'btn' + (circleSet.has(caret) ? ' on' : '')} aria-pressed={circleSet.has(caret)}
-            onClick={() => run('toggleCircle', caret)}>Circle</button>
+          <CellMenu items={cellItems(true)} focus={focus} />
+          <PasteLetters><SequenceField cells={model.cells} onApply={cells => exec('setSequence', [cells])} /></PasteLetters>
         </span>
-        <span class="meters">
-          <Meter id="meter-cells" bad={T < 40}><b>{T}</b> cells — min 40</Meter>
-          <Meter id="meter-inward" bad={nIn < 2}><b>{entries(nIn)}</b> inward — min 2</Meter>
-          <Meter id="meter-outward" bad={nOut < 2}><b>{entries(nOut)}</b> outward — min 2</Meter>
-        </span>
-      </div>
-      <div id="board" class={'board ' + (activeCut === 'inward' ? 'in' : 'out')} onClick={focus} onMouseDown={keepBoardFocus}>
-        <input id="board-input" aria-label="Board input" {...inputProps} />
-        <SpiralBoard cells={model.cells} caret={caret} composing={composing} activeCut={activeCut}
-          inStarts={model.cuts.inward.starts} outStarts={model.cuts.outward.starts} circles={circleSet}
-          onCellClick={i => {
-            // Clicking the selected cell again switches direction, as in the solver, but
-            // only once the board has focus: the first click just selects.
-            const focused = document.activeElement && document.activeElement.id === 'board-input';
-            moveTo(i === caret && focused ? { activeCut: other(activeCut), composing: false } : { caret: i, composing: false });
+      )}
+      clueTools={<span class="tools"><CellMenu items={cellItems(false)} focus={focus} /></span>}
+      board={(
+        <div id="board" class={'board ' + (activeCut === 'inward' ? 'in' : 'out')} onClick={focus} onMouseDown={keepBoardFocus}>
+          <input id="board-input" aria-label="Board input" {...inputProps} />
+          <SpiralBoard cells={model.cells} caret={caret} composing={composing} activeCut={activeCut}
+            inStarts={model.cuts.inward.starts} outStarts={model.cuts.outward.starts} circles={circleSet}
+            onCellClick={i => {
+              const focused = boardHasFocus();
+              moveTo(i === caret && focused ? { activeCut: other(activeCut), composing: false } : { caret: i, composing: false });
+            }}
+            onGapClick={g => exec('toggleBreak', [activeCut, gapToCutIndex(model, activeCut, g)])} />
+        </div>
+      )}
+      keys={(
+        <KeyStrip
+          essential={<><kbd>A–Z</kbd> fill · <kbd>|</kbd> split/join · <kbd>.</kbd> direction · <kbd>Tab</kbd> next entry · <kbd>Enter</kbd> multi-letter cell</>}
+          full={<KeyList intro="Click a cell, then:" notes="Clicking the selected cell again also switches direction."
+            items={[
+              [<kbd>A–Z</kbd>, 'fill and move on'],
+              [<kbd>Space</kbd>, 'clear the cell and move on'],
+              [<kbd>Enter</kbd>, 'multi-letter cell'],
+              [<kbd>|</kbd>, 'split or join at the cursor'],
+              [<kbd>.</kbd>, 'switch direction'],
+              [<kbd>Tab</kbd>, 'next entry'],
+              [<><kbd>←</kbd> <kbd>→</kbd></>, 'move'],
+              [<kbd>Delete</kbd>, 'remove the cell'],
+            ]} />} />
+      )}
+      checks={(
+        <Checks items={[
+          { id: 'meter-cells', ok: T >= 40, text: <><b>{T}</b> cells — min 40</> },
+          { id: 'meter-inward', ok: nIn >= 2, text: <><b>{plural(nIn, 'entry', 'entries')}</b> inward — min 2</> },
+          { id: 'meter-outward', ok: nOut >= 2, text: <><b>{plural(nOut, 'entry', 'entries')}</b> outward — min 2</> },
+        ]} />
+      )}
+      side={(
+        <>
+          <LooseCluesNotice count={model.orphans.length} onShow={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
+          <WordList lists={lists} onSelect={(j, ctx) => select(ctx.cutName)(j)} looseCount={model.orphans.length} />
+        </>
+      )}
+      clues={(
+        <ClueLists lists={lists} orphans={model.orphans} targets={targets}
+          onAttach={(id, value) => { const [cut, j] = value.split(':'); exec('attachOrphan', [id, cut, Number(j)]); }}
+          onDiscard={id => exec('discardOrphan', [id])}
+          onSelect={(j, ctx) => select(ctx.cutName)(j)}
+          onFocusClue={(j, ctx) => {
+            // A caret already inside this entry stays put, so tabbing into its clue
+            // doesn't reset a mid-entry caret.
+            if (ctx.cutName === activeCut && entryAtCell(model, activeCut, caret) === j) moveTo({ composing: false });
+            else select(ctx.cutName)(j, { focusBoard: false });
           }}
-          onGapClick={g => exec('toggleBreak', [activeCut, gapToCutIndex(model, activeCut, g)])} />
-      </div>
-      <p class="keys">Click a cell, then: <kbd>A–Z</kbd> fill and move on · <kbd>Space</kbd> clear the cell and move on · <kbd>Enter</kbd> multi-letter cell · <kbd>|</kbd> split or join at the cursor · <kbd>.</kbd> switch direction · <kbd>Tab</kbd> next entry · <kbd>Delete</kbd> remove the cell. Clicking the selected cell again also switches direction.</p>
-      <ClueSection clueView={clueView} setClueView={setClueView} orphans={model.orphans} targets={targets}
-        onAttach={(id, value) => { const [cut, j] = value.split(':'); exec('attachOrphan', [id, cut, Number(j)]); }}
-        onDiscard={id => exec('discardOrphan', [id])}>
-        {clueView === 'selected' ? (
-          <EntryPanel main={cardFor(activeCut)} crossing={cardFor(other(activeCut))}
-            onPrev={() => step(-1)} onNext={() => step(1)}
-            onCircle={i => exec('toggleCircle', [i])}
-            onClue={(card, text) => exec('setClue', [card.cutName, card.j, text], `clue:${card.cutName}:${card.id}`)}
-            onDisplay={(card, text) => exec('setDisplayAnswer', [card.cutName, card.j, text], `display:${card.cutName}:${card.id}`)} />
-        ) : (
-          <div class="clue-cols">
-            {CUTS.map(cut => (
-              <ClueList key={cut} cutName={cut} title={capital(cut)} rows={rowsFor(cut)} onSelect={select(cut)}
-                onClue={(j, text) => exec('setClue', [cut, j, text], `clue:${cut}:${model.cuts[cut].entries[j].id}`)} />
-            ))}
-          </div>
-        )}
-      </ClueSection>
-    </div>
+          onClue={(j, text, ctx) => exec('setClue', [ctx.cutName, j, text], `clue:${ctx.cutName}:${model.cuts[ctx.cutName].entries[j].id}`)}
+          onDisplay={(j, text, ctx) => exec('setDisplayAnswer', [ctx.cutName, j, text], `display:${ctx.cutName}:${model.cuts[ctx.cutName].entries[j].id}`)} />
+      )} />
   );
 }

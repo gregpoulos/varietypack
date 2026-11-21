@@ -1,8 +1,9 @@
 'use strict';
 // The Spiral kind module: the reference implementation of the kind-module contract.
 // Every kind module exports `kind`, `sizeFields`, `isModel`, `newModel`, `fromYaml`,
-// `toYaml`, `completeness` and `commands`; anything else it exports serves its own
-// editor. Pure and CommonJS.
+// `toYaml`, `completeness`, `commands` (including `fillEmptyClues`) and `mapEntries` (a
+// copy with every entry replaced by fn(entry), for placeholderClues.js); anything else it
+// exports serves its own editor. Pure and CommonJS.
 //
 // Model:
 //   { kind: 'spiral', header, cells: string[],          // inward order: index 0 is cell 1 (outermost)
@@ -11,6 +12,7 @@
 //     orphans: [], nextId }
 // An outward entry [s, e) covers cell indices T-1-s down to T-e.
 const { StructureError } = require('../errors');
+const { fillEmptyClues } = require('../placeholderClues');
 const { sameCell } = require('../../../../shared/build/validateEntry');
 const { formatCell, diffCells } = require('../cells');
 const { ranges, entryAt, addBreak, removeBreak, reanchor } = require('../starts');
@@ -64,14 +66,13 @@ function stepRead(model, cutName, caret, step) {
 }
 
 // Tab (direction 1) or Shift+Tab (-1): the cell where the next or previous entry of the
-// cut starts, wrapping around.
+// cut starts; null past the last (first) entry, where Tab leaves the board.
 function entryStart(model, cutName, caret, direction) {
   const T = total(model);
   const { starts } = model.cuts[cutName];
   const r = cutName === 'inward' ? caret : T - 1 - caret;       // reading position
-  let target;
-  if (direction > 0) target = starts.find(s => s > r) ?? starts[0];
-  else target = [...starts].reverse().find(s => s < r) ?? starts[starts.length - 1];
+  const target = direction > 0 ? starts.find(s => s > r) : [...starts].reverse().find(s => s < r);
+  if (target === undefined) return null;
   return cutName === 'inward' ? target : T - 1 - target;
 }
 
@@ -252,6 +253,12 @@ function setSequence(model, newCells) {
   return applyEdit(model, newCells, d);
 }
 
+// A copy with every entry replaced by fn(entry) (placeholderClues.js).
+const mapEntries = (model, fn) => ({
+  ...model,
+  cuts: Object.fromEntries(CUTS.map(c => [c, { ...model.cuts[c], entries: model.cuts[c].entries.map(e => fn(e)) }])),
+});
+
 const commands = {
   setCell(model, i, content) {
     if (!(i >= 0 && i < total(model))) return model;
@@ -317,6 +324,8 @@ const commands = {
   },
 
   discardOrphan: (model, orphanId) => ({ ...model, orphans: model.orphans.filter(o => o.id !== orphanId) }),
+
+  fillEmptyClues: (model) => fillEmptyClues(model, mapEntries),
 };
 
 // Enough shape that the editor can open a model (a draft, say) without crashing.
@@ -327,7 +336,7 @@ function isModel(m) {
 }
 
 module.exports = {
-  kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands,
+  kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands, mapEntries,
   cutIndices, gapToCutIndex, entryLabel, readsBackward,
   entryAtCell, entryFirstCell, stepRead, entryStart, breakAtCaret,
 };

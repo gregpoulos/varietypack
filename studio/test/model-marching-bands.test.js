@@ -96,7 +96,7 @@ test('fromYaml: counts and sums that do not tile throw StructureErrors', () => {
 
 test('fromYaml: muddled and misshapen files throw StructureErrors', () => {
   const mud = puzzle(); delete mud.rows[0].entries[0].answer; mud.rows[0].entries[0].length = 2;
-  assert.throws(() => imp(mud), (e) => e instanceof StructureError && /muddled/.test(e.message));
+  assert.throws(() => imp(mud), (e) => e instanceof StructureError && /without answers/.test(e.message));
   assert.throws(() => mb.fromYaml({ kind: 'marching-bands', title: 'T' }), StructureError);
   assert.throws(() => mb.fromYaml({ kind: 'marching-bands', title: 'T', rows: [{}], bands: [] }), StructureError);
 });
@@ -268,23 +268,12 @@ test('navigation helpers: advance, spatial moves, group steps, break at the care
   assert.equal(mb.advance(model, 'bands', 1, -1), 6);
   assert.equal(mb.moveSpatial(model, 8, 1, 0), 18);                        // arrowTarget (layout.test.js), sized by the model
   assert.equal(mb.stepGroup(model, 'rows', 3, 1), 6);                      // the first cell of the next row
-  assert.equal(mb.stepGroup(model, 'rows', 3, -1), 21);                    // wrapping to the last row
+  assert.equal(mb.stepGroup(model, 'rows', 3, -1), null);                  // before the first row: Tab leaves the board
+  assert.equal(mb.stepGroup(model, 'rows', 21, 1), null);                  // after the last row
   assert.equal(mb.stepGroup(model, 'bands', 3, 1), 7);                     // band B starts at (2, 2)
   assert.deepEqual(mb.breakAtCaret(model, 'rows', 3), { command: ['toggleBreak', ['rows', 0, 2]] });
   assert.match(mb.breakAtCaret(model, 'rows', 1).message, /first entry always starts in its first cell/);
   assert.match(mb.breakAtCaret(model, 'bands', 1).message, /top-left corner/);
-});
-
-test('placeLabel: the columns a row entry spans, or the band sides an entry runs along', () => {
-  const { model } = imp();
-  assert.equal(mb.placeLabel(model, 'rows', 0, 1), 'columns 3–5');
-  assert.equal(mb.placeLabel(model, 'rows', 2, 1), 'columns 4–5');
-  assert.equal(mb.placeLabel(model, 'bands', 0, 0), 'top');
-  assert.equal(mb.placeLabel(model, 'bands', 0, 1), 'right');
-  assert.equal(mb.placeLabel(model, 'bands', 0, 2), 'bottom');
-  assert.equal(mb.placeLabel(model, 'bands', 0, 3), 'left');
-  const one = run(model, 'setLine', 'bands', 0, mb.pathIds(model, 'bands', 0).map(id => model.cells[id - 1]), [0, 3]);
-  assert.equal(mb.placeLabel(one, 'bands', 0, 1), 'top → right → bottom → left');
 });
 
 test('entryOfCell and entryIds: which entry covers a cell, and the cells of an entry', () => {

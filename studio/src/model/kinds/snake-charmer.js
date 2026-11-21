@@ -13,7 +13,9 @@
 //     orphans: [], nextId }
 const { findCoincidentStarts } = require('../../../../snake-charmer/src/validator');
 const { SHAPE_NAMES } = require('../../../../snake-charmer/src/layout');
+const { LOOPS } = require('../../../../snake-charmer/src/ringConstants');
 const { StructureError } = require('../errors');
+const { fillEmptyClues } = require('../placeholderClues');
 const { formatCell, diffCells } = require('../cells');
 const { ranges, entryAt, addBreak, removeBreak, reanchor } = require('../starts');
 const { newEntry, entryFromYaml, entryToYaml, circledPositions } = require('../entries');
@@ -26,8 +28,7 @@ const sizeFields = [{ name: 'cells', label: 'Cells per lap', min: 8, max: 120, s
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 const ringSize = (model) => model.ring.length;
-const total = (model) => 2 * ringSize(model);
-const lapOf = (model, p) => (p < ringSize(model) ? 1 : 2);
+const total = (model) => LOOPS * ringSize(model);
 
 // The same ring cell on the other lap.
 function twin(model, p) {
@@ -59,19 +60,11 @@ function ringLabel(model, j) {
   return e - s === 1 ? `ring cell ${a}` : `ring cells ${a}–${b}`;
 }
 
-// 'lap 1', 'lap 2', 'laps 1–2', or 'both laps' for an entry longer than the ring.
-function lapsLabel(model, j) {
-  const [s, e] = entryRange(model, j);
-  if (e - s > ringSize(model)) return 'both laps';
-  const a = lapOf(model, s);
-  return a === lapOf(model, e - 1) ? `lap ${a}` : 'laps 1–2';
-}
-
 // Ring cells where more than one entry starts (the validator warns about these). One home
 // for the rule: the validator's own findCoincidentStarts.
 function coincidentStarts(model) {
   const lengths = ranges(model.cut.starts, total(model)).map(([s, e]) => e - s);
-  return findCoincidentStarts(lengths, 2);
+  return findCoincidentStarts(lengths, LOOPS);
 }
 
 // One step through positions 0..2N-1, wrapping at both ends.
@@ -81,11 +74,11 @@ function stepPosition(model, p, step) {
 }
 
 // Tab (direction 1) / Shift+Tab (-1): the position where the next or previous entry
-// starts.
+// starts; null past the last (first) entry, where Tab leaves the board.
 function entryStartPosition(model, p, direction) {
   const { starts } = model.cut;
-  if (direction > 0) return starts.find(s => s > p) ?? starts[0];
-  return [...starts].reverse().find(s => s < p) ?? starts[starts.length - 1];
+  if (direction > 0) return starts.find(s => s > p) ?? null;
+  return [...starts].reverse().find(s => s < p) ?? null;
 }
 
 // The break that starts an entry at the caret's position, or why it can't.
@@ -117,10 +110,10 @@ function fromYaml(puzzle) {
   const lists = parseEntryCells(puzzle.entries, 'entries');
   const all = lists.flat();
   if (all.length === 0) throw new StructureError('the puzzle has no cells');
-  if (all.length % 2) {
+  if (all.length % LOOPS) {
     throw new StructureError(`the entries cover an odd number of cells (${all.length}); two loops need an even total`);
   }
-  const N = all.length / 2;
+  const N = all.length / LOOPS;
   const ring = all.slice(0, N);
 
   const { starts } = cumulativeStarts(lists);
@@ -230,6 +223,9 @@ const withEntry = (model, j, patch) => ({
 
 const hasEntry = (model, j) => !!model.cut.entries[j];
 
+// A copy with every entry replaced by fn(entry) (placeholderClues.js).
+const mapEntries = (model, fn) => ({ ...model, cut: { ...model.cut, entries: model.cut.entries.map(e => fn(e)) } });
+
 const commands = {
   setCell(model, k, content) {
     if (!(k >= 0 && k < ringSize(model))) return model;
@@ -287,18 +283,20 @@ const commands = {
   },
 
   discardOrphan: (model, orphanId) => ({ ...model, orphans: model.orphans.filter(o => o.id !== orphanId) }),
+
+  fillEmptyClues: (model) => fillEmptyClues(model, mapEntries),
 };
 
 // Enough shape that the editor can open a model (a draft, say) without crashing.
 function isModel(m) {
   return isModelBase(m, kind)
     && isCells(m.ring) && m.ring.length > 0 && isCircles(m.circles, m.ring.length)
-    && isCut(m.cut, 2 * m.ring.length)
+    && isCut(m.cut, total(m))
     && (m.shape === null || SHAPE_NAMES.includes(m.shape));
 }
 
 module.exports = {
-  kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands,
-  twin, positionsOf, ringLabel, lapsLabel, lapOf, entryAtPosition, coincidentStarts,
+  kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands, mapEntries,
+  total, twin, positionsOf, ringLabel, entryAtPosition, coincidentStarts,
   stepPosition, entryStartPosition, breakAtCaret,
 };

@@ -5,7 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
-const { openStudio, openStudioFile, downloadText: download, typeBoard: type } = require('./helpers');
+const { cellMenuItem, expectTabLeavesClues, openStudio, openStudioFile, downloadText: download, typeBoard: type, openPaste, showPhase } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../spiral/src/builder');
 const { validate } = require('../spiral/src/validator');
@@ -16,6 +16,7 @@ test.afterAll(async () => { await studio.close(); });
 
 const REPO = path.resolve(__dirname, '..');
 const REBUS_40 = path.join(REPO, 'spiral/test/fixtures/rebus-40.yaml');
+const EXAMPLE = path.join(REPO, 'examples/spiral.yaml');
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -57,7 +58,7 @@ test('a new Spiral asks for its size, then opens the structured editor', async (
   await expect(errors.filter({ hasText: /Outward 1 .* has no clue/ })).toHaveCount(1);
   await page.keyboard.press('Escape');
   await page.locator('#btn-export').click();
-  await expect(page.locator('#export-hashed')).toBeDisabled();
+  await expect(page.locator('#export-page')).toBeDisabled();
 });
 
 test('the size prompt rejects too few cells', async ({ page }) => {
@@ -102,6 +103,7 @@ test('Enter composes a multi-letter cell', async ({ page }) => {
   await type(page, 'HAR');
   await page.keyboard.press('Enter');
   await expect(letter(page, 3)).toHaveText('HAR');
+  await openPaste(page);
   await expect(page.locator('#sequence-field')).toHaveValue(/\[HAR\]/);
   await expect(cell(page, 3)).toHaveClass(/caret/);
 });
@@ -109,6 +111,7 @@ test('Enter composes a multi-letter cell', async ({ page }) => {
 test('the sequence field replaces the cells', async ({ page }) => {
   await newSpiral(page);
   const seq = 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN'.slice(0, 40);
+  await openPaste(page);
   await page.locator('#sequence-field').fill(seq);
   await page.locator('#sequence-field').press('Enter');
   await expect(page.locator('.sp-ltr')).toHaveCount(40);
@@ -141,7 +144,7 @@ test('"." switches cuts and "|" breaks the outward cut', async ({ page }) => {
 test('inserting a cell redraws the spiral', async ({ page }) => {
   await newSpiral(page);
   await cell(page, 5).click();
-  await page.locator('#btn-insert-cell').click();
+  await cellMenuItem(page, 'btn-insert-cell');
   await expect(page.locator('.sp-cell')).toHaveCount(41);
   await expect(page.locator('#meter-cells')).toContainText('41');
 });
@@ -157,55 +160,100 @@ test('undo restores a removed break', async ({ page }) => {
   await expect(page.locator('#meter-inward')).toContainText('2 entries');
 });
 
-test('the selected-entry panel follows the cursor', async ({ page }) => {
+test('the selected clue row follows the cursor and the crossing one is tinted', async ({ page }) => {
   await openFile(page, REBUS_40);
+  await showPhase(page, 'clues');
   await cell(page, 5).click();
-  await expect(page.locator('.entry-card.main .entry-range')).toContainText('6');
-  await expect(page.locator('.entry-card.crossing')).toBeVisible();
-  await page.locator('#entry-clue').fill('my own clue');
-  await page.locator('#clue-view [data-view="all"]').click();
-  const row = page.locator('.clue-row[data-cut="inward"]').filter({ has: page.locator('.clue-input') }).nth(1);
-  await expect(row.locator('.clue-input')).toHaveValue('my own clue');
+  await expect(page.locator('.clue-row.on')).toHaveAttribute('data-cut', 'inward');
+  await expect(page.locator('.clue-row.on .clue-label')).toContainText('6');
+  await expect(page.locator('.clue-row.crossing')).toBeVisible();
+  await page.locator('.clue-row.on .clue-input').fill('my own clue');
+  await expect(page.locator('.clue-row[data-cut="inward"][data-entry="1"] .clue-input')).toHaveValue('my own clue');
 });
 
 test('a removed break\'s clue goes to the orphan tray and can be reattached', async ({ page }) => {
   await newSpiral(page);
+  await showPhase(page, 'clues');
   await page.locator('.sp-gap[data-gap="4"]').click();
   await cell(page, 10).click();
-  await page.locator('#entry-clue').fill('second entry clue');
+  await page.locator('.clue-row.on .clue-input').fill('second entry clue');
   await page.locator('.sp-gap[data-gap="4"]').click();
   await expect(page.locator('#orphan-tray .orphan')).toHaveCount(1);
   await page.locator('#orphan-tray .orphan-target').selectOption('inward:0');
   await page.locator('#orphan-tray .orphan-attach').click();
   await expect(page.locator('#orphan-tray')).toHaveCount(0);
-  await expect(page.locator('#entry-clue')).toHaveValue('second entry clue');
+  await expect(page.locator('.clue-row.on .clue-input')).toHaveValue('second entry clue');
 });
 
 test('a complete puzzle exports YAML that validates', async ({ page }) => {
   await newSpiral(page);
+  await openPaste(page);
   await page.locator('#sequence-field').fill('ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN');
   await page.locator('#sequence-field').press('Enter');
+  await page.keyboard.press('Escape');   // the popover stays open after applying, over the board
+  await expect(page.locator('#paste-letters')).toBeHidden();
   await page.locator('.sp-gap[data-gap="20"]').click();
   await page.locator('#cut-toggle [data-cut="outward"]').click();
   await page.locator('.sp-gap[data-gap="20"]').click();
   await page.locator('#header-title').fill('Made In The Studio');
-  await page.locator('#clue-view [data-view="all"]').click();
+  await showPhase(page, 'clues');
   const inputs = page.locator('.clue-input');
   await expect(inputs).toHaveCount(4);
   for (let i = 0; i < 4; i++) await inputs.nth(i).fill(`Clue number ${i + 1}`);
   await expect(page.locator('#problems-chip')).toContainText('Ready to export');
   await page.locator('#btn-export').click();
-  const text = await download(page, '#export-source');
+  const text = await download(page, '#export-yaml');
   const puzzle = yaml.load(text);
   expect(puzzle.title).toBe('Made In The Studio');
   expect(validate(puzzle).errors).toEqual([]);
+});
+
+test('typing in the instructions grows the field, and undo restores it', async ({ page }) => {
+  await newSpiral(page);
+  const field = page.locator('#header-instructions');
+  await field.fill('First line.');
+  const one = (await field.boundingBox()).height;
+  await page.locator('#header-title').fill('A title');   // a different key, so undo steps back one edit
+  await field.fill('First paragraph.\n\nSecond paragraph.');
+  expect((await field.boundingBox()).height).toBeGreaterThan(one);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect(field).toHaveValue('First line.');
+});
+
+test('the title wraps but never takes a line break', async ({ page }) => {
+  await newSpiral(page);
+  const title = page.locator('#header-title');
+  await title.fill('One\nTwo');
+  await expect(title).toHaveValue('One Two');
+  await title.press('End');
+  await title.press('Enter');
+  await expect(title).toHaveValue('One Two');
+});
+
+test('long instructions show as a few clipped lines until the field is focused', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await newSpiral(page);
+  const line = page.locator('.hs-instructions-line');
+  const field = page.locator('#header-instructions');
+  await expect(line).toHaveText('Add instructions');
+  await field.fill('A long instruction. '.repeat(30));
+  await page.locator('#header-title').click();
+  await expect(line).toBeVisible();
+  // Clamped to a few lines, with the rest clipped.
+  expect(await line.evaluate(el => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflow === 'hidden')).toBe(true);
+  // The field lies over the display, so a press lands on it, and it then shows in full.
+  const clamped = (await line.boundingBox()).height;
+  await field.click();
+  await expect(field).toBeFocused();
+  await expect(line).toBeHidden();
+  expect((await field.boundingBox()).height).toBeGreaterThan(clamped);
 });
 
 test('a Spiral fixture round-trips through the editor', async ({ page }) => {
   await openFile(page, REBUS_40);
   await expect(page.locator('#problems-chip')).toContainText('Ready to export');
   await page.locator('#btn-export').click();
-  const exported = yaml.load(await download(page, '#export-source'));
+  const exported = yaml.load(await download(page, '#export-yaml'));
   const original = yaml.load(fs.readFileSync(REBUS_40, 'utf8'));
   expect(buildFromObject(exported, {}, HOOKS).html).toBe(buildFromObject(original, {}, HOOKS).html);
 });
@@ -249,10 +297,12 @@ test('keys the editor does not use are left to the browser', async ({ page }) =>
 
 test('the sequence field shows the current cells again after an undo, not a stale draft', async ({ page }) => {
   await newSpiral(page);
+  await openPaste(page);
   await page.locator('#sequence-field').fill('ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN');
   await page.locator('#sequence-field').press('Enter');
   await page.locator('#sequence-field').fill('[AB');          // invalid, left unapplied
-  await page.locator('#btn-undo').click();
+  await page.locator('#btn-undo').click();   // the outside press closes the popover
+  await openPaste(page);
   await expect(page.locator('#sequence-field')).toHaveValue('_'.repeat(40));
   await expect(page.locator('#sequence-error')).toHaveCount(0);
 });
@@ -262,6 +312,23 @@ test('clicking the selected cell again switches direction', async ({ page }) => 
   await page.locator('.sp-cell').nth(3).click();
   await expect(page.locator('#cut-toggle [data-cut="inward"]')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.sp-cell').nth(3).click();
+  await expect(page.locator('#cut-toggle [data-cut="outward"]')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('focus given by opening does not count: the first click on the caret cell only selects', async ({ page }) => {
+  await newSpiral(page, 40);
+  await expect(page.locator('#board-input')).toBeFocused();
+  await page.locator('.sp-cell.caret').click();
+  await expect(page.locator('#cut-toggle [data-cut="inward"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('.sp-cell.caret').click();
+  await expect(page.locator('#cut-toggle [data-cut="outward"]')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('after a click on a gap (no blur), the first click on the caret cell switches direction', async ({ page }) => {
+  await newSpiral(page, 40);
+  await expect(page.locator('#board-input')).toBeFocused();
+  await page.locator('.sp-gap[data-gap="20"]').click();
+  await page.locator('.sp-cell.caret').click();
   await expect(page.locator('#cut-toggle [data-cut="outward"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -284,4 +351,278 @@ test('pasting a spaced answer fills its letters and skips its spaces', async ({ 
   await page.locator('#board-input').fill('lie to');   // one input event, as a paste is
   for (const [i, ch] of [...'LIETO'].entries()) await expect(letter(page, i)).toHaveText(ch);
   await expect(letter(page, 5)).toHaveCount(0);
+});
+
+test('the Board phase shows the word list, checks and key strip', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await expect(page.locator('#word-list .word-row[data-cut="inward"]')).toHaveCount(13);
+  await expect(page.locator('#word-list .word-row[data-cut="outward"]')).toHaveCount(14);
+  await cell(page, 5).click();
+  await expect(page.locator('.word-row.on')).toHaveCount(1);
+  await expect(page.locator('.word-row.crossing')).toHaveCount(1);
+  await expect(page.locator('#checks #meter-cells')).toContainText('78');
+  await expect(page.locator('#key-strip')).toBeVisible();
+  await expect(page.locator('#keys')).toHaveCount(0);
+  await page.locator('#btn-keys').click();
+  await expect(page.locator('#keys')).toContainText('Clicking the selected cell again');
+});
+
+test('a word-list row moves the caret to its entry', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await page.locator('.word-row[data-cut="outward"][data-entry="2"]').click();
+  await expect(page.locator('.word-row.on')).toHaveAttribute('data-cut', 'outward');
+  await expect(page.locator('.word-row.on')).toHaveAttribute('data-entry', '2');
+  await expect(page.locator('#cut-toggle [data-cut="outward"]')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('the Board phase fits one screen at laptop size, and its side column scrolls', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openFile(page, EXAMPLE);
+  const fits = await page.evaluate(() => ({
+    page: document.documentElement.scrollHeight <= window.innerHeight,
+    pane: (el => el.scrollHeight <= el.clientHeight)(document.getElementById('edit-view')),
+    side: (el => el.scrollHeight > el.clientHeight)(document.querySelector('.phase-side-col')),
+  }));
+  expect(fits).toEqual({ page: true, pane: true, side: true });
+  const box = await page.locator('#board').boundingBox();
+  expect(box.height).toBeGreaterThan(300);
+});
+
+test('switching phase keeps the caret and board focus', async ({ page }) => {
+  await newSpiral(page);
+  await cell(page, 7).click();
+  await showPhase(page, 'clues');
+  await showPhase(page, 'board');
+  await type(page, 'Q');
+  await expect(letter(page, 7)).toHaveText('Q');
+});
+
+test('a board edit that orphans a clue shows the loose-clue notice', async ({ page }) => {
+  await newSpiral(page);
+  await expect(page.locator('#loose-clues-notice')).toBeHidden();
+  await page.locator('.sp-gap[data-gap="4"]').click();
+  await showPhase(page, 'clues');
+  await cell(page, 10).click();
+  await page.locator('.clue-row.on .clue-input').fill('second entry clue');
+  await showPhase(page, 'board');
+  await page.locator('.sp-gap[data-gap="4"]').click();
+  await expect(page.locator('#loose-clues-notice')).toBeVisible();
+  await expect(page.locator('#loose-clues-notice')).toContainText('1 clue');
+  await page.locator('#loose-clues-notice button').click();
+  await expect(page.locator('#phase-steps [data-view="clues"]')).toHaveAttribute('aria-current', 'step');
+  await expect(page.locator('#orphan-tray')).toBeVisible();
+});
+
+test('the word-list row at the caret scrolls into view in the side column', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openFile(page, EXAMPLE);
+  await cell(page, 0).click();
+  await page.locator('#cut-toggle [data-cut="outward"]').click();   // the last outward row sits below the fold
+  // The scroll runs in an effect after paint, so poll for it. The active row wins over
+  // the crossing one, which can sit too far away to share the column's view.
+  await expect.poll(() => page.evaluate(() => {
+    const side = document.querySelector('.phase-side-col').getBoundingClientRect();
+    const row = document.querySelector('.word-row.on').getBoundingClientRect();
+    return row.top >= side.top && row.bottom <= side.bottom;
+  })).toBe(true);
+});
+
+// ---- the Clues phase --------------------------------------------------------
+
+test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacing field', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  const inward = page.locator('.clue-row[data-cut="inward"] .clue-input');
+  await inward.nth(0).focus();
+  await page.keyboard.press('Tab');
+  await expect(inward.nth(1)).toBeFocused();
+  await expect(page.locator('.clue-row.on[data-entry="1"]')).toHaveCount(1);
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('.clue-row.on[data-entry="1"] #entry-display')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(inward.nth(0)).toBeFocused();
+  // The last clue's Tab leaves the list: no wrap, no trap.
+  await expectTabLeavesClues(page, page.locator('.clue-row[data-cut="outward"] .clue-input').last());
+});
+
+test('keys typed in a clue stay in the clue', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  const board = () => page.evaluate(() => ({
+    letters: [...document.querySelectorAll('.sp-ltr')].map(e => e.textContent).join(''),
+    breaks: document.querySelectorAll('.sp-break').length,
+  }));
+  const before = await board();
+  const direction = () => page.locator('#cut-toggle [aria-pressed="true"]').getAttribute('data-cut');
+  const dirBefore = await direction();
+  const input = page.locator('.clue-row[data-cut="inward"][data-entry="2"] .clue-input');
+  await input.focus();
+  await page.keyboard.press('End');
+  await page.keyboard.type('a.b|c #');
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Delete');
+  await expect(input).toHaveValue(/a\.b\|c #/);
+  await expect(input).toBeFocused();
+  expect(await board()).toEqual(before);
+  expect(await direction()).toBe(dirBefore);   // the typed `.` did not switch direction
+});
+
+test('clicking a cell selects its row and tints the crossing one', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  await cell(page, 60).click();
+  await expect(page.locator('.clue-row.on')).toHaveCount(1);
+  await expect(page.locator('.clue-row.crossing')).toHaveCount(1);
+  // The scroll runs in an effect after paint, so poll. Both rows share the column here.
+  // scrollTop rounds to whole pixels, so allow a pixel of slack.
+  await expect.poll(() => page.evaluate(() => {
+    const side = document.querySelector('.phase-side-col').getBoundingClientRect();
+    return ['.clue-row.on', '.clue-row.crossing'].map(sel => {
+      const r = document.querySelector(sel).getBoundingClientRect();
+      return r.top >= side.top - 1 && r.bottom <= side.bottom + 1;
+    });
+  })).toEqual([true, true]);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+});
+
+test('a Clues-phase Delete that orphans a clue shows the tray', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  await expect(page.locator('#orphan-tray')).toHaveCount(0);
+  // JAM is the last inward entry, three cells: delete them all from the board.
+  await page.locator('.clue-row[data-cut="inward"][data-entry="12"] .clue-answer').click();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Delete');
+  await expect(page.locator('#orphan-tray .orphan')).toContainText('Phish hook?');
+});
+
+test('the spaced answer is edited on the selected row and reports its match', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  await page.locator('.clue-row[data-cut="inward"][data-entry="2"] .clue-input').focus();
+  await expect(page.locator('#entry-display')).toHaveCount(1);
+  await expect(page.locator('#entry-display')).toHaveValue('WAH-WAH');
+  await expect(page.locator('#entry-display-status')).toContainText('Matches the cells');
+  await page.locator('#entry-display').fill('WAH WAHS');
+  await expect(page.locator('#entry-display-status')).toContainText('Doesn’t match');
+  await page.locator('.clue-row[data-cut="inward"][data-entry="3"] .clue-input').focus();
+  await expect(page.locator('#entry-display')).toHaveCount(1);
+  await expect(page.locator('.clue-row[data-entry="3"] #entry-display')).toBeVisible();
+});
+
+test('a board edit that orphans a clue scrolls the tray into view, and focus stays on the board', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  // JAM is the last inward entry, so selecting it scrolls the column down.
+  await page.locator('.clue-row[data-cut="inward"][data-entry="12"] .clue-answer').click();
+  await expect.poll(() => page.evaluate(() => document.querySelector('.phase-side-col').scrollTop)).toBeGreaterThan(0);
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Delete');
+  await expect(page.locator('#orphan-tray .orphan')).toContainText('Phish hook?');
+  await expect.poll(() => page.evaluate(() => {
+    const side = document.querySelector('.phase-side-col').getBoundingClientRect();
+    const tray = document.getElementById('orphan-tray').getBoundingClientRect();
+    return tray.top >= side.top - 1 && tray.bottom <= side.bottom + 1;
+  })).toBe(true);
+  await expect(page.locator('#board-input')).toBeFocused();
+});
+
+// True when `sel`'s box lies inside the side column's visible box.
+const inSideColumn = (page, sel) => page.evaluate((s) => {
+  const side = document.querySelector('.phase-side-col').getBoundingClientRect();
+  const r = document.querySelector(s).getBoundingClientRect();
+  return r.top >= side.top - 1 && r.bottom <= side.bottom + 1;
+}, sel);
+
+test('the loose-clue notice is in view in the Board phase, and Show in Clues brings the tray into view', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openFile(page, EXAMPLE);
+  // JAM is the last inward entry; deleting its cells leaves its clue loose.
+  await page.locator('.word-row[data-cut="inward"][data-entry="12"] button').click();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Delete');
+  await expect(page.locator('#loose-clues-notice')).toBeVisible();
+  await expect.poll(() => inSideColumn(page, '#loose-clues-notice')).toBe(true);
+  await page.locator('#loose-clues-notice button').click();
+  await expect(page.locator('#orphan-tray')).toBeVisible();
+  await expect.poll(() => inSideColumn(page, '#orphan-tray')).toBe(true);
+});
+
+test('focusing the clue of the entry the caret is already in leaves the caret where it is', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  await cell(page, 6).click();   // inside DEREK (cells 5–9)
+  const caret = () => page.locator('.sp-caret').getAttribute('d');
+  const before = await caret();
+  await page.locator('.clue-row[data-cut="inward"][data-entry="1"] .clue-input').focus();
+  expect(await caret()).toBe(before);
+  // A clue of another entry does move it, to that entry's first cell.
+  await page.locator('.clue-row[data-cut="inward"][data-entry="2"] .clue-input').focus();
+  await expect(page.locator('.clue-row.on')).toHaveAttribute('data-entry', '2');
+  expect(await caret()).not.toBe(before);
+});
+
+// ---- problem jumps ----------------------------------------------------------
+
+const jumpTo = async (page, text) => {
+  await page.locator('#problems-chip').click();
+  await page.locator('#diagnostics .diag-jump', { hasText: text }).click();
+};
+
+test('a missing-clue problem opens Clues with that clue focused', async ({ page }) => {
+  await newSpiral(page);
+  await jumpTo(page, /Inward 1 .* has no clue/);
+  await expect(page.locator('#phase-steps [data-view="clues"]')).toHaveAttribute('aria-current', 'step');
+  await expect(page.locator('.clue-row.on[data-cut="inward"][data-entry="0"] .clue-input')).toBeFocused();
+  // A clue away from the caret: the caret moves to that entry and its clue is focused.
+  await jumpTo(page, /Outward 1 .* has no clue/);
+  await expect(page.locator('.clue-row.on[data-cut="outward"][data-entry="0"] .clue-input')).toBeFocused();
+});
+
+test('a clue jump reveals the focused clue in the scrolling column', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  // Blank the last Inward clue and scroll the column up; the jump must scroll it back.
+  const last = page.locator('.clue-row[data-cut="inward"] .clue-input').last();
+  await last.fill('');
+  await page.locator('.phase-side-col').evaluate(el => { el.scrollTop = 0; });
+  await jumpTo(page, /Inward \d+ .* has no clue/);
+  const input = page.locator('.clue-row.on .clue-input');
+  await expect(input).toBeFocused();
+  expect(await input.evaluate(el => {
+    const c = el.closest('.phase-side-col').getBoundingClientRect(), r = el.getBoundingClientRect();
+    return r.top >= c.top - 1 && r.bottom <= c.bottom + 1;
+  })).toBe(true);
+});
+
+test('an empty-cells problem opens Board', async ({ page }) => {
+  await newSpiral(page);
+  await showPhase(page, 'clues');
+  await jumpTo(page, 'Cells 1–40 are empty.');
+  await expect(page.locator('#phase-steps [data-view="board"]')).toHaveAttribute('aria-current', 'step');
+  await expect(page.locator('#board-input')).toBeFocused();
+});
+
+test('the title problem focuses the title from Test-solve', async ({ page }) => {
+  await newSpiral(page);
+  await showPhase(page, 'test');
+  await jumpTo(page, 'Give the puzzle a title.');
+  await expect(page.locator('#phase-steps [data-view="board"]')).toHaveAttribute('aria-current', 'step');
+  await expect(page.locator('#header-title')).toBeFocused();
+});
+
+test('a fully lettered Spiral with no clues test-solves with placeholders, and exports none', async ({ page }) => {
+  await newSpiral(page);
+  await openPaste(page);
+  await page.locator('#sequence-field').fill('ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN');
+  await page.locator('#sequence-field').press('Enter');
+  await page.keyboard.press('Escape');
+  await page.locator('.sp-gap[data-gap="20"]').click();
+  await page.locator('#cut-toggle [data-cut="outward"]').click();
+  await page.locator('.sp-gap[data-gap="20"]').click();
+  await page.locator('#header-title').fill('No clues yet');
+  await showPhase(page, 'test');
+  await expect(page.locator('#preview-placeholders')).toBeVisible();
+  await expect(page.frameLocator('#preview').locator('.cell').first()).toBeVisible();
+  await showPhase(page, 'clues');
+  await expect(page.locator('.clue-input').first()).toHaveValue('');
 });

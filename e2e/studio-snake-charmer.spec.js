@@ -5,7 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
-const { openStudio, openStudioFile, downloadText: download } = require('./helpers');
+const { cellMenuItem, expectTabLeavesClues, openStudio, openStudioFile, downloadText: download, openPaste, showPhase } = require('./helpers');
 const { clickGapLine } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../snake-charmer/src/builder');
@@ -17,6 +17,7 @@ test.afterAll(async () => { await studio.close(); });
 
 const REPO = path.resolve(__dirname, '..');
 const fixture = (name) => path.join(REPO, 'snake-charmer/test/fixtures', name);
+const EXAMPLE = path.join(REPO, 'examples/snake-charmer.yaml');
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -43,8 +44,13 @@ const gap = (page, k) => page.locator(`.rgap[data-gap="${k}"]`);
 const lap = (page, n) => page.locator(`#lap-toggle [data-lap="${n}"]`);
 
 async function fillRing(page, letters) {
+  await openPaste(page);
   await page.locator('#sequence-field').fill(letters);
   await page.locator('#sequence-field').press('Enter');
+  // The popover stays open after applying, and where the tool keys wrap it can sit over
+  // the board's gap lines, which the tests click next.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#paste-letters')).toBeHidden();
 }
 
 // ---- tests ------------------------------------------------------------------
@@ -84,7 +90,7 @@ test('a break near the end of lap 1 makes an entry that straddles into lap 2', a
   await lap(page, 2).click();
   await clickGapLine(gap(page, 6));      // position 22
   await clickGapLine(gap(page, 12));     // position 28
-  await page.locator('#clue-view [data-view="all"]').click();
+  await showPhase(page, 'clues');
   await expect(page.locator('.clue-row')).toHaveCount(5);
   await expect(page.locator('.clash')).toHaveCount(0);
   // the entry starting at position 11 covers positions 11-21, across the boundary at 16
@@ -113,7 +119,7 @@ test('a cell where two entries start shows both numbers', async ({ page }) => {
 test('an odd count draws a plain circle', async ({ page }) => {
   await newRing(page, 16);
   await cell(page, 4).click();
-  await page.locator('#btn-delete-cell').click();
+  await cellMenuItem(page, 'btn-delete-cell');
   await expect(page.locator('#board-note')).toBeVisible();
   await expect(page.locator('path.rc')).toHaveCount(15);
 });
@@ -124,7 +130,7 @@ test('the shape select lists only shapes that fit', async ({ page }) => {
   await page.locator('#shape-select').selectOption('stadium');
   await expect(page.locator('#problems-chip')).toContainText('Ready to export');
   await page.locator('#btn-export').click();
-  const text = await download(page, '#export-source');
+  const text = await download(page, '#export-yaml');
   expect(yaml.load(text).shape).toBe('stadium');
 });
 
@@ -132,7 +138,7 @@ test('a Snake Charmer fixture round-trips through the editor', async ({ page }) 
   await openFile(page, fixture('rebus-8.yaml'));
   await expect(page.locator('#problems-chip')).toContainText('Ready to export');
   await page.locator('#btn-export').click();
-  const exported = yaml.load(await download(page, '#export-source'));
+  const exported = yaml.load(await download(page, '#export-yaml'));
   const original = yaml.load(fs.readFileSync(fixture('rebus-8.yaml'), 'utf8'));
   expect(buildFromObject(exported, {}, HOOKS).html).toBe(buildFromObject(original, {}, HOOKS).html);
 });
@@ -143,13 +149,13 @@ test('a complete puzzle exports YAML that validates', async ({ page }) => {
   await clickGapLine(gap(page, 5));
   await clickGapLine(gap(page, 11));
   await page.locator('#header-title').fill('Ring Made In The Studio');
-  await page.locator('#clue-view [data-view="all"]').click();
+  await showPhase(page, 'clues');
   const inputs = page.locator('.clue-input');
   await expect(inputs).toHaveCount(3);
   for (let i = 0; i < 3; i++) await inputs.nth(i).fill(`Clue number ${i + 1}`);
   await expect(page.locator('#problems-chip')).toContainText('Ready to export');
   await page.locator('#btn-export').click();
-  const puzzle = yaml.load(await download(page, '#export-source'));
+  const puzzle = yaml.load(await download(page, '#export-yaml'));
   expect(puzzle.title).toBe('Ring Made In The Studio');
   expect(validate(puzzle).errors).toEqual([]);
 });
@@ -165,23 +171,46 @@ test('Backspace at the first cell does not wrap round and erase the last one', a
   await expect(letter(page, 15)).toHaveText('P');
 });
 
-test('the crossing card marks the shared cell, as the main card does', async ({ page }) => {
+test('the selected and crossing clue rows are the two entries through the ring cell', async ({ page }) => {
   await openFile(page, fixture('rebus-8.yaml'));
   await cell(page, 3).click();
-  await expect(page.locator('.entry-card.main .entry-tile.here')).toHaveCount(1);
-  await expect(page.locator('.entry-card.crossing .entry-tile.here')).toHaveCount(1);
+  await showPhase(page, 'clues');
+  // Ring cell 3 is the three-letter rebus cell: lap 1 reads it in entry 1, lap 2 in 3.
+  await expect(page.locator('.clue-row.on')).toHaveAttribute('data-entry', '1');
+  await expect(page.locator('.clue-row.crossing')).toHaveAttribute('data-entry', '3');
+  await expect(page.locator('.clue-row.on .clue-answer')).toContainText('DDD');
+  await expect(page.locator('.clue-row.crossing .clue-answer')).toContainText('DDD');
+  await lap(page, 2).click();
+  await expect(page.locator('.clue-row.on')).toHaveAttribute('data-entry', '3');
+  await expect(page.locator('.clue-row.crossing')).toHaveAttribute('data-entry', '1');
+});
+
+test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacing field', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  const inputs = page.locator('.clue-row .clue-input');
+  await inputs.nth(0).focus();
+  await page.keyboard.press('Tab');
+  await expect(inputs.nth(1)).toBeFocused();
+  await expect(page.locator('.clue-row.on[data-entry="1"]')).toHaveCount(1);
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('.clue-row.on[data-entry="1"] #entry-display')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(inputs.nth(0)).toBeFocused();
+  // The last clue's Tab leaves the list: no wrap, no trap.
+  await expectTabLeavesClues(page, inputs.last());
 });
 
 test('inserting a cell on lap 2 keeps the caret on the same lap and cell', async ({ page }) => {
   await newRing(page, 16);
   await lap(page, 2).click();
   await cell(page, 3).click();
-  await page.locator('#btn-insert-cell').click();
+  await cellMenuItem(page, 'btn-insert-cell');
   await expect(page.locator('path.rc')).toHaveCount(17);
   await expect(lap(page, 2)).toHaveAttribute('aria-pressed', 'true');
   const caret = await page.locator('.rcaret').getAttribute('d');
   expect(caret).toBe(await cell(page, 3).getAttribute('d'));
-  await page.locator('#btn-delete-cell').click();
+  await cellMenuItem(page, 'btn-delete-cell');
   await expect(page.locator('path.rc')).toHaveCount(16);
   await expect(lap(page, 2)).toHaveAttribute('aria-pressed', 'true');
   expect(await page.locator('.rcaret').getAttribute('d')).toBe(await cell(page, 3).getAttribute('d'));
@@ -209,4 +238,50 @@ test('clicking the selected cell again switches lap, as on the puzzle page', asy
   await cell(page, 3).click();
   await expect(lap(page, 2)).toHaveAttribute('aria-pressed', 'true');
   expect(await page.locator('.rcaret').getAttribute('d')).toBe(await cell(page, 3).getAttribute('d'));
+});
+
+test('the Board phase shows Snake Charmer\'s word list and checks', async ({ page }) => {
+  await openFile(page, fixture('rebus-8.yaml'));
+  const n = yaml.load(fs.readFileSync(fixture('rebus-8.yaml'), 'utf8')).entries.length;
+  await expect(page.locator('#word-list .word-row')).toHaveCount(n);
+  await cell(page, 3).click();
+  await expect(page.locator('.word-row.on')).toHaveCount(1);
+  await expect(page.locator('.word-row.crossing')).toHaveCount(1);
+  await expect(page.locator('#checks #meter-entries')).toContainText(`${n} entries`);
+});
+
+test('the Board phase fits one screen at laptop size', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openFile(page, fixture('double-turn-72.yaml'));
+  const fits = await page.evaluate(() => ({
+    page: document.documentElement.scrollHeight <= window.innerHeight,
+    pane: (el => el.scrollHeight <= el.clientHeight)(document.getElementById('edit-view')),
+  }));
+  expect(fits).toEqual({ page: true, pane: true });
+  const box = await page.locator('#board').boundingBox();
+  expect(box.height).toBeGreaterThan(300);
+});
+
+test('focusing the clue of the entry the caret is in leaves the caret, and a different entry clue moves it', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await cell(page, 1).click();
+  await showPhase(page, 'clues');
+  const caret = () => page.locator('.rcaret').getAttribute('d');
+  const before = await caret();
+  await page.locator('.clue-row.on .clue-input').focus();
+  expect(await caret()).toBe(before);
+  // Another entry's clue moves the caret there, and the keys stay in the clue field.
+  const other = page.locator('.clue-row:not(.on):not(.crossing) .clue-input').first();
+  await other.focus();
+  await expect(page.locator('.clue-row.on .clue-input')).toBeFocused();
+  expect(await caret()).not.toBe(before);
+  await expect(page.locator('#board-input')).not.toBeFocused();
+});
+
+test('a missing-clue problem opens Clues with that entry\'s clue focused', async ({ page }) => {
+  await newRing(page);
+  await page.locator('#problems-chip').click();
+  await page.locator('#diagnostics .diag-jump', { hasText: /Entry 1 .* has no clue/ }).click();
+  await expect(page.locator('#phase-steps [data-view="clues"]')).toHaveAttribute('aria-current', 'step');
+  await expect(page.locator('.clue-row.on[data-entry="0"] .clue-input')).toBeFocused();
 });

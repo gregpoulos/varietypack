@@ -9,7 +9,7 @@
 //   the commands to run (typing: true joins the current undo run), the ui after them, and a
 //   line to show. `apply` folds `calls` into a model.
 const cw = require('./kinds/crushword');
-const { nextCell, prevCell, arrowTarget, typeAt, deleteBefore, stepInOrder } = require('../../../crushword/src/typing.mjs');
+const { nextCell, prevCell, arrowTarget, typeAt, deleteBefore } = require('../../../crushword/src/typing.mjs');
 
 const BLOCK_MESSAGE = 'This cell is a block. Press # to open it.';
 const LAST_OPEN_MESSAGE = 'A puzzle needs at least one open cell.';
@@ -114,9 +114,11 @@ function pressKey(model, ui, e, symmetric) {
     case 'Tab': {
       const d = here ? ui.dir : isBlock ? null : OTHER[ui.dir];
       const info = d && entryAt(maps, id, d);
-      if (!info) return done(ui);
+      if (!info) return { handled: false, calls: [], ui };   // a block: the browser moves focus on
       const { order, cellsOf } = maps[NAME[d]];
-      const num = stepInOrder(order, info.num, e.shiftKey ? -1 : 1);
+      const step = order.indexOf(info.num) + (e.shiftKey ? -1 : 1);
+      if (step < 0 || step >= order.length) return { handled: false, calls: [], ui };   // past the last (first) entry: the browser moves focus on
+      const num = order[step];
       return done(land(model, maps, { ...ui, dir: d }, cellsOf[num][0]));
     }
     case '#': {

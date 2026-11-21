@@ -6,7 +6,7 @@ const { deepFreeze } = require('./helpers');
 const fs       = require('fs');
 const path     = require('path');
 const yaml     = require('js-yaml');
-const { newDoc, openText, setYaml, setOption, setUi, setMuddledTheme, puzzleText } = require('../src/model/doc');
+const { newDoc, openText, setYaml, setOption, setUi, puzzleText } = require('../src/model/doc');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -39,17 +39,8 @@ test('newDoc: starts in yaml mode with default options', () => {
   const doc = newDoc({ id: 'x', now: 5, kind: 'crushword', yaml: 'kind: crushword\n' });
   assert.deepEqual(doc, {
     v: 1, id: 'x', kind: 'crushword', mode: 'yaml', yaml: 'kind: crushword\n', muddled: null,
-    options: { font: 'embed', hashedPreview: false, phoneWidth: false }, updatedAt: 5,
+    options: { font: 'embed', hashedPreview: false, phoneWidth: false, previewTheme: null }, updatedAt: 5,
   });
-});
-
-test('setMuddledTheme then puzzleText: the theme is set and boardHash is unchanged', () => {
-  const text = read('spiral/test/fixtures/test-78.muddled.yaml');
-  const doc = setMuddledTheme(openText(text, { id: 'a', now: 1 }).doc, 'skeleton', 2);
-  const out = yaml.load(puzzleText(doc));
-  assert.equal(out.theme, 'skeleton');
-  assert.equal(out.boardHash, yaml.load(text).boardHash);
-  assert.equal(doc.updatedAt, 2);
 });
 
 test('puzzleText: a yaml-mode doc returns the author\'s text verbatim', () => {
@@ -83,3 +74,16 @@ test('setUi: stores an editor setting on the doc without mutating it, and reject
   assert.throws(() => setUi(doc, 'mode', 1, 2), /setting/);
 });
 
+test('every example imports into the structured editor without a notice', () => {
+  for (const kind of ['spiral', 'snake-charmer', 'marching-bands', 'crushword']) {
+    const { doc, notice } = openText(read(`examples/${kind}.yaml`), { id: 'x', now: 0 });
+    assert.equal(doc.mode, 'structured', kind);
+    assert.ok(notice == null, kind);
+  }
+});
+
+test('previewTheme is a document option, null by default', () => {
+  const d = newDoc({ id: 'a', now: 1, kind: 'spiral', yaml: 'kind: spiral\n' });
+  assert.equal(d.options.previewTheme, null);
+  assert.equal(setOption(d, 'previewTheme', 'skeleton', 2).options.previewTheme, 'skeleton');
+});

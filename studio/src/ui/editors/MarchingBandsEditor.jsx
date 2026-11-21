@@ -3,16 +3,22 @@ import mb from '../../model/kinds/marching-bands.js';
 import { formatCell } from '../../model/cells.js';
 import geometry from './gridGeometry.js';
 import { useBoardEditing } from './useBoardEditing.js';
-import { keepBoardFocus } from './useBoardInput.js';
+import { keepBoardFocus, boardHasFocus } from './useBoardInput.js';
 import { displayStatusFor } from './displayStatus.js';
-import { Meter } from './Meter.jsx';
 import { GridBoard } from './GridBoard.jsx';
 import { LineField } from './LineField.jsx';
-import { ClueSection } from './ClueSection.jsx';
-import { EntryPanel } from './EntryPanel.jsx';
-import { ClueList } from './ClueList.jsx';
+import { ClueLists } from './ClueList.jsx';
+import { plural } from './plural.js';
+import { PhaseLayout } from './PhaseLayout.jsx';
+import { WordList } from './WordList.jsx';
+import { Checks } from './Checks.jsx';
+import { KeyStrip, KeyList } from './KeyStrip.jsx';
+import { PasteLetters } from './PasteLetters.jsx';
+import { LooseCluesNotice } from './LooseCluesNotice.jsx';
+import { Latch } from '../Latch.jsx';
+import { CellMenu } from './CellMenu.jsx';
 
-const { commands, rowOf, colOf, entryOfCell, entryIds, pathIds, isCenter, groupName, shortLabel, entryName, placeLabel,
+const { commands, rowOf, colOf, entryOfCell, entryIds, pathIds, isCenter, groupName, shortLabel, entryName,
   advance, stepBack, moveSpatial, stepGroup, breakAtCaret, FIRST_ENTRY_MESSAGE, lineText, parseLine, readsBackward } = mb;
 const { CELL, cellCenter, boundary } = geometry;
 const GROUPS = ['rows', 'bands'];
@@ -24,7 +30,7 @@ const cls = (group) => (group === 'rows' ? 'c1' : 'c2');
 // along the row or clockwise around the band; arrows move on the grid; Enter composes a
 // multi-letter cell; | splits or joins before the caret; . switches mode; Tab steps to
 // the next row or band.
-export function MarchingBandsEditor({ dispatch, model, clueView, setClueView, focusRef }) {
+export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings, fillClues, header }) {
   const N = model.size;
   const { ui, caret: heldCaret, moveTo, exec, run, say, focus, inputProps } = useBoardEditing({
     dispatch, model, commands, focusRef,
@@ -37,7 +43,7 @@ export function MarchingBandsEditor({ dispatch, model, clueView, setClueView, fo
       back: (m, u) => { const id = stepBack(m, u.mode, u.caret + 1); return id === null ? u.caret : id - 1; },   // never wraps: Backspace at a band's start would erase its last cell
       arrow: (m, u, d) => { const id = moveSpatial(m, u.caret + 1, 0, d); return id === null ? u.caret : id - 1; },
       vertical: (m, u, d) => { const id = moveSpatial(m, u.caret + 1, d, 0); return id === null ? u.caret : id - 1; },
-      tab: (m, u, back) => stepGroup(m, u.mode, u.caret + 1, back ? -1 : 1) - 1,
+      tab: (m, u, back) => { const id = stepGroup(m, u.mode, u.caret + 1, back ? -1 : 1); return id === null ? null : id - 1; },
       breakAt: (m, u) => breakAtCaret(m, u.mode, u.caret + 1),
       delete: (m, u) => ({ command: ['setCell', [u.caret + 1, '']] }),
       dot: (m, u) => ({ mode: other(u.mode) }),
@@ -74,15 +80,15 @@ export function MarchingBandsEditor({ dispatch, model, clueView, setClueView, fo
   const circleSet = new Set(model.circles);
   const rc = (cellId) => ({ r: rowOf(N, cellId), c: colOf(N, cellId) });
   const act = entryOfCell(model, mode, id);
+  const cross = entryOfCell(model, other(mode), id);
 
-  const select = (group, g, j) => { moveTo({ caret: entryIds(model, group, g, j)[0] - 1, mode: group, composing: false }); focus(); };
+  // focusBoard: false is for a clue field gaining focus in the Clues phase, which must
+  // keep it so the keys typed there stay in the field.
+  const select = (group, g, j, { focusBoard = true } = {}) => {
+    moveTo({ caret: entryIds(model, group, g, j)[0] - 1, mode: group, composing: false });
+    if (focusBoard) focus();
+  };
   const allEntries = (group) => model[group].flatMap((cut, g) => cut.entries.map((_, j) => ({ g, j })));
-  function step(delta) {
-    const list = allEntries(mode);
-    const at = list.findIndex(e => e.g === act.g && e.j === act.j);
-    const t = list[(at + delta + list.length) % list.length];
-    select(mode, t.g, t.j);
-  }
   const answerOf = (group, g, j) => entryIds(model, group, g, j).map(i => formatCell(model.cells[i - 1])).join('');
 
   // ── the board ────────────────────────────────────────────────────────────
@@ -155,36 +161,28 @@ export function MarchingBandsEditor({ dispatch, model, clueView, setClueView, fo
   }
   function onCellClick(r, c) {
     const next = r * N + c;
-    // Clicking the selected cell again switches mode, as in the solver, but only once the
-    // board has focus: the first click just selects.
-    const focused = document.activeElement && document.activeElement.id === 'board-input';
+    const focused = boardHasFocus();
     moveTo(next === caret && focused ? { mode: other(mode), composing: false } : { caret: next, composing: false });
   }
 
   // ── clues ────────────────────────────────────────────────────────────────
-  function cardFor(group) {
-    const { g, j } = entryOfCell(model, group, id);
-    const ids = entryIds(model, group, g, j);
-    const entry = model[group][g].entries[j];
-    const shown = entry.displayAnswer ?? '';
-    return {
-      cutName: group, group, g, j, id: entry.id,
-      name: entryName(group, g, j),
-      range: placeLabel(model, group, g, j),
-      tiles: ids.map(i => ({
-        i, key: i, number: `${rowOf(N, i) + 1},${colOf(N, i) + 1}`,
-        text: model.cells[i - 1] === '' ? '·' : model.cells[i - 1].toUpperCase(), circled: circleSet.has(i), here: i === id,
-      })),
-      clue: entry.clue, display: shown,
-      displayStatus: displayStatusFor(shown, ids.map(i => model.cells[i - 1]), readsBackward(model, group, g, ids)),
-    };
-  }
+  // The selected row also carries the spaced answer and its status (ClueList shows them
+  // on that row only).
   const groupsFor = (group) => model[group].map((cut, g) => ({
     group, g, heading: groupName(group, g),
-    rows: cut.entries.map((entry, j) => ({
-      id: entry.id, j, clue: entry.clue, label: shortLabel(group, g, j), answer: answerOf(group, g, j),
-      active: group === mode && act.g === g && act.j === j,
-    })),
+    rows: cut.entries.map((entry, j) => {
+      const row = {
+        id: entry.id, j, clue: entry.clue, label: shortLabel(group, g, j), answer: answerOf(group, g, j),
+        active: group === mode && act.g === g && act.j === j,
+        crossing: group !== mode && cross.g === g && cross.j === j,
+      };
+      if (row.active) {
+        const ids = entryIds(model, group, g, j);
+        row.display = entry.displayAnswer ?? '';
+        row.displayStatus = displayStatusFor(row.display, ids.map(i => model.cells[i - 1]), readsBackward(model, group, g, ids));
+      }
+      return row;
+    }),
   }));
   const targets = GROUPS.flatMap(group => allEntries(group).map(({ g, j }) => ({
     value: `${group}:${g}:${j}`, label: `${entryName(group, g, j)} · ${answerOf(group, g, j)}`,
@@ -192,59 +190,82 @@ export function MarchingBandsEditor({ dispatch, model, clueView, setClueView, fo
   const count = (group) => model[group].reduce((n, cut) => n + cut.entries.length, 0);
   const lineLabel = `${groupName(mode, act.g)} letters, ${mode === 'rows' ? 'left to right' : 'clockwise from its top-left corner'}`;
 
+  const cellItems = [
+    { id: 'btn-circle', label: 'Toggle circle', checked: circleSet.has(id), onSelect: () => run('toggleCircle', id) },
+    { id: 'btn-rebus', label: composing ? 'Leave rebus mode' : 'Enter rebus mode', hint: 'Enter', checked: !!composing, onSelect: () => moveTo({ composing: !composing }) },
+  ];
+  const lists = GROUPS.map(group => ({ cutName: group, title: group === 'rows' ? 'Rows' : 'Bands', rowName: group === 'rows' ? 'Row' : 'Band', groups: groupsFor(group) }));
+
   return (
-    <div class="editor mb-editor">
-      <div class="board-tools">
-        <span id="cut-toggle" class="seg" role="group" aria-label="Mode">
-          {GROUPS.map(group => (
-            <button type="button" key={group} data-cut={group} class={`seg-btn ${group === 'rows' ? 'in' : 'out'}` + (group === mode ? ' active' : '')}
-              aria-pressed={group === mode} onClick={() => { moveTo({ mode: group, composing: false }); focus(); }}>{group === 'rows' ? 'Rows' : 'Bands'}</button>
-          ))}
-        </span>
+    <PhaseLayout phase={phase} settings={settings} fillClues={fillClues} header={header}
+      toggle={(
+        <Latch id="cut-toggle" label="Mode" value={mode}
+          options={GROUPS.map(group => ({ value: group, text: group === 'rows' ? 'Rows' : 'Bands', led: group === 'rows' ? 'ch1' : 'ch2', attrs: { 'data-cut': group } }))}
+          onChange={group => { moveTo({ mode: group, composing: false }); focus(); }} />
+      )}
+      tools={(
         <span class="tools">
-          <button type="button" id="btn-circle" class={'btn' + (circleSet.has(id) ? ' on' : '')} aria-pressed={circleSet.has(id)}
-            onClick={() => run('toggleCircle', id)}>Circle</button>
+          <CellMenu items={cellItems} focus={focus} />
+          <PasteLetters>
+            <LineField label={lineLabel} text={lineText(model, mode, act.g)}
+              hint={`Type or paste a whole ${mode === 'rows' ? 'row' : 'band'} and press Enter. | marks a split, [HAR] is one multi-letter cell and _ an empty one.`}
+              apply={(text) => {
+                const r = parseLine(model, mode, act.g, text);
+                if (r.error) return r.error;
+                exec('setLine', [mode, act.g, r.cells, r.starts]);
+                return null;
+              }} />
+          </PasteLetters>
         </span>
-        <span class="meters">
-          <Meter id="meter-size"><b>{N} × {N}</b></Meter>
-          <Meter id="meter-rows"><b>{count('rows')}</b> row entries</Meter>
-          <Meter id="meter-bands"><b>{count('bands')}</b> band entries</Meter>
-        </span>
-      </div>
-      <LineField label={lineLabel} text={lineText(model, mode, act.g)}
-        hint={`Type or paste a whole ${mode === 'rows' ? 'row' : 'band'} and press Enter. | marks a split, [HAR] is one multi-letter cell and _ an empty one.`}
-        apply={(text) => {
-          const r = parseLine(model, mode, act.g, text);
-          if (r.error) return r.error;
-          exec('setLine', [mode, act.g, r.cells, r.starts]);
-          return null;
-        }} />
-      <div id="board" class={'board ' + (mode === 'rows' ? 'in' : 'out')} onClick={focus} onMouseDown={keepBoardFocus}>
-        <input id="board-input" aria-label="Board input" {...inputProps} />
-        <GridBoard rows={N} cols={N} cellAt={cellAt} caret={rc(id)} composing={composing} rowNumbers
-          underlay={underlay()} overlay={overlay()} onCellClick={onCellClick} />
-      </div>
-      <p class="keys">Click a cell, then: <kbd>A–Z</kbd> fill and move on, along the row or clockwise around the band · <kbd>Space</kbd> clear the cell and move on · <kbd>Enter</kbd> multi-letter cell · <kbd>|</kbd> split or join before the cursor · <kbd>.</kbd> switch between rows and bands (or click the cell again) · <kbd>Tab</kbd> next row or band · arrows move on the grid.</p>
-      <ClueSection clueView={clueView} setClueView={setClueView} orphans={model.orphans} targets={targets}
-        onAttach={(orphanId, value) => { const [group, g, j] = value.split(':'); exec('attachOrphan', [orphanId, group, Number(g), Number(j)]); }}
-        onDiscard={orphanId => exec('discardOrphan', [orphanId])}>
-        {clueView === 'selected' ? (
-          <EntryPanel main={cardFor(mode)} crossing={cardFor(other(mode))}
-            onPrev={() => step(-1)} onNext={() => step(1)}
-            onCircle={cellId => exec('toggleCircle', [cellId])}
-            onClue={(card, text) => exec('setClue', [card.group, card.g, card.j, text], `clue:${card.id}`)}
-            onDisplay={(card, text) => exec('setDisplayAnswer', [card.group, card.g, card.j, text], `display:${card.id}`)} />
-        ) : (
-          <div class="clue-cols">
-            {GROUPS.map(group => (
-              <ClueList key={group} cutName={group} title={group === 'rows' ? 'Rows' : 'Bands'} rowName={group === 'rows' ? 'row' : 'band'}
-                groups={groupsFor(group)}
-                onSelect={(j, ctx) => select(ctx.group, ctx.g, j)}
-                onClue={(j, text, ctx) => exec('setClue', [ctx.group, ctx.g, j, text], `clue:${model[ctx.group][ctx.g].entries[j].id}`)} />
-            ))}
-          </div>
-        )}
-      </ClueSection>
-    </div>
+      )}
+      clueTools={<span class="tools"><CellMenu items={cellItems} focus={focus} /></span>}
+      board={(
+        <div id="board" class={'board ' + (mode === 'rows' ? 'in' : 'out')} onClick={focus} onMouseDown={keepBoardFocus}>
+          <input id="board-input" aria-label="Board input" {...inputProps} />
+          <GridBoard rows={N} cols={N} cellAt={cellAt} caret={rc(id)} composing={composing} rowNumbers
+            underlay={underlay()} overlay={overlay()} onCellClick={onCellClick} />
+        </div>
+      )}
+      keys={(
+        <KeyStrip
+          essential={<><kbd>A–Z</kbd> fill · <kbd>|</kbd> split/join · <kbd>.</kbd> rows/bands · <kbd>Tab</kbd> next row or band · <kbd>Enter</kbd> multi-letter cell</>}
+          full={<KeyList intro="Click a cell, then:"
+            items={[
+              [<kbd>A–Z</kbd>, 'fill and move on, along the row or clockwise around the band'],
+              [<kbd>Space</kbd>, 'clear the cell and move on'],
+              [<kbd>Enter</kbd>, 'multi-letter cell'],
+              [<kbd>|</kbd>, 'split or join before the cursor'],
+              [<kbd>.</kbd>, 'switch between rows and bands (or click the cell again)'],
+              [<kbd>Tab</kbd>, 'next row or band'],
+              [<kbd>Arrows</kbd>, 'move on the grid'],
+            ]} />} />
+      )}
+      checks={(
+        <Checks items={[
+          { id: 'meter-size', text: <b>{N} × {N}</b> },
+          { id: 'meter-rows', text: <b>{plural(count('rows'), 'row entry', 'row entries')}</b> },
+          { id: 'meter-bands', text: <b>{plural(count('bands'), 'band entry', 'band entries')}</b> },
+        ]} />
+      )}
+      side={(
+        <>
+          <LooseCluesNotice count={model.orphans.length} onShow={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
+          <WordList lists={lists} onSelect={(j, ctx) => select(ctx.group, ctx.g, j)} looseCount={model.orphans.length} />
+        </>
+      )}
+      clues={(
+        <ClueLists lists={lists} orphans={model.orphans} targets={targets}
+          onAttach={(orphanId, value) => { const [group, g, j] = value.split(':'); exec('attachOrphan', [orphanId, group, Number(g), Number(j)]); }}
+          onDiscard={orphanId => exec('discardOrphan', [orphanId])}
+          onSelect={(j, ctx) => select(ctx.group, ctx.g, j)}
+          onFocusClue={(j, ctx) => {
+            // A caret already inside this entry stays put, so tabbing into its clue
+            // doesn't reset a mid-entry caret.
+            if (ctx.group === mode && ctx.g === act.g && j === act.j) moveTo({ composing: false });
+            else select(ctx.group, ctx.g, j, { focusBoard: false });
+          }}
+          onClue={(j, text, ctx) => exec('setClue', [ctx.group, ctx.g, j, text], `clue:${model[ctx.group][ctx.g].entries[j].id}`)}
+          onDisplay={(j, text, ctx) => exec('setDisplayAnswer', [ctx.group, ctx.g, j, text], `display:${model[ctx.group][ctx.g].entries[j].id}`)} />
+      )} />
   );
 }

@@ -1,4 +1,3 @@
-import { VALID_THEMES } from '../../../shared/build/themeRegistry.js';
 import { kindName } from './kinds.js';
 
 function countEntries(node) {
@@ -9,14 +8,14 @@ function countEntries(node) {
   return 0;
 }
 
-// Build-only mode: a muddled file can be test-solved and built, never edited.
-export function MuddledPanel({ doc, check, onTheme, onExport }) {
+// Build-only mode: an answers-hidden file can be test-solved and built, never edited.
+export function MuddledPanel({ doc, check, onExport }) {
   const m = doc.muddled;
   const title = check?.title ?? m.title ?? 'Untitled';
   const byline = [m.author, m.date].filter(v => v !== undefined).join(' · ');
   const problems = check ? [...(check.parseError ? [check.parseError] : []), ...check.errors] : [];
   return (
-    <section id="muddled-panel" aria-label="Muddled file">
+    <section id="muddled-panel" aria-label="Answers-hidden file">
       <div>
         <h2>{title}</h2>
         {byline && <p class="by">{byline}</p>}
@@ -35,14 +34,7 @@ export function MuddledPanel({ doc, check, onTheme, onExport }) {
         <dt>Kind</dt><dd>{kindName(doc.kind)}</dd>
         <dt>Size</dt><dd>{countEntries(m)} entries</dd>
       </dl>
-      <label class="fld">
-        <span>Theme</span>
-        <select id="muddled-theme" value={m.theme ?? 'broadsheet'} onChange={e => onTheme(e.currentTarget.value)}>
-          {VALID_THEMES.map(t => <option value={t} key={t}>{t}</option>)}
-        </select>
-      </label>
-      <p class="ed-hint">The theme is saved in the file if you export it again.</p>
-      <button type="button" class="btn primary" onClick={onExport}>Export…</button>
+      <button type="button" class="btn red" onClick={onExport}>Export…</button>
     </section>
   );
 }

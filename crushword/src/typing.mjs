@@ -32,8 +32,8 @@ function buildEntryMaps(grid) {
   return { across: mapDir(acrossSlots, 'across'), down: mapDir(downSlots, 'down') };
 }
 
-// The entry number `step` (±1) places from num in traversal order, wrapping. Used for Tab
-// navigation and typing-driven auto-advance across an entry boundary.
+// The entry number `step` (±1) places from num in traversal order, wrapping. Used by
+// nextCell and prevCell for typing-driven auto-advance across an entry boundary.
 function stepInOrder(order, num, step) {
   return order[(order.indexOf(num) + step + order.length) % order.length];
 }

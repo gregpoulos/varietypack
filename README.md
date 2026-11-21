@@ -140,7 +140,7 @@ All tools share one set of themes. A theme controls colors, fonts, and decorativ
 
 ## Studio
 
-The studio is a browser page for composing puzzles without the command line. Open or create a puzzle of any kind, edit its YAML with live problem checking, test-solve the built puzzle page, and export it. It runs the same build path as the CLI, in the page, so what it builds is byte-identical to what `varietypack build` writes; nothing is sent anywhere.
+The studio is a browser page for composing puzzles without the command line. Open or create a puzzle of any kind, edit it on a board with live problem checking (or as YAML with the *Edit as YAML* button, which is also where a file the editor can't represent opens), test-solve the built puzzle page, and export it. It runs the same build path as the CLI, in the page, so what it builds is byte-identical to what `varietypack build` writes; nothing is sent anywhere.
 
 Build it once, then open it from disk or host the single file anywhere:
 
@@ -153,18 +153,20 @@ The public repo hosts it, with every example in every theme, on GitHub Pages; `n
 
 What it does today:
 
-- **A structured editor for every kind**: type letters onto the real board (the spiral, the ring, the grid), split entries where you want them (Crushword: place blocks as you go, with an optional symmetry lock and live numbering), and clue them in a panel beside the board. New puzzles start from a chosen size; opening a source file imports it into the editor, and it exports a file that builds the same page.
-- **YAML mode for every kind**, for power users and for files the editor can't represent, starting from a kind's example, an opened `.yaml` file, or a saved draft.
-- **Live problems list** (the same validators as `varietypack validate`) and a **sandboxed preview** you can test-solve, with a "test-solved in m:ss" badge.
-- **Export** of the puzzle page, the puzzle page with answers hidden, the source YAML (verbatim) and the muddled YAML. Nothing exports while the puzzle has errors.
-- **Drafts** saved automatically in the browser (answers in plain text), plus a draft file to keep a copy or move computers.
-- **Build-only mode** for a muddled YAML someone sends you: pick a theme, test-solve it, and build its page without ever seeing the answers.
+- **A structured editor for every kind**: type letters onto the real board (the spiral, the ring, the grid), split entries where you want them (Crushword: place blocks as you go, with an optional symmetry lock and live numbering), and then clue them in the Clues step, a list of their own. New puzzles start from a chosen size, or from a kind's example; opening a source file imports it into the editor, and it exports a file that builds the same page.
+- **Test-solving an unfinished puzzle**: a puzzle missing only clues still test-solves, with placeholder text in the empty ones; the Clues step's Fill empty clues writes that text into the puzzle so you can edit it.
+- **YAML mode for every kind**, for power users: use the Edit as YAML button, or open a file the editor can't represent.
+- **Live problems list** (the same validators as `varietypack validate`) and a **sandboxed preview** you can test-solve, with the time it took you to solve it shown beside the preview. A theme picker beside the preview restyles it, and Export starts from that theme.
+- **Export** offers the puzzle page or the source YAML, each in a theme you choose, with an optional *Answers: Hidden* setting that produces the answers-hidden form of either. A puzzle with errors can't export its page; an unfinished one still saves a draft file you can reopen in the studio.
+- **Back and Forward** move between the start screen, your puzzles and their phases, and a reload returns to the open puzzle.
+- **Drafts** saved automatically in the browser (answers in plain text); download one from Export to keep a copy or move computers.
+- **Build-only mode** for an answers-hidden YAML someone sends you: pick a theme, test-solve it, and build its page without ever seeing the answers.
 
 ---
 
 ## Embedding puzzles
 
-A puzzle page can sit in an iframe on another site, such as a puzzle hunt, and tell that site when it's solved. In the studio, Export → *Puzzle page for embedding* asks for the host site's origin and gives you the page plus the snippet to paste; from the command line, build with `--muddle --embed-origin <origin>`.
+A puzzle page can sit in an iframe on another site, such as a puzzle hunt, and tell that site when it's solved. Build it from the command line with `--muddle --embed-origin <origin>`.
 
 ```html
 <iframe src="puzzle.hashed.html" title="My puzzle" data-varietypack style="width:100%;border:0;min-height:480px"></iframe>

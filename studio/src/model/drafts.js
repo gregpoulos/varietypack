@@ -3,6 +3,7 @@
 
 const { defaultOptions } = require('./doc');
 const { STRUCTURED } = require('./kinds');
+const { VALID_THEMES } = require('../../../shared/build/themeRegistry.js');
 
 const DRAFT_VERSION = 1;
 
@@ -35,7 +36,11 @@ function parseDraft(text) {
   if (!ok) throw new Error('Not a studio draft file');
   // A hand-edited or older file may lack options; fill them in so the UI can rely on
   // them.
-  return { ...d, options: { ...defaultOptions(), ...(d.options && typeof d.options === 'object' ? d.options : {}) } };
+  const options = { ...defaultOptions(), ...(d.options && typeof d.options === 'object' ? d.options : {}) };
+  // A theme the studio doesn't know (hand-edited, or from a newer studio) would leave the
+  // picker with no matching option.
+  if (options.previewTheme !== null && !VALID_THEMES.includes(options.previewTheme)) options.previewTheme = null;
+  return { ...d, options };
 }
 
 function indexEntry(doc, title) {

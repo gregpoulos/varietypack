@@ -3,7 +3,6 @@
 // studio/build.js) and in Node (studio tests). Must not require anything Node-only.
 const yaml = require('js-yaml');
 const { buildFromObject } = require('../../../shared/build/buildFromObject');
-const { validateEmbedOrigin } = require('../../../shared/build/validation');
 const { muddlePuzzle, MUDDLED_DUMP_OPTIONS } = require('../../../shared/build/muddleUtils');
 
 const { KINDS, hooksFor, kindError } = require('../../../shared/build/tools');
@@ -81,4 +80,4 @@ function checkText(text, options = {}) {
   return { parseError: null, ...checkPuzzle(puzzle, options) };
 }
 
-module.exports = { validateEmbedOrigin, KINDS, parseYaml, dumpYaml, validate, build, muddle, checkPuzzle, checkText, feasibleShapes, autoShape, SHAPE_NAMES };
+module.exports = { KINDS, parseYaml, dumpYaml, validate, build, muddle, checkPuzzle, checkText, feasibleShapes, autoShape, SHAPE_NAMES };

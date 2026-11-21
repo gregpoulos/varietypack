@@ -49,7 +49,7 @@ export function MarchingBandsSettings({ model, dispatch }) {
             </>
           )}
           <div class="size-actions">
-            <button type="button" id="resize-apply" class="btn primary" disabled={n2 === null || n2 === N}
+            <button type="button" id="resize-apply" class="btn dark" disabled={n2 === null || n2 === N}
               onClick={() => { dispatch({ type: 'MODEL_COMMAND', name: 'resize', args: [n2], now: Date.now() }); setOpen(false); }}>Resize</button>
             <button type="button" id="resize-cancel" class="btn" onClick={() => setOpen(false)}>Cancel</button>
           </div>

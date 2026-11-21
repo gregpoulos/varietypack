@@ -79,7 +79,7 @@ test('fromYaml: totals that differ throw a StructureError', () => {
 test('fromYaml: a muddled entry throws', () => {
   const p = puzzle();
   delete p.inward[0].answer; p.inward[0].length = 4;
-  assert.throws(() => imp(p), (e) => e instanceof StructureError && /muddled/.test(e.message));
+  assert.throws(() => imp(p), (e) => e instanceof StructureError && /without answers/.test(e.message));
 });
 
 test('fromYaml: bad bracket grammar throws with the grammar message', () => {
@@ -322,15 +322,16 @@ test('stepRead: moves along the cut\'s reading order and stops at the ends', () 
   assert.equal(spiral.stepRead(model, 'outward', 0, 1), 0);
 });
 
-test('entryStart: Tab and Shift+Tab jump between entry starts, wrapping', () => {
+test('entryStart: Tab and Shift+Tab jump between entry starts; null past either end', () => {
   const { model } = imp();   // inward starts at cells 0 and 4; outward at cells 8 and 4
   assert.equal(spiral.entryStart(model, 'inward', 1, 1), 4);
-  assert.equal(spiral.entryStart(model, 'inward', 5, 1), 0);
+  assert.equal(spiral.entryStart(model, 'inward', 5, 1), null);
   assert.equal(spiral.entryStart(model, 'inward', 5, -1), 4);
   assert.equal(spiral.entryStart(model, 'inward', 4, -1), 0);
-  assert.equal(spiral.entryStart(model, 'inward', 0, -1), 4);
+  assert.equal(spiral.entryStart(model, 'inward', 0, -1), null);
   assert.equal(spiral.entryStart(model, 'outward', 6, 1), 4);
   assert.equal(spiral.entryStart(model, 'outward', 6, -1), 8);
+  assert.equal(spiral.entryStart(model, 'outward', 8, -1), null);
 });
 
 test('entryFirstCell: the first cell of an entry in its reading order', () => {

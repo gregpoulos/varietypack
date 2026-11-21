@@ -4,22 +4,24 @@
 //
 //   { v: 1, id, kind: string|null, mode: 'yaml'|'muddled'|'structured',
 //     yaml: string|null,         // 'yaml': the author's text; 'muddled': the file as opened
-//     muddled: object|null,      // 'muddled': the parsed file (theme may be edited)
+//     muddled: object|null,      // 'muddled': the parsed file
 //     model: object,             // 'structured' only: the kind's cells-first model
-//     options: { font: 'embed'|'link', hashedPreview: boolean, phoneWidth: boolean },
+//     options: { font: 'embed'|'link', hashedPreview: boolean, phoneWidth: boolean,
+//                previewTheme: string|null },
 //     ui?: { symmetric?: boolean },   // editor settings; absent means the defaults
 //     updatedAt: number }
 const core = require('../core');
 const { STRUCTURED } = require('./kinds');
 const { StructureError } = require('./errors');
+const { fillEmptyClues } = require('./placeholderClues');
 
-const OPTION_KEYS = ['font', 'hashedPreview', 'phoneWidth'];
+const OPTION_KEYS = ['font', 'hashedPreview', 'phoneWidth', 'previewTheme'];
 // Editor settings kept with the doc but outside the model and the undo history
 // (Crushword's symmetry lock).
 const UI_KEYS = ['symmetric'];
 
 function defaultOptions() {
-  return { font: 'embed', hashedPreview: false, phoneWidth: false };
+  return { font: 'embed', hashedPreview: false, phoneWidth: false, previewTheme: null };
 }
 
 // With `yaml`, a YAML-mode document. Without it, a structured one: `kind` must have a
@@ -103,19 +105,41 @@ function setUi(doc, key, value, now) {
   return { ...doc, ui: { ...doc.ui, [key]: value }, updatedAt: now };
 }
 
-function setMuddledTheme(doc, theme, now) {
-  return { ...doc, muddled: { ...doc.muddled, theme }, updatedAt: now };
-}
-
 // The puzzle as YAML text; null for a structured document that isn't complete yet (it
 // can't be expressed as puzzle YAML until every cell and clue is filled in).
 function puzzleText(doc) {
   if (doc.mode === 'muddled') return core.dumpYaml(doc.muddled);
-  if (doc.mode === 'structured') {
+  if (doc.mode === 'structured') return memoByModel(puzzleTexts, doc, () => {
     const kind = STRUCTURED[doc.kind];
     return kind.completeness(doc.model).length ? null : core.dumpYaml(kind.toYaml(doc.model));
-  }
+  });
   return doc.yaml;
+}
+
+// puzzleText and previewText are asked for on every render (several times each), and each
+// runs completeness, toYaml and dumpYaml. A model is immutable (commands return new
+// ones), so its texts are computed once per model object.
+const puzzleTexts = new WeakMap();
+const previewTexts = new WeakMap();
+function memoByModel(cache, doc, compute) {
+  if (cache.has(doc.model)) return cache.get(doc.model);
+  const text = compute();
+  cache.set(doc.model, text);
+  return text;
+}
+
+// The text the Test-solve preview builds from. Equal to puzzleText unless a structured
+// document is missing clues only: then the gaps are filled with placeholders in a copy of
+// the model, so the puzzle can still be test-solved. Null when the puzzle is incomplete
+// in any other way. Preview only (see model/placeholderClues.js).
+function previewText(doc) {
+  const text = puzzleText(doc);
+  if (text !== null || doc.mode !== 'structured') return text;
+  return memoByModel(previewTexts, doc, () => {
+    const kind = STRUCTURED[doc.kind];
+    const filled = fillEmptyClues(doc.model, kind.mapEntries);
+    return kind.completeness(filled).length ? null : core.dumpYaml(kind.toYaml(filled));
+  });
 }
 
 // Structured → YAML mode. Refused while the puzzle is incomplete.
@@ -135,6 +159,6 @@ function toStructuredMode(doc) {
 }
 
 module.exports = {
-  defaultOptions, newDoc, fieldValue, parseSize, openText, setYaml, setOption, setUi, setMuddledTheme,
-  puzzleText, toYamlMode, toStructuredMode,
+  defaultOptions, newDoc, fieldValue, parseSize, openText, setYaml, setOption, setUi,
+  puzzleText, previewText, toYamlMode, toStructuredMode,
 };

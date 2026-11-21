@@ -154,4 +154,51 @@ function buildVariant(yamlPath, edit, name, dir) {
   return htmlOut;
 }
 
-module.exports = { openStudio, openStudioFile, downloadText, typeBoard, buildVariant, rewriteSaveOnNextLoad, clickGapLine, clickHelpRow, typeCell, cellLetterPairs, fillCrushwordCell, solveCrushwordBoard, solveRingBoard };
+// Opens the Grid popover (the kind's puzzle settings) unless it is already open.
+async function openGrid(page) {
+  if (!(await page.locator('#grid-settings').isVisible())) await page.locator('#btn-grid').click();
+  await expect(page.locator('#grid-settings')).toBeVisible();
+}
+
+// Opens the Paste letters popover (the whole-board text field) unless it is already open.
+async function openPaste(page) {
+  if (!(await page.locator('#paste-letters').isVisible())) await page.locator('#btn-paste-letters').click();
+  await expect(page.locator('#paste-letters')).toBeVisible();
+}
+
+// Checks that Tab from `lastClue`, the last clue field, leaves the clue lists with no
+// wrap and no trap. Browsers differ on Tab from the page's last focusable element
+// (Firefox stays put), so an input appended after the app gives Tab somewhere to land (an
+// input, not a button: WebKit's Tab skips buttons).
+async function expectTabLeavesClues(page, lastClue) {
+  await page.evaluate(() => {
+    const b = document.createElement('input');
+    b.id = 'tab-probe';
+    document.body.append(b);
+  });
+  await lastClue.focus();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#tab-probe')).toBeFocused();
+}
+
+// Switches to a phase ('board', 'clues' or 'test') through the toolbar's step control.
+async function showPhase(page, view) {
+  await page.locator(`#phase-steps [data-view="${view}"]`).click();
+}
+
+// The open Grid popover stays inside a 1280-wide window, with no horizontal page scroll.
+async function expectGridFits(page) {
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+  expect(fits).toBe(true);
+  const box = await page.locator('#grid-settings').boundingBox();
+  expect(box.x + box.width).toBeLessThanOrEqual(1280);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+}
+
+// Opens the Cell… menu and chooses an item by its id (btn-circle, btn-insert-cell, …).
+async function cellMenuItem(page, id) {
+  if (!(await page.locator('#cell-menu').isVisible())) await page.locator('#btn-cell').click();
+  await page.locator(`#cell-menu #${id}`).click();
+}
+
+module.exports = { cellMenuItem, expectGridFits, expectTabLeavesClues, openPaste, showPhase, openGrid, openStudio, openStudioFile, downloadText, typeBoard, buildVariant, rewriteSaveOnNextLoad, clickGapLine, clickHelpRow, typeCell, cellLetterPairs, fillCrushwordCell, solveCrushwordBoard, solveRingBoard };

@@ -1,36 +1,32 @@
-import { useState, useEffect } from 'preact/hooks';
 import { problemsLabel } from '../model/app.js';
 import { canUndo, canRedo } from '../model/history.js';
 import { Diagnostics } from './Diagnostics.jsx';
-import { kindName } from './kinds.js';
+import { usePopover } from './usePopover.js';
 
-export function Toolbar({ state, dispatch, title, saveFailed, onHome, onOpen, onSaveDraft, onJump }) {
+const EDIT_YAML_BLOCKED = 'Resolve the puzzle’s problems (finish the cells and clues) before editing it as YAML.';
+
+export function Toolbar({ state, dispatch, title, saveFailed, onHome, onJump, onEditYaml, canYaml, onReturn, canReturn }) {
   const { doc, check, view, history, completeness } = state;
   const structured = doc.mode === 'structured';
   const muddled = doc.mode === 'muddled';
   const label = problemsLabel(state);
-  const [pop, setPop] = useState(null);
-
-  // Close a popover on an outside press or Escape.
-  useEffect(() => {
-    if (!pop) return undefined;
-    const away = e => { if (!e.target.closest('.pop, [data-pop]')) setPop(null); };
-    const esc = e => { if (e.key === 'Escape') setPop(null); };
-    document.addEventListener('pointerdown', away);
-    document.addEventListener('keydown', esc);
-    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
-  }, [pop]);
-
-  const toggle = name => setPop(p => (p === name ? null : name));
-  const menu = fn => () => { setPop(null); fn(); };
+  const resetKey = `${doc.id}:${view}`;
+  const problems = usePopover(resetKey);
+  const yaml = doc.mode === 'yaml';
+  const steps = yaml
+    ? [['board', 'YAML'], ['test', 'Test-solve']]
+    : [['board', 'Board'], ['clues', 'Clues'], ['test', 'Test-solve']];
 
   return (
     <header id="toolbar">
-      <button type="button" id="btn-home" class="home" aria-label="Back to the start screen" onClick={onHome}>‹ Studio</button>
-      <div class="doc">
-        <span id="doc-title">{title}</span>
-        <span id="doc-meta">{muddled ? 'Muddled file · answers hidden' : kindName(doc.kind)}</span>
-      </div>
+      <span class="slot l" aria-hidden="true"></span>
+      <button type="button" id="btn-home" class="btn quiet" aria-label="Back to the start screen" onClick={onHome}>‹ Studio</button>
+      {muddled && (
+        <div class="doc">
+          <span id="doc-title">{title}</span>
+          <span id="doc-meta">Answers hidden</span>
+        </div>
+      )}
       {!muddled && (
         <span id="save-status" class={saveFailed ? 'failed' : ''}>
           {saveFailed ? 'Not saved: browser storage is unavailable' : 'Saved in this browser'}
@@ -38,18 +34,19 @@ export function Toolbar({ state, dispatch, title, saveFailed, onHome, onOpen, on
       )}
       {!muddled && (
         <div class="top-mid">
-          <span id="view-switch" class="seg" role="group" aria-label="View">
-            <button type="button" class="seg-btn" data-view="edit" aria-pressed={view === 'edit'}
-              onClick={() => dispatch({ type: 'SET_VIEW', view: 'edit' })}>Edit</button>
-            <button type="button" class="seg-btn" data-view="test" aria-pressed={view === 'test'}
-              onClick={() => dispatch({ type: 'SET_VIEW', view: 'test' })}>Test-solve</button>
-          </span>
-          <span class="anchor">
-            <button type="button" id="problems-chip" class={label.tone} data-pop="problems"
-              aria-expanded={pop === 'problems'} onClick={() => toggle('problems')}>{label.text}</button>
-            {pop === 'problems' && (
+          <nav id="phase-steps" aria-label="Steps">
+            {steps.map(([v, text]) => (
+              <button type="button" key={v} class="btn step" data-view={v}
+                aria-current={view === v ? 'step' : undefined}
+                onClick={() => dispatch({ type: 'SET_VIEW', view: v })}>{text}</button>
+            ))}
+          </nav>
+          <span class="anchor" ref={problems.ref}>
+            <button type="button" id="problems-chip" class={label.tone}
+              aria-expanded={problems.open} onClick={problems.toggle}>{label.text}</button>
+            {problems.open && (
               <Diagnostics check={label.tone === 'busy' ? null : check} completeness={structured ? completeness : []}
-                onJump={t => { setPop(null); onJump(t); }} />
+                onJump={t => { problems.close(); onJump(t); }} />
             )}
           </span>
         </div>
@@ -57,32 +54,26 @@ export function Toolbar({ state, dispatch, title, saveFailed, onHome, onOpen, on
       <div class="top-end">
         {structured && (
           <>
-            <button type="button" id="btn-undo" class="btn ghost" aria-label="Undo" disabled={!canUndo(history)}
-              onClick={() => dispatch({ type: 'UNDO', now: Date.now() })}>↶</button>
-            <button type="button" id="btn-redo" class="btn ghost" aria-label="Redo" disabled={!canRedo(history)}
-              onClick={() => dispatch({ type: 'REDO', now: Date.now() })}>↷</button>
+            <button type="button" id="btn-undo" class="btn" disabled={!canUndo(history)}
+              onClick={() => dispatch({ type: 'UNDO', now: Date.now() })}><span aria-hidden="true">↶</span> <span class="btn-word">Undo</span></button>
+            <button type="button" id="btn-redo" class="btn" disabled={!canRedo(history)}
+              onClick={() => dispatch({ type: 'REDO', now: Date.now() })}><span aria-hidden="true">↷</span> <span class="btn-word">Redo</span></button>
           </>
         )}
-        <span class="anchor">
-          <button type="button" id="btn-more" class="btn" data-pop="more" aria-label="More"
-            aria-expanded={pop === 'more'} onClick={() => toggle('more')}>⋯</button>
-          {pop === 'more' && (
-            <div class="pop right">
-              <button type="button" id="btn-new" class="menu-item" onClick={menu(onHome)}>
-                New puzzle…<small>Back to the start screen’s kinds and examples</small>
-              </button>
-              <button type="button" id="btn-open" class="menu-item" onClick={menu(onOpen)}>Open a file…</button>
-              {!muddled && (
-                <button type="button" id="btn-save-draft" class="menu-item" onClick={menu(onSaveDraft)}>
-                  Download draft file<small>Keeps a copy you can open again, problems and all</small>
-                </button>
-              )}
-            </div>
-          )}
-        </span>
-        <button type="button" id="btn-export" class="btn primary"
+        {structured && (
+          // aria-disabled, not disabled: Firefox shows no tooltip on a disabled button,
+          // so the reason is the title and, for touch (no hover), a message on click.
+          <button type="button" id="btn-edit-yaml" class="btn" aria-disabled={canYaml ? undefined : 'true'}
+            title={canYaml ? undefined : EDIT_YAML_BLOCKED}
+            onClick={canYaml ? onEditYaml : () => dispatch({ type: 'SHOW_MESSAGE', text: EDIT_YAML_BLOCKED })}>Edit as YAML</button>
+        )}
+        {yaml && canReturn && (
+          <button type="button" id="btn-back-to-editor" class="btn" onClick={onReturn}>Back to the editor</button>
+        )}
+        <button type="button" id="btn-export" class="btn red"
           onClick={() => dispatch({ type: 'SHOW_DIALOG', name: 'export' })}>Export…</button>
       </div>
+      <span class="slot r" aria-hidden="true"></span>
     </header>
   );
 }

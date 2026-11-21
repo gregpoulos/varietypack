@@ -35,7 +35,7 @@ export function NewSizeForm({ kind, onCreate, onCancel }) {
       {SizePreview && <div id="size-preview"><SizePreview values={values} setExtra={setExtra} /></div>}
       {error && <p id="new-size-error" class="err">{error}</p>}
       <div class="size-actions">
-        <button type="submit" id="new-size-create" class="btn primary">Create</button>
+        <button type="submit" id="new-size-create" class="btn dark">Create</button>
         <button type="button" id="new-size-cancel" class="btn" onClick={onCancel}>Cancel</button>
       </div>
     </form>
