@@ -131,56 +131,51 @@ test('gapToCutIndex and entryLabel', () => {
 
 // ── commands ────────────────────────────────────────────────────────────────
 
-test('setCell and setSequence edit the cells', () => {
+test('setCell edits a cell', () => {
   const { model } = imp();
   assert.equal(run(model, 'setCell', 0, 'x').cells[0], 'x');
   assert.equal(run(model, 'setCell', 0, '').cells[0], '');
-  const seq = run(model, 'setSequence', ['r', 'o', 't', 'i', 'd', 'e', 'r', 'e', 'k']);
-  assert.equal(seq.cells.join(''), 'rotiderek');
 });
 
-test('setSequence: an insert shifts later breaks in both cuts, in each cut\'s own coordinates', () => {
+test('insertCell shifts later breaks in both cuts, in each cut\'s own coordinates', () => {
   const { model } = imp();   // inward starts [0,4]; outward starts [0,4] (reading coordinates)
-  const next = run(model, 'setSequence', ['r', 'o', 'x', 't', 'i', 'd', 'e', 'r', 'e', 'k']); // insert at 2
+  const next = run(model, 'insertCell', 2);
   assert.deepEqual(next.cuts.inward.starts, [0, 5]);
   // the outward break sits at reading index 4 = cell index 4 (between cells 4 and 3 ->
   // 'i'|'d'); the insert is after it in reading order, so it stays at 4
   assert.deepEqual(next.cuts.outward.starts, [0, 4]);
   // an insert near the END of the sequence moves the outward break instead
-  const late = run(model, 'setSequence', ['r', 'o', 't', 'i', 'd', 'e', 'r', 'e', 'x', 'k']); // insert at 8
+  const late = run(model, 'insertCell', 8);
   assert.deepEqual(late.cuts.inward.starts, [0, 4]);
   assert.deepEqual(late.cuts.outward.starts, [0, 5]);
 });
 
-test('setSequence: circles shift with the cells, and a circle inside a replaced span is dropped', () => {
+test('circles shift with an inserted cell, and a circle on a deleted cell is dropped', () => {
   const { model } = imp();
   const circled = run(model, 'toggleCircle', 6);
-  assert.deepEqual(run(circled, 'setSequence', ['x', ...circled.cells]).circles, [7]);
-  // replacing the circled cell with another letter keeps its circle (typing the same
-  // letter on the board does)
-  const replaced = run(circled, 'setSequence', ['r', 'o', 't', 'i', 'd', 'e', 'q', 'e', 'k']);
-  assert.deepEqual(replaced.circles, [6]);
-  // but a circle inside a span that shrinks or grows has no cell to stay on
-  const shrunk = run(circled, 'setSequence', ['r', 'o', 't', 'i', 'd', 'k']);   // drops 'rer e'... cells 5-7
-  assert.deepEqual(shrunk.circles, []);
+  assert.deepEqual(run(circled, 'insertCell', 0).circles, [7]);
+  assert.deepEqual(run(circled, 'deleteCell', 6).circles, []);
 });
 
-test('setSequence: deleting a span that swallows a break merges the entries and orphans the clue', () => {
+test('deleting cells that swallow a break merges the entries and orphans the clue', () => {
   const { model } = imp();
   // 'rotid' (cells 1-5) deleted: the inward break at 4 sits inside the span and collapses
   // onto 0
-  const next = run(model, 'setSequence', ['e', 'r', 'e', 'k']);
+  let next = model;
+  for (let k = 0; k < 5; k++) next = run(next, 'deleteCell', 0);
+  assert.equal(next.cells.join(''), 'erek');
   assert.deepEqual(next.cuts.inward.starts, [0]);
   // ...and the outward break now sits at the new end, so it merges too
   assert.deepEqual(next.cuts.outward.starts, [0]);
   assert.deepEqual(next.orphans.map(o => [o.clue, o.from]), [['i2', 'inward 2'], ['o2', 'outward 2']]);
   // a deletion that only straddles the break moves it instead of merging
-  const moved = run(model, 'setSequence', ['r', 'o', 't', 'e', 'r', 'e', 'k']);
+  const moved = run(run(model, 'deleteCell', 3), 'deleteCell', 3);
+  assert.equal(moved.cells.join(''), 'roterek');
   assert.deepEqual(moved.cuts.inward.starts, [0, 3]);
   assert.deepEqual(moved.orphans, []);
 });
 
-test('insertCell and deleteCell are setSequence edits', () => {
+test('insertCell and deleteCell use the given index', () => {
   const { model } = imp();
   assert.equal(run(model, 'insertCell', 3).cells.length, 10);
   assert.equal(run(model, 'insertCell', 3).cells[3], '');
@@ -373,7 +368,6 @@ test('fromYaml: a clue or title that is not text throws a StructureError', () =>
 
 test('the cell count never reaches zero', () => {
   const { model } = imp();
-  assert.deepEqual(run(model, 'setSequence', []), model);
   const one = { ...model, cells: ['a'], cuts: { inward: { starts: [0], entries: [model.cuts.inward.entries[0]] }, outward: { starts: [0], entries: [model.cuts.outward.entries[0]] } }, circles: [] };
   assert.deepEqual(run(one, 'deleteCell', 0), one);
 });

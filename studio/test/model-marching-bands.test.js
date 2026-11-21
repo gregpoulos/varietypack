@@ -5,7 +5,6 @@ const assert   = require('node:assert/strict');
 const mb       = require('../src/model/kinds/marching-bands');
 const { StructureError } = require('../src/model/errors');
 const { commandRunner } = require('./helpers');
-const { bandCells } = require('../../marching-bands/src/layout.mjs');
 
 // A 5×5 puzzle (the validator's own minimal one): the center cell is a block.
 //   r0: A B C D E   r1: F G H I J   r2: K L # M N   r3: O P Q R S   r4: T U V W X
@@ -146,35 +145,6 @@ test('setCell is a no-op on the center', () => {
   assert.equal(run(model, 'setCell', 1, 'Z').cells[0], 'z');
 });
 
-test('setLine on a row: cells are written, the band crossing sees them, starts decide the entries', () => {
-  const { model } = imp();
-  // row 0 (A B C D E | AB CDE) becomes xyzab with a start at 3 instead of 2
-  const next = run(model, 'setLine', 'rows', 0, ['x', 'y', 'z', 'a', 'b'], [0, 3]);
-  assert.equal(next.cells.slice(0, 5).join(''), 'xyzab');
-  const band = mb.pathIds(next, 'bands', 0).slice(0, 5).map(id => next.cells[id - 1]).join('');
-  assert.equal(band, 'xyzab');
-  assert.deepEqual(next.rows[0].starts, [0, 3]);
-  assert.equal(next.rows[0].entries[0].id, model.rows[0].entries[0].id);   // the start at 0 didn't move: keeps its entry and clue
-  assert.equal(next.rows[0].entries[0].clue, 'r1a');
-  assert.equal(next.rows[0].entries[1].clue, '');                          // a new start: new, empty
-  assert.deepEqual(next.orphans.map(o => [o.clue, o.from]), [['r1b', 'Row 1 · b']]);
-});
-
-test('setLine keeps an entry whose start did not move, even with new letters', () => {
-  const { model } = imp();
-  const next = run(model, 'setLine', 'rows', 0, ['x', 'y', 'c', 'd', 'e'], [0, 2]);
-  assert.equal(next.rows[0].entries[1].clue, 'r1b');
-  assert.deepEqual(next.orphans, []);
-});
-
-test('setLine on a band writes the letters in bandCells order', () => {
-  const { model } = imp();
-  const cells = Array.from({ length: 8 }, (_, i) => String.fromCharCode(97 + i));     // a..h around band B
-  const next = run(model, 'setLine', 'bands', 1, cells, [0, 4]);
-  bandCells(1, 5).forEach((id, i) => assert.equal(next.cells[id - 1], cells[i]));
-  assert.deepEqual(next.bands[1].starts, [0, 4]);
-});
-
 test('resize 5 → 7: content stays top-left, a center-row break is mapped by column, band clues are orphaned', () => {
   const { model } = imp();
   const next = run(model, 'resize', 7);
@@ -284,32 +254,6 @@ test('entryOfCell and entryIds: which entry covers a cell, and the cells of an e
   assert.deepEqual(mb.entryIds(model, 'rows', 0, 1), [3, 4, 5]);
 });
 
-test('lineText: a row or band as text, an entry per part, split by " | "', () => {
-  const { model } = imp();
-  assert.equal(mb.lineText(model, 'rows', 0), 'AB | CDE');
-  assert.equal(mb.lineText(model, 'rows', 2), 'KL | MN');
-  assert.equal(mb.lineText(model, 'bands', 1), 'GHI | MR | QP | L');
-});
-
-test('parseLine: cells and starts for a good line', () => {
-  const { model } = imp();
-  assert.deepEqual(mb.parseLine(model, 'rows', 0, 'AB | CDE'), { cells: ['a', 'b', 'c', 'd', 'e'], starts: [0, 2] });
-  // a bracketed group is one cell and _ an empty one: five cells fill the five-cell row
-  assert.deepEqual(mb.parseLine(model, 'rows', 0, 'A[BC]D | E_'), { cells: ['a', 'bc', 'd', 'e', ''], starts: [0, 3] });
-});
-
-test('parseLine: every complaint, in the plan\'s words', () => {
-  const { model } = imp();
-  assert.match(mb.parseLine(model, 'rows', 0, 'AB | C[DE').error, /unclosed "\["/);
-  const empty = /^Each \| needs letters on both sides\. Two in a row, or one at either end, would leave an empty entry\.$/;
-  assert.match(mb.parseLine(model, 'rows', 0, 'AB || CDE').error, empty);
-  assert.match(mb.parseLine(model, 'rows', 0, '| ABCDE').error, empty);
-  assert.match(mb.parseLine(model, 'rows', 0, 'ABCDE |').error, empty);
-  assert.equal(mb.parseLine(model, 'rows', 0, 'AB | CD').error, 'Row 1 has 5 cells, and this has 4.');
-  assert.equal(mb.parseLine(model, 'bands', 1, 'GHI').error, 'Band B has 8 cells, and this has 3.');
-  assert.equal(mb.parseLine(model, 'rows', 2, 'KL | MN').error, undefined);        // the center row has 4 cells
-});
-
 // ── robustness (cross-tool review of PR 3b) ─────────────────────────────────
 
 test('stepBack: the previous id along the path, and nothing before a path\'s first cell', () => {
@@ -324,18 +268,6 @@ test('stepBack: the previous id along the path, and nothing before a path\'s fir
 test('resize ignores a size that is not a whole number from 3 up, or is the current size', () => {
   const { model } = imp();
   for (const bad of [NaN, 2, 4.5, '7', null, undefined, 5]) assert.deepEqual(run(model, 'resize', bad), model, String(bad));
-});
-
-test('setLine ignores a line that does not fit the row or band it is for', () => {
-  const { model } = imp();
-  const ok = ['a', 'b', 'c', 'd', 'e'];
-  assert.deepEqual(run(model, 'setLine', 'rows', 9, ok, [0]), model);                       // no such row
-  assert.deepEqual(run(model, 'setLine', 'nowhere', 0, ok, [0]), model);
-  assert.deepEqual(run(model, 'setLine', 'rows', 0, ok.slice(1), [0]), model);              // too few cells
-  assert.deepEqual(run(model, 'setLine', 'rows', 0, ok, [1, 3]), model);                    // must start at 0
-  assert.deepEqual(run(model, 'setLine', 'rows', 0, ok, [0, 3, 3]), model);                 // strictly increasing
-  assert.deepEqual(run(model, 'setLine', 'rows', 0, ok, [0, 5]), model);                    // inside the row
-  assert.notDeepEqual(run(model, 'setLine', 'rows', 0, ok, [0, 3]), model);
 });
 
 test('isModel: circles are real ids (1 up, never the center) and the center cell is empty', () => {
@@ -361,8 +293,3 @@ test('resize refuses a size above the size field\'s maximum', () => {
   assert.equal(run(model, 'resize', 25).size, 25);
 });
 
-test('parseLine: an empty line reports the cell count, not a complaint about |', () => {
-  const { model } = imp();
-  assert.equal(mb.parseLine(model, 'rows', 2, '').error, 'Row 3 has 4 cells, and this has 0.');
-  assert.equal(mb.parseLine(model, 'bands', 0, '   ').error, 'Band A has 16 cells, and this has 0.');
-});

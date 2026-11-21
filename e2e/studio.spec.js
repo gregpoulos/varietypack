@@ -703,13 +703,13 @@ test('leaving right after a reload keeps the draft\'s title in the list', async 
 test('opening one editor popover closes another', async ({ page }) => {
   await start(page);
   await openTemplate(page);
-  await page.locator('#btn-paste-letters').click();
-  await expect(page.locator('#paste-letters')).toBeVisible();
+  await page.locator('#btn-cell').click();
+  await expect(page.locator('#cell-menu')).toBeVisible();
   await page.locator('#btn-keys').click();
   await expect(page.locator('#keys')).toBeVisible();
-  await expect(page.locator('#paste-letters')).toBeHidden();
-  await page.locator('#btn-paste-letters').click();
-  await expect(page.locator('#paste-letters')).toBeVisible();
+  await expect(page.locator('#cell-menu')).toHaveCount(0);
+  await page.locator('#btn-cell').click();
+  await expect(page.locator('#cell-menu')).toBeVisible();
   await expect(page.locator('#keys')).toHaveCount(0);
   await page.locator('#btn-home').click();
   await openTemplate(page, 'crushword');
@@ -1097,8 +1097,8 @@ test('the drafts sheet shows a kind as its icon alone, and the delete confirm is
 // letters natively. Insert and Delete cell belong to the two kinds whose cell count is
 // edited here, and only in the Board phase.
 const CELL_MENUS = {
-  spiral: ['btn-circle', 'btn-rebus', 'btn-insert-cell', 'btn-delete-cell'],
-  'snake-charmer': ['btn-circle', 'btn-rebus', 'btn-insert-cell', 'btn-delete-cell'],
+  spiral: ['btn-circle', 'btn-rebus', 'btn-insert-before', 'btn-insert-after', 'btn-delete-cell'],
+  'snake-charmer': ['btn-circle', 'btn-rebus', 'btn-insert-before', 'btn-insert-after', 'btn-delete-cell'],
   'marching-bands': ['btn-circle', 'btn-rebus'],
   crushword: ['btn-circle', 'btn-block'],
 };
@@ -1138,7 +1138,7 @@ test('the Clues phase keeps a Cell… menu without the structural items', async 
   await page.locator('#phase-steps [data-view="clues"]').click();
   await page.locator('#btn-cell').click();
   await expect(page.locator('#cell-menu #btn-circle')).toBeVisible();
-  await expect(page.locator('#cell-menu #btn-insert-cell')).toHaveCount(0);
+  await expect(page.locator('#cell-menu #btn-insert-after')).toHaveCount(0);
 });
 
 // Selecting an entry that is already in view must not scroll the side column, and a
@@ -1256,4 +1256,16 @@ test('a long drafts list scrolls inside its panel, and the drafts note is a tool
   await expect(note).toBeHidden();
   await page.locator('.ts-title').focus();
   await expect(note).toBeVisible();
+});
+
+test('⌘← and ⌘→ in the board step browser history, which a text field would otherwise eat', async ({ page }) => {
+  await start(page);
+  await openTemplate(page, 'spiral');
+  await showClues(page);
+  await page.locator('#board-input').focus();
+  await page.keyboard.press('Meta+ArrowLeft');
+  await expect(page.locator('#phase-steps [data-view="board"]')).toHaveAttribute('aria-current', 'step');
+  await page.locator('#board-input').focus();
+  await page.keyboard.press('Meta+ArrowRight');
+  await expect(page.locator('#phase-steps [data-view="clues"]')).toHaveAttribute('aria-current', 'step');
 });

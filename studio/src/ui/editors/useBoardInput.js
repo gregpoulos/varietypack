@@ -12,6 +12,19 @@ function isBoardKey(e) {
   return BOARD_KEYS.has(e.key);
 }
 
+// ⌘← and ⌘→ are the browser's Back and Forward, but in a focused text field the browser
+// reads them as "caret to line start/end" and never navigates, so the hidden input
+// forwards them itself. The studio keeps its screens in the URL hash, so
+// history.back()/forward() is the same step the browser would take. → true when `e` was
+// one of them.
+function browserHistoryKey(e) {
+  if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return false;
+  e.preventDefault();
+  if (e.key === 'ArrowLeft') history.back(); else history.forward();
+  return true;
+}
+
 // Whether the board holds focus only because opening the document gave it (see
 // maybeFocusBoard in StructuredShell). Such focus is not the author's own, so the first
 // click on the caret cell must still just select; it counts as focus only once the
@@ -57,6 +70,7 @@ export function useBoardInput({ onLetter, onKey }) {
     },
     onKeyDown(e) {
       focusedByOpen = false;
+      if (browserHistoryKey(e)) return;
       if (isBoardKey(e)) onKey(e);
     },
   };

@@ -83,8 +83,6 @@ function reduce(state, action) {
       return state.doc ? { ...state, doc: doc.setYaml(state.doc, action.text, action.now) } : state;
     case 'SET_OPTION':
       return state.doc ? { ...state, doc: doc.setOption(state.doc, action.key, action.value, action.now) } : state;
-    case 'SET_UI':
-      return state.doc ? { ...state, doc: doc.setUi(state.doc, action.key, action.value, action.now) } : state;
     case 'CHECK_RESULT': {
       // A result for text that has since changed is stale; drop it.
       if (!state.doc || action.text !== doc.puzzleText(state.doc)) return state;

@@ -5,7 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
-const { cellMenuItem, expectTabLeavesClues, openStudio, openStudioFile, downloadText: download, typeBoard: type, openPaste, showPhase } = require('./helpers');
+const { cellMenuItem, expectTabLeavesClues, openStudio, openStudioFile, downloadText: download, typeBoard: type, showPhase } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../spiral/src/builder');
 const { validate } = require('../spiral/src/validator');
@@ -28,6 +28,12 @@ async function newSpiral(page, cells = 40) {
   await page.locator('#new-size-cells').fill(String(cells));
   await page.locator('#new-size-create').click();
   await expect(page.locator('#board')).toBeVisible();
+}
+
+// Types the 40-letter test sequence from the first cell.
+async function fillSpiral(page) {
+  await cell(page, 0).click();
+  await type(page, 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN');
 }
 
 const openFile = (page, file) => openStudioFile(page, studio.url, file);
@@ -103,17 +109,12 @@ test('Enter composes a multi-letter cell', async ({ page }) => {
   await type(page, 'HAR');
   await page.keyboard.press('Enter');
   await expect(letter(page, 3)).toHaveText('HAR');
-  await openPaste(page);
-  await expect(page.locator('#sequence-field')).toHaveValue(/\[HAR\]/);
   await expect(cell(page, 3)).toHaveClass(/caret/);
 });
 
-test('the sequence field replaces the cells', async ({ page }) => {
+test('typing fills the cells', async ({ page }) => {
   await newSpiral(page);
-  const seq = 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN'.slice(0, 40);
-  await openPaste(page);
-  await page.locator('#sequence-field').fill(seq);
-  await page.locator('#sequence-field').press('Enter');
+  await fillSpiral(page);
   await expect(page.locator('.sp-ltr')).toHaveCount(40);
   await expect(letter(page, 0)).toHaveText('A');
   await expect(letter(page, 27)).toHaveText('B');
@@ -141,10 +142,31 @@ test('"." switches cuts and "|" breaks the outward cut', async ({ page }) => {
   await expect(page.locator('.sp-break.out[data-gap="11"]')).toHaveCount(1);
 });
 
+test('Insert cell after puts the new cell after the caret', async ({ page }) => {
+  await newSpiral(page);
+  await cell(page, 0).click();
+  await type(page, 'ABC');
+  await cell(page, 1).click();
+  await cellMenuItem(page, 'btn-insert-after');
+  await expect(letter(page, 1)).toHaveText('B');
+  await expect(letter(page, 2)).toHaveCount(0);
+  await expect(letter(page, 3)).toHaveText('C');
+});
+
+test('Insert cell before puts the new cell before the caret', async ({ page }) => {
+  await newSpiral(page);
+  await cell(page, 0).click();
+  await type(page, 'ABC');
+  await cell(page, 1).click();
+  await cellMenuItem(page, 'btn-insert-before');
+  await expect(letter(page, 1)).toHaveCount(0);
+  await expect(letter(page, 2)).toHaveText('B');
+});
+
 test('inserting a cell redraws the spiral', async ({ page }) => {
   await newSpiral(page);
   await cell(page, 5).click();
-  await cellMenuItem(page, 'btn-insert-cell');
+  await cellMenuItem(page, 'btn-insert-after');
   await expect(page.locator('.sp-cell')).toHaveCount(41);
   await expect(page.locator('#meter-cells')).toContainText('41');
 });
@@ -187,11 +209,7 @@ test('a removed break\'s clue goes to the orphan tray and can be reattached', as
 
 test('a complete puzzle exports YAML that validates', async ({ page }) => {
   await newSpiral(page);
-  await openPaste(page);
-  await page.locator('#sequence-field').fill('ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN');
-  await page.locator('#sequence-field').press('Enter');
-  await page.keyboard.press('Escape');   // the popover stays open after applying, over the board
-  await expect(page.locator('#paste-letters')).toBeHidden();
+  await fillSpiral(page);
   await page.locator('.sp-gap[data-gap="20"]').click();
   await page.locator('#cut-toggle [data-cut="outward"]').click();
   await page.locator('.sp-gap[data-gap="20"]').click();
@@ -293,18 +311,6 @@ test('keys the editor does not use are left to the browser', async ({ page }) =>
     });
   });
   expect(prevented).toEqual([false, false, false]);
-});
-
-test('the sequence field shows the current cells again after an undo, not a stale draft', async ({ page }) => {
-  await newSpiral(page);
-  await openPaste(page);
-  await page.locator('#sequence-field').fill('ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN');
-  await page.locator('#sequence-field').press('Enter');
-  await page.locator('#sequence-field').fill('[AB');          // invalid, left unapplied
-  await page.locator('#btn-undo').click();   // the outside press closes the popover
-  await openPaste(page);
-  await expect(page.locator('#sequence-field')).toHaveValue('_'.repeat(40));
-  await expect(page.locator('#sequence-error')).toHaveCount(0);
 });
 
 test('clicking the selected cell again switches direction', async ({ page }) => {
@@ -612,10 +618,7 @@ test('the title problem focuses the title from Test-solve', async ({ page }) => 
 
 test('a fully lettered Spiral with no clues test-solves with placeholders, and exports none', async ({ page }) => {
   await newSpiral(page);
-  await openPaste(page);
-  await page.locator('#sequence-field').fill('ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN');
-  await page.locator('#sequence-field').press('Enter');
-  await page.keyboard.press('Escape');
+  await fillSpiral(page);
   await page.locator('.sp-gap[data-gap="20"]').click();
   await page.locator('#cut-toggle [data-cut="outward"]').click();
   await page.locator('.sp-gap[data-gap="20"]').click();

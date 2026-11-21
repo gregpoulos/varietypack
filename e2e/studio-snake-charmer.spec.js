@@ -5,7 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
-const { cellMenuItem, expectTabLeavesClues, openStudio, openStudioFile, downloadText: download, openPaste, showPhase } = require('./helpers');
+const { cellMenuItem, expectTabLeavesClues, openStudio, openStudioFile, downloadText: download, typeBoard: type, showPhase } = require('./helpers');
 const { clickGapLine } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../snake-charmer/src/builder');
@@ -44,13 +44,9 @@ const gap = (page, k) => page.locator(`.rgap[data-gap="${k}"]`);
 const lap = (page, n) => page.locator(`#lap-toggle [data-lap="${n}"]`);
 
 async function fillRing(page, letters) {
-  await openPaste(page);
-  await page.locator('#sequence-field').fill(letters);
-  await page.locator('#sequence-field').press('Enter');
-  // The popover stays open after applying, and where the tool keys wrap it can sit over
-  // the board's gap lines, which the tests click next.
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#paste-letters')).toBeHidden();
+  await cell(page, 0).click();
+  await type(page, letters);
+  await lap(page, 1).click();   // typing all N cells carries the caret onto lap 2
 }
 
 // ---- tests ------------------------------------------------------------------
@@ -162,8 +158,7 @@ test('a complete puzzle exports YAML that validates', async ({ page }) => {
 
 test('Backspace at the first cell does not wrap round and erase the last one', async ({ page }) => {
   await newRing(page, 16);
-  await fillRing(page, 'ABCDEFGHIJKLMNOP');
-  await cell(page, 0).click();
+  await fillRing(page, 'ABCDEFGHIJKLMNOP');     // leaves the caret on cell 1, lap 1
   await page.locator('#board-input').focus();
   await page.keyboard.press('Backspace');      // clears cell 1
   await page.keyboard.press('Backspace');      // already empty: nothing before it to clear
@@ -205,7 +200,7 @@ test('inserting a cell on lap 2 keeps the caret on the same lap and cell', async
   await newRing(page, 16);
   await lap(page, 2).click();
   await cell(page, 3).click();
-  await cellMenuItem(page, 'btn-insert-cell');
+  await cellMenuItem(page, 'btn-insert-before');
   await expect(page.locator('path.rc')).toHaveCount(17);
   await expect(lap(page, 2)).toHaveAttribute('aria-pressed', 'true');
   const caret = await page.locator('.rcaret').getAttribute('d');

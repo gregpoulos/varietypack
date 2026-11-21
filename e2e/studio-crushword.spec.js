@@ -5,7 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
-const { expectGridFits, expectTabLeavesClues, openGrid, openStudio, openStudioFile, downloadText: download, typeBoard: type, openPaste, showPhase } = require('./helpers');
+const { expectGridFits, expectTabLeavesClues, openGrid, openStudio, openStudioFile, downloadText: download, typeBoard: type, showPhase } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../crushword/src/builder');
 
@@ -39,12 +39,6 @@ const letter = (page, r, c) => page.locator(`text.grid-letter[data-r="${r - 1}"]
 async function caretAt(page) {
   const box = await page.locator('rect.grid-caret').evaluate(el => ({ x: +el.getAttribute('x'), y: +el.getAttribute('y') }));
   return { r: Math.round((box.y - 1.5 - 6) / 40) + 1, c: Math.round((box.x - 1.5 - 28) / 40) + 1 };
-}
-
-async function fillLetters(page, text) {
-  await openPaste(page);
-  await page.locator('#letters-field').fill(text);
-  await page.locator('#letters-field').press('Enter');
 }
 
 // ---- tests ------------------------------------------------------------------
@@ -99,33 +93,15 @@ test('clicking the caret\'s cell again switches direction', async ({ page }) => 
   await expect(page.locator('#direction-toggle [data-dir="A"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('"#" blocks a cell and its mirror', async ({ page }) => {
+test('"#" blocks only the cell it is on', async ({ page }) => {
   await newGrid(page, 5, 5);
   await cell(page, 1, 1).click();
   await page.keyboard.press('#');
   await expect(block(page, 1, 1)).toHaveCount(1);
-  await expect(block(page, 5, 5)).toHaveCount(1);
-  expect(await caretAt(page)).toEqual({ r: 1, c: 2 });
-  await expect(page.locator('#meter-blocks')).toContainText('2 blocks');
-  await expect(page.locator('text.grid-num').first()).toHaveText('1');        // numbering follows the new pattern
-});
-
-test('turning the symmetry lock off blocks only one cell', async ({ page }) => {
-  await newGrid(page, 5, 5);
-  await page.locator('#symmetry-lock').uncheck();
-  await cell(page, 1, 2).click();
-  await page.keyboard.press('#');
-  await expect(block(page, 1, 2)).toHaveCount(1);
   await expect(page.locator('rect.grid-block')).toHaveCount(1);
-});
-
-test('the symmetry lock is remembered with the document', async ({ page }) => {
-  await newGrid(page, 5, 5);
-  await page.locator('#header-title').fill('Lock Test');
-  await page.locator('#symmetry-lock').uncheck();
-  await page.waitForTimeout(1500);                       // autosave debounce
-  await page.reload();                                   // returns to the open puzzle
-  await expect(page.locator('#symmetry-lock')).not.toBeChecked();
+  expect(await caretAt(page)).toEqual({ r: 1, c: 2 });
+  await expect(page.locator('#meter-blocks')).toContainText('1 block');
+  await expect(page.locator('text.grid-num').first()).toHaveText('1');        // numbering follows the new pattern
 });
 
 test('a block can be selected and opened again', async ({ page }) => {
@@ -149,31 +125,6 @@ test('typing on a selected block says what to do', async ({ page }) => {
   await page.locator('#board-input').focus();
   await type(page, 'a');
   await expect(page.locator('#message')).toContainText('This cell is a block. Press # to open it.');
-});
-
-test('Paste letters stays on the tools but is disabled with the caret on a block', async ({ page }) => {
-  await newGrid(page, 5, 5);
-  await cell(page, 1, 1).click();
-  await expect(page.locator('#btn-paste-letters')).toBeEnabled();
-  await page.keyboard.press('#');
-  await block(page, 1, 1).click();
-  await expect(page.locator('#btn-paste-letters')).toBeDisabled();
-  await expect(page.locator('#btn-paste-letters')).toHaveAttribute('title', /caret on a cell/);
-  await cell(page, 2, 2).click();
-  await expect(page.locator('#btn-paste-letters')).toBeEnabled();
-});
-
-test('the Letters field fills an entry', async ({ page }) => {
-  await openFile(page, EXAMPLE);
-  await openPaste(page);
-  await expect(page.locator('#letters-label')).toHaveText('1 Across letters');
-  await expect(page.locator('#letters-field')).toHaveValue('[SNO][UTT]OT[AIL]');
-  await fillLetters(page, '_____');
-  for (let c = 1; c <= 5; c++) await expect(letter(page, 1, c)).toHaveCount(0);
-  await fillLetters(page, '[SNO][UTT]OT[AILS]');
-  await expect(page.locator('#letters-error')).toContainText('limit is 3');
-  await fillLetters(page, 'ABC');
-  await expect(page.locator('#letters-error')).toContainText('1 Across has 5 cells, and this has 3.');
 });
 
 test('grid checks follow the grid', async ({ page }) => {
@@ -222,14 +173,30 @@ test('Escape closes the Grid popover, and undo inside it reaches the model', asy
   await expect(page.locator('#grid-settings')).toBeHidden();
 });
 
+// Sliding onto the default (3) stores nothing, so the YAML matches an untouched puzzle's.
+for (const [value, stored] of [['5', /maxCellLetters: 5/], ['3', /^(?![\s\S]*maxCellLetters)/]]) {
+  test(`the letters-per-cell fader at ${value} writes ${value === '3' ? 'no maxCellLetters' : 'maxCellLetters'}`, async ({ page }) => {
+    await openFile(page, EXAMPLE);
+    await openGrid(page);
+    const fader = page.locator('#puzzle-settings #max-cell-letters');
+    await expect(fader).toHaveValue('3');
+    await fader.fill('4');                       // away from the default and back
+    await fader.fill(value);
+    await expect(page.locator('#puzzle-settings .fader-ladder .led.lit')).toHaveCount(Number(value));
+    await page.keyboard.press('Escape');
+    await page.locator('#btn-edit-yaml').click();
+    await expect(page.locator('#yaml-editor')).toHaveValue(stored);
+  });
+}
+
 test('letters per cell lives in the settings', async ({ page }) => {
   await openFile(page, EXAMPLE);
   await expect(page.locator('#toolbar #max-cell-letters')).toHaveCount(0);
   await openGrid(page);
   await page.locator('#puzzle-settings #max-cell-letters').fill('2');
   await expect(page.locator('#checks [id^="grid-check-"].bad')).toContainText('more than 2 letters');
-  await fillLetters(page, '_____');
   await cell(page, 1, 1).click();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Backspace');   // empty the [SNO] cell
   await type(page, 'ab');
   expect(await caretAt(page)).toEqual({ r: 1, c: 2 });
 });
@@ -242,7 +209,8 @@ test('resize lives in the settings and says what it sets aside', async ({ page }
   await page.locator('#resize-rows').fill('7');
   await expect(page.locator('#resize-summary')).toContainText('Removes the bottom 2 rows.');
   await expect(page.locator('#resize-summary')).toContainText('11 clues lose their entry and move to Unattached clues.');
-  await page.locator('#resize-cancel').click();
+  await page.locator('#puzzle-settings #btn-resize').click();    // a second press closes the form
+  await expect(page.locator('#resize-form')).toHaveCount(0);
   await expect(page.locator('rect.grid-cell, rect.grid-block')).toHaveCount(9 * 17);
   await openGrid(page);
   await page.locator('#puzzle-settings #btn-resize').click();

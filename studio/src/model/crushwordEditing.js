@@ -1,7 +1,7 @@
 'use strict';
 // The Crushword editor's keyboard and click rules as pure functions of (model, ui), so
 // node:test covers them. The rules themselves are the puzzle page's
-// (crushword/src/typing.mjs); this adds the editor's own: blocks, the symmetry lock, and
+// (crushword/src/typing.mjs); this adds the editor's own: blocks and
 // what a click does.
 //
 //   ui: { r, c, dir: 'A'|'D', pos (the cursor within the caret cell's content), col (the sticky column for ↑/↓) }
@@ -62,7 +62,7 @@ function nextOpen(model, r, c) {
   return from + 1;
 }
 
-function pressKey(model, ui, e, symmetric) {
+function pressKey(model, ui, e) {
   const maps = cw.entryMaps(model);
   const isBlock = blockAt(model, ui.r, ui.c);
   const id = idOf(model, ui.r, ui.c);
@@ -122,9 +122,9 @@ function pressKey(model, ui, e, symmetric) {
       return done(land(model, maps, { ...ui, dir: d }, cellsOf[num][0]));
     }
     case '#': {
-      const after = cw.commands.toggleBlock(model, ui.r, ui.c, symmetric);
+      const after = cw.commands.toggleBlock(model, ui.r, ui.c);
       if (after === model) return done(ui, [], { message: LAST_OPEN_MESSAGE });
-      const calls = [{ name: 'toggleBlock', args: [ui.r, ui.c, symmetric] }];
+      const calls = [{ name: 'toggleBlock', args: [ui.r, ui.c] }];
       const maps2 = cw.entryMaps(after);
       const target = blockAt(after, ui.r, ui.c) ? nextOpen(after, ui.r, ui.c) : id;
       return done(land(after, maps2, ui, target, { pos: 0 }), calls);

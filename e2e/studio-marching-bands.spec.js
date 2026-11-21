@@ -5,7 +5,7 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
-const { expectGridFits, expectTabLeavesClues, openGrid, openStudio, openStudioFile, downloadText: download, typeBoard: type, openPaste, showPhase } = require('./helpers');
+const { expectGridFits, expectTabLeavesClues, openGrid, openStudio, openStudioFile, downloadText: download, typeBoard: type, showPhase } = require('./helpers');
 const { clickGapLine } = require('./helpers');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { HOOKS } = require('../marching-bands/src/builder');
@@ -91,26 +91,6 @@ test('clicking a boundary splits and joins', async ({ page }) => {
   await expect(page.locator('#orphan-tray .orphan')).toHaveCount(1);
 });
 
-test('the line field rewrites a row', async ({ page }) => {
-  await openFile(page, path.join(REPO, 'examples/marching-bands.yaml'));
-  await cell(page, 12, 3).click();
-  await openPaste(page);
-  await expect(page.locator('#line-field')).toHaveValue('RAMADAN | ACADIA');
-  await page.locator('#line-field').fill('RAMA | DANACADIA');
-  await page.locator('#line-field').press('Enter');
-  await expect(page.locator('#line-field')).toHaveValue('RAMA | DANACADIA');
-  await expect(page.locator('polyline.loop[data-group="rows"][data-g="12"]')).toHaveCount(2);
-  await expect(page.locator('.split[data-group="rows"][data-g="12"]')).toHaveCount(1);
-  await expect(page.locator('#loose-clues-notice')).toBeVisible();
-  await showPhase(page, 'clues');
-  await expect(page.locator('#orphan-tray')).toContainText('French territory conquered in Queen Anne’s War');
-  await showPhase(page, 'board');
-  await openPaste(page);
-  await page.locator('#line-field').fill('RAMA | DANACADI');         // 12 letters in a 13-cell row
-  await page.locator('#line-field').press('Enter');
-  await expect(page.locator('#line-error')).toContainText('Row 13 has 13 cells, and this has 12.');
-});
-
 test('resize lives in the settings and says what it sets aside', async ({ page }) => {
   await newGrid(page, 5);
   await page.locator('#board-input').fill('Q');
@@ -121,7 +101,8 @@ test('resize lives in the settings and says what it sets aside', async ({ page }
   await expect(page.locator('#resize-form')).toBeVisible();
   await page.locator('#resize-size').fill('7');
   await expect(page.locator('#resize-summary')).toBeVisible();
-  await page.locator('#resize-cancel').click();
+  await page.locator('#puzzle-settings #btn-resize').click();    // a second press closes the form
+  await expect(page.locator('#resize-form')).toHaveCount(0);
   await expect(page.locator('rect.grid-cell')).toHaveCount(24);
   await openGrid(page);
   await page.locator('#puzzle-settings #btn-resize').click();

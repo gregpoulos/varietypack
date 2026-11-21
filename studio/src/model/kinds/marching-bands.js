@@ -14,7 +14,7 @@ const { bandCells, rowCells, bandIndexOf, centerN, arrowTarget, onBandBottomEdge
 const { sameCell } = require('../../../../shared/build/validateEntry');
 const { StructureError } = require('../errors');
 const { fillEmptyClues } = require('../placeholderClues');
-const { formatCell, formatSequence, parseSequence } = require('../cells');
+const { formatCell } = require('../cells');
 const { ranges, entryAt, addBreak, removeBreak, orphanOf } = require('../starts');
 const { newEntry, entryFromYaml, entryToYaml, circledPositions } = require('../entries');
 const { headerFromYaml, headerToYaml, setHeaderField } = require('../header');
@@ -102,33 +102,6 @@ function breakAtCaret(model, group, id) {
   const i = pathIds(model, group, g).indexOf(id);
   if (i === 0) return { message: FIRST_ENTRY_MESSAGE[group] };
   return { command: ['toggleBreak', [group, g, i]] };
-}
-
-// ── the line field: a whole row or band as text, with | between entries ─────
-
-function lineText(model, group, g) {
-  return model[group][g].entries
-    .map((_, j) => formatSequence(entryIds(model, group, g, j).map(id => model.cells[id - 1])))
-    .join(' | ');
-}
-
-// → { cells, starts } for the row or band `g`, or { error } in words for the person
-// typing.
-function parseLine(model, group, g, text) {
-  const want = pathIds(model, group, g).length;
-  if (!text.trim()) return { error: `${groupName(group, g)} has ${want} cells, and this has 0.` };
-  const parts = [];
-  for (const raw of text.split('|')) {
-    const r = parseSequence(raw);
-    if (r.error) return { error: r.error };
-    parts.push(r.cells);
-  }
-  if (parts.some(p => !p.length)) {
-    return { error: 'Each | needs letters on both sides. Two in a row, or one at either end, would leave an empty entry.' };
-  }
-  const total = parts.reduce((n, p) => n + p.length, 0);
-  if (total !== want) return { error: `${groupName(group, g)} has ${want} cells, and this has ${total}.` };
-  return { cells: parts.flat(), starts: cumulativeStarts(parts).starts };
 }
 
 // ── new, import, export ─────────────────────────────────────────────────────
@@ -380,28 +353,6 @@ const commands = {
     return { ...withCut(model, group, g, addBreak(cut, i, newEntry(`e${model.nextId}`))), nextId: model.nextId + 1 };
   },
 
-  // Rewrites one row or band from the line field: the cells go along its path (so the
-  // crossing cut sees them), an entry whose start is still a start keeps its clue, the
-  // rest are orphaned.
-  setLine(model, group, g, newCells, starts) {
-    if (!model[group] || !model[group][g]) return model;
-    const path = pathIds(model, group, g);
-    const sound = Array.isArray(newCells) && newCells.length === path.length && Array.isArray(starts) && starts[0] === 0
-      && starts.every((s, i) => Number.isInteger(s) && s < path.length && (i === 0 || s > starts[i - 1]));
-    if (!sound) return model;
-    const cells = model.cells.slice();
-    path.forEach((id, p) => { cells[id - 1] = newCells[p]; });
-    const cut = model[group][g];
-    const byStart = new Map(cut.starts.map((s, j) => [s, cut.entries[j]]));
-    const orphans = [];
-    cut.entries.forEach((e, j) => {
-      if (!starts.includes(cut.starts[j])) { const o = orphanOf(e, entryName(group, g, j)); if (o) orphans.push(o); }
-    });
-    let nextId = model.nextId;
-    const entries = starts.map(s => byStart.get(s) || newEntry(`e${nextId++}`));
-    return { ...withCut(model, group, g, { starts, entries }), cells, nextId, orphans: [...model.orphans, ...orphans] };
-  },
-
   // A size the editor can draw: a whole number within the size field's range, and not the
   // size it already is.
   resize: (model, N2) => (Number.isInteger(N2) && N2 >= sizeFields[0].min && N2 <= sizeFields[0].max && N2 !== model.size ? resized(model, N2) : model),
@@ -443,5 +394,5 @@ function isModel(m) {
 module.exports = {
   kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands, mapEntries,
   pathIds, isCenter, rowOf, colOf, groupOf, shortLabel, entryName, groupName, entryOfCell, entryIds, readsBackward,
-  advance, stepBack, moveSpatial, stepGroup, breakAtCaret, FIRST_ENTRY_MESSAGE, resizeLosses, lineText, parseLine,
+  advance, stepBack, moveSpatial, stepGroup, breakAtCaret, FIRST_ENTRY_MESSAGE, resizeLosses,
 };

@@ -1,19 +1,17 @@
 import { useRef, useState } from 'preact/hooks';
 import cw from '../../model/kinds/crushword.js';
 import E from '../../model/crushwordEditing.js';
-import { formatCell, formatSequence, parseSequence } from '../../model/cells.js';
+import { formatCell } from '../../model/cells.js';
 import geometry from './gridGeometry.js';
 import { useBoardInput, keepBoardFocus, boardHasFocus } from './useBoardInput.js';
 import { useFocusTarget, handleUndoRedo } from './useBoardEditing.js';
 import { GridBoard } from './GridBoard.jsx';
-import { LineField } from './LineField.jsx';
 import { ClueLists } from './ClueList.jsx';
 import { plural } from './plural.js';
 import { PhaseLayout } from './PhaseLayout.jsx';
 import { WordList } from './WordList.jsx';
 import { Checks } from './Checks.jsx';
 import { KeyStrip, KeyList } from './KeyStrip.jsx';
-import { PasteLetters } from './PasteLetters.jsx';
 import { LooseCluesNotice } from './LooseCluesNotice.jsx';
 import { Latch, LatchKey } from '../Latch.jsx';
 import { CellMenu } from './CellMenu.jsx';
@@ -30,10 +28,8 @@ const parse = (k) => k.split(',').map(Number);
 const entryName = (slot) => `${slot.num} ${WORD[slot.dir]}`;
 
 // The structured Crushword editor. The caret and cursor are UI state, not part of the
-// undo history (the rules are in model/crushwordEditing.js, which node:test covers); the
-// symmetry lock is kept on the doc (doc.ui.symmetric) but is not part of the model.
-export function CrushwordEditor({ state, dispatch, model, phase, focusRef, settings, fillClues, header }) {
-  const symmetric = state.doc.ui?.symmetric !== false;
+// undo history (the rules are in model/crushwordEditing.js, which node:test covers).
+export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fillClues, header }) {
   const [held, setHeld] = useState(() => E.initialUi(model));
   const [showChecks, setShowChecks] = useState(true);
   const ui = E.repair(model, held);               // after a resize or an undo the cell may be gone
@@ -43,7 +39,7 @@ export function CrushwordEditor({ state, dispatch, model, phase, focusRef, setti
   // Handlers read the latest model and ui from here: a pasted string reaches onLetter
   // several times in one event, before Preact re-renders.
   const live = useRef(null);
-  live.current = { model, ui, symmetric };
+  live.current = { model, ui };
   const typeRun = useRef(0);
 
   function exec(name, args, undoKey) {
@@ -70,9 +66,9 @@ export function CrushwordEditor({ state, dispatch, model, phase, focusRef, setti
       runResult(E.typeLetter(m, u, ch));
     },
     onKey(e) {
-      const { model: m, ui: u, symmetric: sym } = live.current;
+      const { model: m, ui: u } = live.current;
       if (handleUndoRedo(e, dispatch)) return;
-      const res = E.pressKey(m, u, e, sym);
+      const res = E.pressKey(m, u, e);
       if (!res.handled) return;
       e.preventDefault();
       runResult(res);
@@ -110,7 +106,7 @@ export function CrushwordEditor({ state, dispatch, model, phase, focusRef, setti
     runResult(E.clickCell(live.current.model, live.current.ui, cr, cc, focused));
   }
   function setDir(d) {
-    if (d !== ui.dir) runResult(E.pressKey(model, ui, { key: '.' }, symmetric));
+    if (d !== ui.dir) runResult(E.pressKey(model, ui, { key: '.' }));
     focus();
   }
   // focusBoard: false is for a clue field gaining focus in the Clues phase, which must
@@ -153,18 +149,6 @@ export function CrushwordEditor({ state, dispatch, model, phase, focusRef, setti
     );
   }
 
-  // ── the Letters field ────────────────────────────────────────────────────
-  function applyLetters(text) {
-    const parsed = parseSequence(text);
-    if (parsed.error) return parsed.error;
-    if (parsed.cells.length !== main.len) return `${entryName(main)} has ${main.len} cells, and this has ${parsed.cells.length}.`;
-    const over = parsed.cells.findIndex(x => x.length > cap);
-    if (over >= 0) return `Cell ${over + 1} holds ${parsed.cells[over].length} letters; the limit is ${cap}.`;
-    exec('setSlotCells', [main.key, parsed.cells]);
-    typeRun.current++;
-    return null;
-  }
-
   // ── grid checks ──────────────────────────────────────────────────────────
   const gridItems = [];
   const gridItem = (id, text, state) => gridItems.push({ id: `grid-check-${id}`, text, ...state });
@@ -188,7 +172,7 @@ export function CrushwordEditor({ state, dispatch, model, phase, focusRef, setti
 
   const cellItems = [
     { id: 'btn-circle', label: 'Toggle circle', checked: !isBlock && circleSet.has(key(r, c)), disabled: isBlock, onSelect: () => circle(r, c) },
-    { id: 'btn-block', label: 'Toggle block', hint: '#', checked: isBlock, onSelect: () => runResult(E.pressKey(model, ui, { key: '#' }, symmetric)) },
+    { id: 'btn-block', label: 'Toggle block', hint: '#', checked: isBlock, onSelect: () => runResult(E.pressKey(model, ui, { key: '#' })) },
   ];
   const lists = DIRS.map(d => ({ cutName: CUT[d], title: WORD[d], rowName: WORD[d], rows: listRows(d) }));
 
@@ -202,14 +186,6 @@ export function CrushwordEditor({ state, dispatch, model, phase, focusRef, setti
       tools={(
         <span class="tools">
           <CellMenu items={cellItems} focus={focus} />
-          <LatchKey id="symmetry-lock" checked={symmetric}
-            onChange={value => dispatch({ type: 'SET_UI', key: 'symmetric', value, now: Date.now() })}>Symmetry</LatchKey>
-          <PasteLetters disabled={!main} title="Put the caret on a cell in an entry to paste its letters">
-            {main && (
-              <LineField idPrefix="letters" label={`${entryName(main)} letters`} text={formatSequence(main.cells.map(letterOf))}
-                hint="Type or paste the whole answer and press Enter. [SNO] is one multi-letter cell and _ an empty one." apply={applyLetters} />
-            )}
-          </PasteLetters>
         </span>
       )}
       clueTools={<span class="tools"><CellMenu items={cellItems} focus={focus} /></span>}

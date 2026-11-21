@@ -16,7 +16,7 @@ const { SHAPE_NAMES } = require('../../../../snake-charmer/src/layout');
 const { LOOPS } = require('../../../../snake-charmer/src/ringConstants');
 const { StructureError } = require('../errors');
 const { fillEmptyClues } = require('../placeholderClues');
-const { formatCell, diffCells } = require('../cells');
+const { formatCell } = require('../cells');
 const { ranges, entryAt, addBreak, removeBreak, reanchor } = require('../starts');
 const { newEntry, entryFromYaml, entryToYaml, circledPositions } = require('../entries');
 const { headerFromYaml, headerToYaml, setHeaderField } = require('../header');
@@ -209,13 +209,6 @@ function applyRingEdit(model, newRing, d) {
   };
 }
 
-function setRing(model, newRing) {
-  if (!newRing.length) return model;                  // a puzzle never has no cells
-  const d = diffCells(model.ring, newRing);
-  if (d.removed === 0 && d.inserted === 0) return model;
-  return applyRingEdit(model, newRing, d);
-}
-
 const withEntry = (model, j, patch) => ({
   ...model,
   cut: { ...model.cut, entries: model.cut.entries.map((e, k) => (k === j ? patch(e) : e)) },
@@ -236,9 +229,8 @@ const commands = {
     return { ...model, ring };
   },
 
-  setRing,
-
-  // These know where the edit is, so they don't diff the letters.
+  // These know where the edit is: a diff of the letters couldn't tell which of two equal
+  // neighbors was inserted or removed.
   insertCell(model, k) {
     const at = Math.max(0, Math.min(k, ringSize(model)));
     const ring = model.ring.slice();

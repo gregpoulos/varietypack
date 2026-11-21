@@ -31,28 +31,26 @@ export function MarchingBandsSettings({ model, dispatch }) {
   return (
     <div class="size-settings">
       <div class="set-row">
-        <span>Grid size</span><b>{N} × {N}</b>
-        <button type="button" id="btn-resize" class="btn" onClick={openForm}>Change size…</button>
+        <span>Grid size</span><output class="readout" id="grid-size">{N} × {N}</output>
+        <button type="button" id="btn-resize" class="btn" aria-expanded={open} onClick={open ? () => setOpen(false) : openForm}>Change size…</button>
       </div>
       {open && (
         <form id="resize-form" class="size-form" noValidate onSubmit={e => e.preventDefault()}>
-          <label class="fld"><span>Resize to</span>
-            <input type="number" id="resize-size" value={text} min={field.min} max={field.max} step="1" inputMode="numeric"
-              onInput={e => setText(e.currentTarget.value)} />
-          </label>
+          <div class="size-fields">
+            <label class="fld"><span>Resize to</span>
+              <input type="number" id="resize-size" value={text} min={field.min} max={field.max} step="1" inputMode="numeric"
+                onInput={e => setText(e.currentTarget.value)} />
+            </label>
+            <button type="button" id="resize-apply" class="btn dark" disabled={n2 === null || n2 === N}
+              onClick={() => { dispatch({ type: 'MODEL_COMMAND', name: 'resize', args: [n2], now: Date.now() }); setOpen(false); }}>Resize</button>
+          </div>
           {n2 === null && <p id="resize-summary" class="hint">Choose a whole number from {field.min} to {field.max}.</p>}
-          {n2 === N && <p id="resize-summary" class="hint">That’s the current size.</p>}
           {n2 !== null && n2 !== N && (
             <>
               <GridThumb n={n2} />
               <p id="resize-summary">{resizeSummary(model, n2)}</p>
             </>
           )}
-          <div class="size-actions">
-            <button type="button" id="resize-apply" class="btn dark" disabled={n2 === null || n2 === N}
-              onClick={() => { dispatch({ type: 'MODEL_COMMAND', name: 'resize', args: [n2], now: Date.now() }); setOpen(false); }}>Resize</button>
-            <button type="button" id="resize-cancel" class="btn" onClick={() => setOpen(false)}>Cancel</button>
-          </div>
         </form>
       )}
     </div>

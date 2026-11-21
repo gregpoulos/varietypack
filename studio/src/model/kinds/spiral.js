@@ -14,7 +14,7 @@
 const { StructureError } = require('../errors');
 const { fillEmptyClues } = require('../placeholderClues');
 const { sameCell } = require('../../../../shared/build/validateEntry');
-const { formatCell, diffCells } = require('../cells');
+const { formatCell } = require('../cells');
 const { ranges, entryAt, addBreak, removeBreak, reanchor } = require('../starts');
 const { newEntry, entryFromYaml, entryToYaml, circledPositions } = require('../entries');
 const { headerFromYaml, headerToYaml, setHeaderField } = require('../header');
@@ -244,15 +244,6 @@ function applyEdit(model, newCells, d) {
   };
 }
 
-// The edit is recovered by diffing the cells (prefix/suffix). A puzzle never has no
-// cells.
-function setSequence(model, newCells) {
-  if (!newCells.length) return model;
-  const d = diffCells(model.cells, newCells);
-  if (d.removed === 0 && d.inserted === 0) return model;
-  return applyEdit(model, newCells, d);
-}
-
 // A copy with every entry replaced by fn(entry) (placeholderClues.js).
 const mapEntries = (model, fn) => ({
   ...model,
@@ -269,10 +260,9 @@ const commands = {
     return { ...model, cells };
   },
 
-  setSequence,
 
-  // These know where the edit is, so they don't diff the letters (which can't tell which
-  // of two equal neighbors was inserted or removed).
+  // These know where the edit is: a diff of the letters couldn't tell which of two equal
+  // neighbors was inserted or removed.
   insertCell(model, i) {
     const at = Math.max(0, Math.min(i, total(model)));
     const cells = model.cells.slice();

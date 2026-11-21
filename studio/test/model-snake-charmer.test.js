@@ -84,9 +84,9 @@ test('toYaml: circles are written on both laps, and shape only when present', ()
   assert.deepEqual(Object.keys(out2), ['kind', 'title', 'shape', 'entries']);
 });
 
-test('setRing: inserting a cell shifts the starts in both laps and keeps a straddling entry', () => {
+test('insertCell shifts the starts in both laps and keeps a straddling entry', () => {
   const { model } = imp();
-  const next = run(model, 'setRing', ['a', 'b', 'c', 'd', 'x', 'e', 'f', 'g', 'h']);
+  const next = run(model, 'insertCell', 4);
   assert.deepEqual(next.cut.starts, [0, 3, 7, 11, 13]);
   assert.deepEqual(sc.positionsOf(next, 2), [7, 8, 9, 10]);   // GH | AB, still across the boundary (N is now 9)
   assert.equal(next.ring.length, 9);
@@ -101,11 +101,6 @@ test('insertCell and deleteCell use the given index and keep circles on their ce
   assert.deepEqual(ins.circles, [6]);
   const del = run(m, 'deleteCell', 2);
   assert.deepEqual(del.circles, [4]);
-});
-
-test('setRing never leaves the ring empty', () => {
-  const { model } = imp();
-  assert.deepEqual(run(model, 'setRing', []), model);
 });
 
 test('toggleBreak at position N creates two entries starting on the same ring cell', () => {

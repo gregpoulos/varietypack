@@ -69,7 +69,6 @@ const slots = (model) => slotsOfGrid(gridStrings(model));
 const entryMaps = (model) => buildEntryMaps(gridStrings(model));
 
 const capOf = (model) => model.maxCellLetters ?? DEFAULT_MAX_CELL_LETTERS;
-const mirror = (model, r, c) => [model.rows - 1 - r, model.cols - 1 - c];
 const slotName = (slot) => `${slot.dir === 'A' ? 'Across' : 'Down'} ${slot.num}`;
 const inGrid = (model, r, c) => Number.isInteger(r) && Number.isInteger(c) && r >= 0 && r < model.rows && c >= 0 && c < model.cols;
 const cellAt = (model, key) => { const [r, c] = parseCell(key); return model.cells[r * model.cols + c]; };
@@ -297,23 +296,13 @@ const commands = {
     return { ...model, cells };
   },
 
-  // The Letters field: the UI has checked the count and the cap.
-  setSlotCells(model, key, newCells) {
-    const slot = slots(model).find(s => s.key === key);
-    if (!slot || !Array.isArray(newCells) || newCells.length !== slot.len) return model;
-    const cells = model.cells.slice();
-    slot.cells.forEach((k, i) => { const [r, c] = parseCell(k); cells[r * model.cols + c] = sanitizeCell(newCells[i]); });
-    return { ...model, cells };
-  },
-
-  toggleBlock(model, r, c, symmetric) {
+  toggleBlock(model, r, c) {
     if (!inGrid(model, r, c)) return model;
     const target = !model.blocks[r * model.cols + c];
     const blocks = model.blocks.slice();
     const cells = model.cells.slice();
-    const set = (rr, cc) => { blocks[rr * model.cols + cc] = target; if (target) cells[rr * model.cols + cc] = ''; };
-    set(r, c);
-    if (symmetric) { const [mr, mc] = mirror(model, r, c); if (blocks[mr * model.cols + mc] !== target) set(mr, mc); }
+    blocks[r * model.cols + c] = target;
+    if (target) cells[r * model.cols + c] = '';
     if (blocks.every(Boolean)) return model;
     const circles = model.circles.filter(k => { const [rr, cc] = parseCell(k); return !blocks[rr * model.cols + cc]; });
     return rekey(model, { ...model, blocks, cells, circles });
@@ -375,5 +364,6 @@ function isModel(m) {
 
 module.exports = {
   kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands, mapEntries,
-  gridStrings, slots, entryMaps, capOf, mirror, gridChecks, resizeLosses, slotName, MIN_ANSWER_LETTERS,
+  gridStrings, slots, entryMaps, capOf, gridChecks, resizeLosses, slotName, MIN_ANSWER_LETTERS,
+  DEFAULT_MAX_CELL_LETTERS, MAX_CELL_LETTERS_LIMIT,
 };

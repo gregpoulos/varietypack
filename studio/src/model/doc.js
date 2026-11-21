@@ -8,7 +8,6 @@
 //     model: object,             // 'structured' only: the kind's cells-first model
 //     options: { font: 'embed'|'link', hashedPreview: boolean, phoneWidth: boolean,
 //                previewTheme: string|null },
-//     ui?: { symmetric?: boolean },   // editor settings; absent means the defaults
 //     updatedAt: number }
 const core = require('../core');
 const { STRUCTURED } = require('./kinds');
@@ -16,9 +15,6 @@ const { StructureError } = require('./errors');
 const { fillEmptyClues } = require('./placeholderClues');
 
 const OPTION_KEYS = ['font', 'hashedPreview', 'phoneWidth', 'previewTheme'];
-// Editor settings kept with the doc but outside the model and the undo history
-// (Crushword's symmetry lock).
-const UI_KEYS = ['symmetric'];
 
 function defaultOptions() {
   return { font: 'embed', hashedPreview: false, phoneWidth: false, previewTheme: null };
@@ -100,11 +96,6 @@ function setOption(doc, key, value, now) {
   return { ...doc, options: { ...doc.options, [key]: value }, updatedAt: now };
 }
 
-function setUi(doc, key, value, now) {
-  if (!UI_KEYS.includes(key)) throw new Error(`"${key}" is not an editor setting`);
-  return { ...doc, ui: { ...doc.ui, [key]: value }, updatedAt: now };
-}
-
 // The puzzle as YAML text; null for a structured document that isn't complete yet (it
 // can't be expressed as puzzle YAML until every cell and clue is filled in).
 function puzzleText(doc) {
@@ -159,6 +150,6 @@ function toStructuredMode(doc) {
 }
 
 module.exports = {
-  defaultOptions, newDoc, fieldValue, parseSize, openText, setYaml, setOption, setUi,
+  defaultOptions, newDoc, fieldValue, parseSize, openText, setYaml, setOption,
   puzzleText, previewText, toYamlMode, toStructuredMode,
 };

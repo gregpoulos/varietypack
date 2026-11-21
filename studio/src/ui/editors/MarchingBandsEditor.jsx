@@ -6,20 +6,18 @@ import { useBoardEditing } from './useBoardEditing.js';
 import { keepBoardFocus, boardHasFocus } from './useBoardInput.js';
 import { displayStatusFor } from './displayStatus.js';
 import { GridBoard } from './GridBoard.jsx';
-import { LineField } from './LineField.jsx';
 import { ClueLists } from './ClueList.jsx';
 import { plural } from './plural.js';
 import { PhaseLayout } from './PhaseLayout.jsx';
 import { WordList } from './WordList.jsx';
 import { Checks } from './Checks.jsx';
 import { KeyStrip, KeyList } from './KeyStrip.jsx';
-import { PasteLetters } from './PasteLetters.jsx';
 import { LooseCluesNotice } from './LooseCluesNotice.jsx';
 import { Latch } from '../Latch.jsx';
 import { CellMenu } from './CellMenu.jsx';
 
 const { commands, rowOf, colOf, entryOfCell, entryIds, pathIds, isCenter, groupName, shortLabel, entryName,
-  advance, stepBack, moveSpatial, stepGroup, breakAtCaret, FIRST_ENTRY_MESSAGE, lineText, parseLine, readsBackward } = mb;
+  advance, stepBack, moveSpatial, stepGroup, breakAtCaret, FIRST_ENTRY_MESSAGE, readsBackward } = mb;
 const { CELL, cellCenter, boundary } = geometry;
 const GROUPS = ['rows', 'bands'];
 const other = (m) => (m === 'rows' ? 'bands' : 'rows');
@@ -188,7 +186,6 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
     value: `${group}:${g}:${j}`, label: `${entryName(group, g, j)} · ${answerOf(group, g, j)}`,
   })));
   const count = (group) => model[group].reduce((n, cut) => n + cut.entries.length, 0);
-  const lineLabel = `${groupName(mode, act.g)} letters, ${mode === 'rows' ? 'left to right' : 'clockwise from its top-left corner'}`;
 
   const cellItems = [
     { id: 'btn-circle', label: 'Toggle circle', checked: circleSet.has(id), onSelect: () => run('toggleCircle', id) },
@@ -206,16 +203,6 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
       tools={(
         <span class="tools">
           <CellMenu items={cellItems} focus={focus} />
-          <PasteLetters>
-            <LineField label={lineLabel} text={lineText(model, mode, act.g)}
-              hint={`Type or paste a whole ${mode === 'rows' ? 'row' : 'band'} and press Enter. | marks a split, [HAR] is one multi-letter cell and _ an empty one.`}
-              apply={(text) => {
-                const r = parseLine(model, mode, act.g, text);
-                if (r.error) return r.error;
-                exec('setLine', [mode, act.g, r.cells, r.starts]);
-                return null;
-              }} />
-          </PasteLetters>
         </span>
       )}
       clueTools={<span class="tools"><CellMenu items={cellItems} focus={focus} /></span>}

@@ -160,12 +160,6 @@ async function openGrid(page) {
   await expect(page.locator('#grid-settings')).toBeVisible();
 }
 
-// Opens the Paste letters popover (the whole-board text field) unless it is already open.
-async function openPaste(page) {
-  if (!(await page.locator('#paste-letters').isVisible())) await page.locator('#btn-paste-letters').click();
-  await expect(page.locator('#paste-letters')).toBeVisible();
-}
-
 // Checks that Tab from `lastClue`, the last clue field, leaves the clue lists with no
 // wrap and no trap. Browsers differ on Tab from the page's last focusable element
 // (Firefox stays put), so an input appended after the app gives Tab somewhere to land (an
@@ -201,4 +195,4 @@ async function cellMenuItem(page, id) {
   await page.locator(`#cell-menu #${id}`).click();
 }
 
-module.exports = { cellMenuItem, expectGridFits, expectTabLeavesClues, openPaste, showPhase, openGrid, openStudio, openStudioFile, downloadText, typeBoard, buildVariant, rewriteSaveOnNextLoad, clickGapLine, clickHelpRow, typeCell, cellLetterPairs, fillCrushwordCell, solveCrushwordBoard, solveRingBoard };
+module.exports = { cellMenuItem, expectGridFits, expectTabLeavesClues, showPhase, openGrid, openStudio, openStudioFile, downloadText, typeBoard, buildVariant, rewriteSaveOnNextLoad, clickGapLine, clickHelpRow, typeCell, cellLetterPairs, fillCrushwordCell, solveCrushwordBoard, solveRingBoard };

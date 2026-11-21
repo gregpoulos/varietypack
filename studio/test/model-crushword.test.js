@@ -90,12 +90,11 @@ test('toYaml: numbers ascend, circles are written on both crossing entries, maxC
   assert.equal(cw.toYaml(cw.commands.setMaxCellLetters(model, 2)).maxCellLetters, 2);
 });
 
-test('toggleBlock: with symmetry, a corner also blocks the opposite corner', () => {
+test('toggleBlock: blocks only the cell it is given', () => {
   const m = cw.newModel({ rows: 5, cols: 5 });
-  const n = run(m, 'toggleBlock', 0, 0, true);
+  const n = run(m, 'toggleBlock', 0, 0);
   assert.equal(n.blocks[0], true);
-  assert.equal(n.blocks[24], true);
-  assert.equal(run(m, 'toggleBlock', 0, 1, false).blocks[23], false);
+  assert.equal(n.blocks[24], false);
 });
 
 test('toggleBlock: clues of slots whose start survives are kept; a removed slot\'s clue is orphaned with its old number', () => {
@@ -106,7 +105,7 @@ test('toggleBlock: clues of slots whose start survives are kept; a removed slot\
   assert.equal(cw.slots(m).find(s => s.key === 'A 1,0').num, 6);
   // Blocking (0,0): across 1 would start at (0,1) and down 1 at (1,0), so both old slot
   // keys go.
-  const n = run(m, 'toggleBlock', 0, 0, false);
+  const n = run(m, 'toggleBlock', 0, 0);
   assert.equal(n.clues['A 1,0'].clue, 'across two');
   assert.ok(!('A 0,0' in n.clues));
   assert.deepEqual(n.orphans.map(o => [o.clue, o.from]).sort(), [['across one', 'Across 1'], ['down one', 'Down 1']]);
@@ -118,37 +117,35 @@ test('toggleBlock: blocking clears the cell\'s letters and circle', () => {
   let m = cw.newModel({ rows: 5, cols: 5 });
   m = cw.commands.setCell(m, 0, 0, 'ab');
   m = cw.commands.toggleCircle(m, 0, 0);
-  const n = run(m, 'toggleBlock', 0, 0, false);
+  const n = run(m, 'toggleBlock', 0, 0);
   assert.equal(n.cells[0], '');
   assert.deepEqual(n.circles, []);
 });
 
 test('toggleBlock: blocking the last open cell returns the model unchanged', () => {
   const { model } = imp({ ...puzzle(), grid: ['..'], across: { 1: { clue: 'a', answer: 'AB' } }, down: {} });
-  let m = run(model, 'toggleBlock', 0, 0, false);           // one open cell left
+  let m = run(model, 'toggleBlock', 0, 0);           // one open cell left
   assert.equal(m.blocks[0], true);
-  const again = run(m, 'toggleBlock', 0, 1, false);
+  const again = run(m, 'toggleBlock', 0, 1);
   assert.deepEqual(again, m);
 });
 
 test('toggleBlock: toggling an open cell back reopens it', () => {
   const m = cw.newModel({ rows: 5, cols: 5 });
-  const blocked = run(m, 'toggleBlock', 2, 2, false);
+  const blocked = run(m, 'toggleBlock', 2, 2);
   assert.equal(blocked.blocks[12], true);
-  assert.equal(run(blocked, 'toggleBlock', 2, 2, false).blocks[12], false);
+  assert.equal(run(blocked, 'toggleBlock', 2, 2).blocks[12], false);
 });
 
-test('setCell ignores blocks and does not truncate; setSlotCells writes and the crossing slot reads it', () => {
+test('setCell ignores blocks and does not truncate, and the crossing slot reads what is written', () => {
   const { model } = imp();
   assert.equal(run(model, 'setCell', 0, 0, 'ABCD').cells[0], 'abcd');
-  const blocked = run(cw.newModel({ rows: 5, cols: 5 }), 'toggleBlock', 0, 0, false);
+  const blocked = run(cw.newModel({ rows: 5, cols: 5 }), 'toggleBlock', 0, 0);
   assert.equal(cw.commands.setCell(blocked, 0, 0, 'a').cells[0], '');
-  const n = run(model, 'setSlotCells', 'A 0,0', ['x', 'y', 'z']);
+  const n = ['x', 'y', 'z'].reduce((m, v, c) => run(m, 'setCell', 0, c, v), model);
   assert.deepEqual(n.cells.slice(0, 3), ['x', 'y', 'z']);
   const down = cw.slots(n).find(s => s.key === 'D 0,0');
   assert.deepEqual(down.cells.map(k => { const [r, c] = k.split(',').map(Number); return n.cells[r * 3 + c]; }), ['x', 'd', 'a']);
-  assert.deepEqual(run(model, 'setSlotCells', 'A 0,0', ['x']), model);   // wrong count: ignored
-  assert.deepEqual(run(model, 'setSlotCells', 'Z 9,9', ['x', 'y', 'z']), model);
 });
 
 test('gridChecks: the plus-shaped grid gives its five uncrossed cells', () => {
@@ -243,8 +240,8 @@ test('completeness: title, empty cells, no-entry cells, missing clues, overfull 
 
 test('every command leaves its input unmutated (frozen models)', () => {
   const { model } = imp();
-  for (const [name, args] of [['setCell', [0, 0, 'x']], ['toggleBlock', [0, 0, true]], ['resize', [4, 4]], ['setClue', ['A 0,0', 'z']],
-    ['toggleCircle', [0, 0]], ['setSlotCells', ['A 0,0', ['x', 'y', 'z']]], ['setMaxCellLetters', [2]], ['setHeader', ['author', 'A']]]) {
+  for (const [name, args] of [['setCell', [0, 0, 'x']], ['toggleBlock', [0, 0]], ['resize', [4, 4]], ['setClue', ['A 0,0', 'z']],
+    ['toggleCircle', [0, 0]], ['setMaxCellLetters', [2]], ['setHeader', ['author', 'A']]]) {
     assert.doesNotThrow(() => run(model, name, ...args), name);
   }
 });

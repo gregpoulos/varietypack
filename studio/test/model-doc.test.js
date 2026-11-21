@@ -6,7 +6,7 @@ const { deepFreeze } = require('./helpers');
 const fs       = require('fs');
 const path     = require('path');
 const yaml     = require('js-yaml');
-const { newDoc, openText, setYaml, setOption, setUi, puzzleText } = require('../src/model/doc');
+const { newDoc, openText, setYaml, setOption, puzzleText } = require('../src/model/doc');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -65,14 +65,6 @@ test('setOption: rejects a key that is not an option', () => {
   assert.throws(() => setOption(doc, 'mode', 'muddled', 2), /option/);
 });
 
-test('setUi: stores an editor setting on the doc without mutating it, and rejects an unknown one', () => {
-  const doc = Object.freeze(newDoc({ id: 'x', now: 1, kind: 'spiral', yaml: 'a' }));
-  const b = setUi(doc, 'symmetric', false, 4);
-  assert.deepEqual(b.ui, { symmetric: false });
-  assert.equal(b.updatedAt, 4);
-  assert.equal(doc.ui, undefined);
-  assert.throws(() => setUi(doc, 'mode', 1, 2), /setting/);
-});
 
 test('every example imports into the structured editor without a notice', () => {
   for (const kind of ['spiral', 'snake-charmer', 'marching-bands', 'crushword']) {

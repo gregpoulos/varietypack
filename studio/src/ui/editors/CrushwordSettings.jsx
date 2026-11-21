@@ -2,8 +2,8 @@ import { useState } from 'preact/hooks';
 import cw from '../../model/kinds/crushword.js';
 import { fieldValue } from '../../model/doc.js';
 import { CrushwordThumb } from './CrushwordSizePreview.jsx';
-import { useKeyedDraft } from './useKeyedDraft.js';
 import { plural } from './plural.js';
+import { Fader } from './Fader.jsx';
 
 const [rowsField, colsField] = cw.sizeFields;
 
@@ -48,20 +48,16 @@ export function CrushwordSettings({ model, dispatch }) {
     );
   }
 
-  const cap = useKeyedDraft(String(model.maxCellLetters));
-  const capText = cap.value ?? (model.maxCellLetters ?? '');
-  const badCap = cap.value !== null && cap.value !== '' && !/^[1-9]$/.test(cap.value);   // the same rule onCap applies
-  function onCap(text) {
-    cap.set(text);
-    if (text === '') send('setMaxCellLetters', [null], 'setting:maxCellLetters');
-    else if (/^[1-9]$/.test(text)) send('setMaxCellLetters', [Number(text)], 'setting:maxCellLetters');
-  }
+  // The fader's value. Sliding onto the default stores nothing (null), so an untouched
+  // puzzle and one slid back to the default export the same YAML.
+  const cap = cw.capOf(model);
+  const onCap = (n) => send('setMaxCellLetters', [n === cw.DEFAULT_MAX_CELL_LETTERS ? null : n], 'setting:maxCellLetters');
 
   return (
     <div class="size-settings">
       <div class="set-row">
-        <span>Grid size</span><b>{rows} × {cols}</b>
-        <button type="button" id="btn-resize" class="btn" onClick={openForm}>Change size…</button>
+        <span>Grid size</span><output class="readout" id="grid-size">{rows} × {cols}</output>
+        <button type="button" id="btn-resize" class="btn" aria-expanded={open} onClick={open ? () => setOpen(false) : openForm}>Change size…</button>
       </div>
       {open && (
         <form id="resize-form" class="size-form" noValidate onSubmit={e => e.preventDefault()}>
@@ -72,23 +68,14 @@ export function CrushwordSettings({ model, dispatch }) {
             <label class="fld"><span>Columns</span>
               <input type="number" id="resize-cols" value={colsText} min={colsField.min} max={colsField.max} step="1" inputMode="numeric"
                 onInput={e => setColsText(e.currentTarget.value)} /></label>
-          </div>
-          {!valid && <p id="resize-summary" class="hint">Rows and columns must be whole numbers from {rowsField.min} to {rowsField.max}.</p>}
-          {unchanged && <p id="resize-summary" class="hint">That’s the current size.</p>}
-          {preview}
-          <div class="size-actions">
             <button type="button" id="resize-apply" class="btn dark" disabled={!valid || unchanged}
               onClick={() => { send('resize', [R2, C2]); setOpen(false); }}>Resize</button>
-            <button type="button" id="resize-cancel" class="btn" onClick={() => setOpen(false)}>Cancel</button>
           </div>
+          {!valid && <p id="resize-summary" class="hint">Rows and columns must be whole numbers from {rowsField.min} to {rowsField.max}.</p>}
+          {preview}
         </form>
       )}
-      <div class="set-row">
-        <label for="max-cell-letters">Letters per cell, at most</label>
-        <input type="number" id="max-cell-letters" min="1" max="9" step="1" inputMode="numeric" placeholder="3" value={capText}
-          onInput={e => onCap(e.currentTarget.value)} />
-        <small class={badCap ? 'err' : 'hint'}>Whole number from 1 to 9. Blank means the default, 3. Lowering it flags cells that hold more; it doesn’t trim them.</small>
-      </div>
+      <Fader id="max-cell-letters" label="Max. letters per cell" min={1} max={cw.MAX_CELL_LETTERS_LIMIT} value={cap} onChange={onCap} />
     </div>
   );
 }

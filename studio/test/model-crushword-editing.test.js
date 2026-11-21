@@ -13,10 +13,10 @@ const cell = (m, r, c) => m.cells[r * m.cols + c];
 
 // Plays a list of steps ('x' = a letter, otherwise a key name) and returns the final {
 // model, ui }.
-function play(model, ui, steps, symmetric = true) {
+function play(model, ui, steps) {
   let s = { model, ui };
   for (const step of steps) {
-    const res = /^[a-z]$/.test(step) ? E.typeLetter(s.model, s.ui, step) : E.pressKey(s.model, s.ui, key(step), symmetric);
+    const res = /^[a-z]$/.test(step) ? E.typeLetter(s.model, s.ui, step) : E.pressKey(s.model, s.ui, key(step));
     s = { model: E.apply(s.model, res), ui: res.ui, message: res.message };
   }
   return s;
@@ -133,19 +133,19 @@ test('Tab on a block is left to the browser', () => {
   assert.equal(E.pressKey(m, at(2, 2), key('Tab'), false).handled, false);
 });
 
-test('# blocks the cell and its mirror, and moves the caret to the next open cell', () => {
-  const res = E.pressKey(blank(), at(0, 0), key('#'), true);
+test('# blocks only the one cell and moves the caret to the next open cell', () => {
+  const res = E.pressKey(blank(), at(0, 0), key('#'));
   const m = E.apply(blank(), res);
   assert.equal(m.blocks[0], true);
-  assert.equal(m.blocks[24], true);
+  assert.equal(m.blocks[24], false);
   assert.deepEqual([res.ui.r, res.ui.c], [0, 1]);
 });
 
-test('# with the lock off blocks only the one cell; # on a block opens it and stays', () => {
-  const res = E.pressKey(blank(), at(0, 1), key('#'), false);
+test('# on a block opens it and stays', () => {
+  const res = E.pressKey(blank(), at(0, 1), key('#'));
   const m = E.apply(blank(), res);
   assert.equal(m.blocks.filter(Boolean).length, 1);
-  const reopened = E.pressKey(m, at(0, 1), key('#'), false);
+  const reopened = E.pressKey(m, at(0, 1), key('#'));
   assert.equal(E.apply(m, reopened).blocks.filter(Boolean).length, 0);
   assert.deepEqual([reopened.ui.r, reopened.ui.c], [0, 1]);
 });
@@ -154,7 +154,7 @@ test('# on the last open cell says a puzzle needs one', () => {
   const one = E.apply(blank(3, 3), { calls: [{ name: 'toggleBlock', args: [0, 0, false] }] });
   let m = one;
   for (const [r, c] of [[0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1]]) m = cw.commands.toggleBlock(m, r, c, false);
-  const res = E.pressKey(m, at(2, 2), key('#'), false);
+  const res = E.pressKey(m, at(2, 2), key('#'));
   assert.deepEqual(res.calls, []);
   assert.equal(res.message, 'A puzzle needs at least one open cell.');
 });

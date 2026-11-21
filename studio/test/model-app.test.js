@@ -126,12 +126,6 @@ test('problemsLabel: a parse error, problems, and a clean puzzle', () => {
   assert.equal(problemsLabel(checked(opened(), { ...clean, warnings: ['w', 'v'] })).text, 'Ready to export · 2 warnings');
 });
 
-test('SET_UI edits an editor setting on the doc and is not an undo step', () => {
-  const s = reduce(opened(), { type: 'SET_UI', key: 'symmetric', value: false, now: 3 });
-  assert.equal(s.doc.ui.symmetric, false);
-  assert.deepEqual(s.history, opened().history);
-});
-
 test("OPEN_DOC with view 'clues'", () => {
   const structured = newDoc({ id: 's', now: 1, kind: 'spiral', size: { cells: 40 } });
   const s = reduce(initialState(), { type: 'OPEN_DOC', doc: structured, view: 'clues' });

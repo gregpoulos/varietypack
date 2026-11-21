@@ -3,7 +3,6 @@ import { formatCell } from '../../model/cells.js';
 import { useBoardEditing } from './useBoardEditing.js';
 import { keepBoardFocus, boardHasFocus } from './useBoardInput.js';
 import { displayStatusFor } from './displayStatus.js';
-import { SequenceField } from './SequenceField.jsx';
 import { RingBoard } from './RingBoard.jsx';
 import { ClueLists } from './ClueList.jsx';
 import { ShapeSelect } from './ShapeSelect.jsx';
@@ -12,7 +11,6 @@ import { PhaseLayout } from './PhaseLayout.jsx';
 import { WordList } from './WordList.jsx';
 import { Checks } from './Checks.jsx';
 import { KeyStrip, KeyList } from './KeyStrip.jsx';
-import { PasteLetters } from './PasteLetters.jsx';
 import { LooseCluesNotice } from './LooseCluesNotice.jsx';
 import { Latch } from '../Latch.jsx';
 import { CellMenu } from './CellMenu.jsx';
@@ -101,7 +99,8 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
     { id: 'btn-circle', label: 'Toggle circle', checked: circleSet.has(caret % N), onSelect: () => run('toggleCircle', caret % N) },
     { id: 'btn-rebus', label: composing ? 'Leave rebus mode' : 'Enter rebus mode', hint: 'Enter', checked: !!composing, onSelect: () => moveTo({ composing: !composing }) },
     ...(structural ? [
-      { id: 'btn-insert-cell', label: 'Insert cell', onSelect: () => run('insertCell', caret % N) },
+      { id: 'btn-insert-before', label: 'Insert cell before', onSelect: () => run('insertCell', caret % N) },
+      { id: 'btn-insert-after', label: 'Insert cell after', onSelect: () => run('insertCell', caret % N + 1) },
       { id: 'btn-delete-cell', label: 'Delete cell', hint: 'Del', onSelect: () => run('deleteCell', caret % N) },
     ] : []),
   ];
@@ -120,7 +119,6 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
           </label>
           <span class="tools">
             <CellMenu items={cellItems(true)} focus={focus} />
-            <PasteLetters><SequenceField cells={model.ring} label="All letters, from ring cell 1" onApply={cells => exec('setRing', [cells])} /></PasteLetters>
           </span>
         </>
       )}
