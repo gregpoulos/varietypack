@@ -19,12 +19,14 @@ const { deriveSlots, slotCells, uncluedCells, uncrossedCells, isSymmetric, isCon
 const { buildEntryMaps } = require('../../../../crushword/src/typing.mjs');
 const { DEFAULT_MAX_CELL_LETTERS, MIN_ANSWER_LETTERS } = require('../../../../crushword/src/validator');
 const { StructureError } = require('../errors');
-const { fillEmptyClues } = require('../placeholderClues');
 const { formatCell } = require('../cells');
 const { orphanOf } = require('../starts');
 const { newEntry, entryFromYaml, entryToYaml, circledPositions } = require('../entries');
-const { headerFromYaml, headerToYaml, setHeaderField } = require('../header');
-const { sanitizeCell, parseEntryCells, takeOrphan, displayPatch, isCell, isModelBase } = require('../kindCommon');
+const { headerFromYaml, headerToYaml } = require('../header');
+const {
+  sanitizeCell, assertTitle, listedCircles, parseEntryCells, takeOrphan, titleProblems, orphanProblems,
+  emptyCellsProblems, problem, commonCommands, displayPatch, isCell, isModelBase,
+} = require('../kindCommon');
 
 const kind = 'crushword';
 // The bounds are the editor's, not format rules.
@@ -39,13 +41,15 @@ const MAX_CELL_LETTERS_LIMIT = 9;
 const cellKey = (r, c) => `${r},${c}`;
 const keyOf = (dir, r, c) => `${dir} ${r},${c}`;
 const parseCell = (key) => key.split(',').map(Number);
+// Where (r, c) sits in the model's flat cells and blocks.
+const cellIndex = (model, r, c) => r * model.cols + c;
 const byCell = (a, b) => { const [ar, ac] = parseCell(a), [br, bc] = parseCell(b); return ar - br || ac - bc; };
 
 function gridStrings(model) {
   const rows = [];
   for (let r = 0; r < model.rows; r++) {
     let line = '';
-    for (let c = 0; c < model.cols; c++) line += model.blocks[r * model.cols + c] ? '#' : '.';
+    for (let c = 0; c < model.cols; c++) line += model.blocks[cellIndex(model, r, c)] ? '#' : '.';
     rows.push(line);
   }
   return rows;
@@ -71,7 +75,7 @@ const entryMaps = (model) => buildEntryMaps(gridStrings(model));
 const capOf = (model) => model.maxCellLetters ?? DEFAULT_MAX_CELL_LETTERS;
 const slotName = (slot) => `${slot.dir === 'A' ? 'Across' : 'Down'} ${slot.num}`;
 const inGrid = (model, r, c) => Number.isInteger(r) && Number.isInteger(c) && r >= 0 && r < model.rows && c >= 0 && c < model.cols;
-const cellAt = (model, key) => { const [r, c] = parseCell(key); return model.cells[r * model.cols + c]; };
+const cellAt = (model, key) => { const [r, c] = parseCell(key); return model.cells[cellIndex(model, r, c)]; };
 
 // Every check the editor shows on the grid, from the validator's own rules.
 function gridChecks(model) {
@@ -84,7 +88,7 @@ function gridChecks(model) {
   }).map(s => s.key);
   const overfull = [];
   for (let r = 0; r < model.rows; r++) {
-    for (let c = 0; c < model.cols; c++) if (model.cells[r * model.cols + c].length > cap) overfull.push(cellKey(r, c));
+    for (let c = 0; c < model.cols; c++) if (model.cells[cellIndex(model, r, c)].length > cap) overfull.push(cellKey(r, c));
   }
   return {
     noEntry: uncluedCells(grid).map(({ r, c }) => cellKey(r, c)),
@@ -124,16 +128,13 @@ function resized(model, R2, C2) {
   const cells = new Array(R2 * C2).fill('');
   for (let r = 0; r < Math.min(model.rows, R2); r++) {
     for (let c = 0; c < Math.min(model.cols, C2); c++) {
-      blocks[r * C2 + c] = model.blocks[r * model.cols + c];
-      cells[r * C2 + c] = model.cells[r * model.cols + c];
+      blocks[r * C2 + c] = model.blocks[cellIndex(model, r, c)];
+      cells[r * C2 + c] = model.cells[cellIndex(model, r, c)];
     }
   }
   const circles = model.circles.filter(k => { const [r, c] = parseCell(k); return r < R2 && c < C2; });
   return rekey(model, { ...model, rows: R2, cols: C2, blocks, cells, circles });
 }
-
-// How many clues resize(R2, C2) would move to Unattached clues, counted from its result.
-const resizeLosses = (model, R2, C2) => resized(model, R2, C2).orphans.length - model.orphans.length;
 
 // ── new, import, export ─────────────────────────────────────────────────────
 
@@ -147,7 +148,7 @@ function newModel({ rows, cols }) {
 }
 
 function fromYaml(puzzle) {
-  if (puzzle.title !== undefined && typeof puzzle.title !== 'string') throw new StructureError('the title must be text (put numbers in quotes)');
+  assertTitle(puzzle);
   const g = puzzle.grid;
   if (!Array.isArray(g) || !g.length || g.some(row => typeof row !== 'string' || !/^[.#]+$/.test(row) || row.length !== g[0].length)) {
     throw new StructureError('"grid" must be a list of equal-length rows of "." and "#"');
@@ -181,7 +182,13 @@ function fromYaml(puzzle) {
   const cells = new Array(rows * cols).fill('');
   const warnings = [];
   const acrossOf = new Map();
-  for (const s of slotsOf('A')) s.cells.forEach((k, i) => { cells[parseCell(k)[0] * cols + parseCell(k)[1]] = entryCells.get(s.key)[i]; acrossOf.set(k, s); });
+  for (const s of slotsOf('A')) {
+    s.cells.forEach((k, i) => {
+      const [r, c] = parseCell(k);
+      cells[r * cols + c] = entryCells.get(s.key)[i];
+      acrossOf.set(k, s);
+    });
+  }
   for (const s of slotsOf('D')) {
     s.cells.forEach((k, i) => {
       const [r, c] = parseCell(k);
@@ -198,9 +205,7 @@ function fromYaml(puzzle) {
   const listed = new Set();
   const circleKeys = new Set();
   for (const s of all) {
-    const entry = puzzle[s.dir === 'A' ? 'across' : 'down'][s.num];
-    const list = entry.styles && Array.isArray(entry.styles.circle) ? entry.styles.circle : [];
-    for (const p of list) {
+    for (const p of listedCircles(puzzle[s.dir === 'A' ? 'across' : 'down'][s.num])) {
       if (!Number.isInteger(p) || p < 0 || p >= s.len) continue;
       circleKeys.add(s.cells[p]);
       listed.add(`${s.key}:${s.cells[p]}`);
@@ -243,34 +248,28 @@ function toYaml(model) {
 
 // ── completeness ──────────────────────────────────────────
 
-const MAX_LISTED = 10;
 const place = (key) => { const [r, c] = parseCell(key); return `(${r + 1}, ${c + 1})`; };
 
 function completeness(model) {
-  const out = [];
-  const err = (message, target) => out.push({ level: 'error', message, target });
   const checks = gridChecks(model);
-  if (!model.header.title.trim()) err('Give the puzzle a title.', { header: 'title' });
   // A cell in no entry gets its own, more precise message below.
   const noEntry = new Set(checks.noEntry);
   const empty = [];
   for (let r = 0; r < model.rows; r++) {
     for (let c = 0; c < model.cols; c++) {
-      if (!model.blocks[r * model.cols + c] && model.cells[r * model.cols + c] === '' && !noEntry.has(cellKey(r, c))) empty.push(cellKey(r, c));
+      const i = cellIndex(model, r, c);
+      if (!model.blocks[i] && model.cells[i] === '' && !noEntry.has(cellKey(r, c))) empty.push(cellKey(r, c));
     }
   }
-  if (empty.length === 1) err(`Cell ${place(empty[0])} is empty.`, { cells: empty });
-  else if (empty.length) {
-    err(`Empty cells: ${empty.slice(0, MAX_LISTED).map(place).join(', ')}${empty.length > MAX_LISTED ? `, and ${empty.length - MAX_LISTED} more` : ''}.`, { cells: empty });
-  }
+  const out = [...titleProblems(model), ...emptyCellsProblems(empty, place)];
+  const err = (message, target) => out.push(problem(message, target));
   for (const k of checks.noEntry) err(`Cell ${place(k)} is open but in no entry — block it or open a neighbor.`, { cells: [k] });
   for (const s of slots(model)) {
     if (!model.clues[s.key].clue.trim()) err(`${slotName(s)} has no clue.`, { key: s.key });
   }
   const cap = capOf(model);
   for (const k of checks.overfull) err(`Cell ${place(k)} holds ${cellAt(model, k).length} letters; the limit is ${cap}.`, { cells: [k] });
-  for (const o of model.orphans) err(`Unattached clue "${o.clue}" (from ${o.from}). Attach or discard it.`, { orphan: o.id });
-  return out;
+  return [...out, ...orphanProblems(model)];
 }
 
 // ── commands ────────────────────────────────────────────────────────────────
@@ -279,7 +278,6 @@ const withClue = (model, key, patch) => ({ ...model, clues: { ...model.clues, [k
 const hasSlot = (model, key) => Object.hasOwn(model.clues, key);
 const sortCircles = (list) => [...list].sort(byCell);
 
-// A copy with every entry replaced by fn(entry) (placeholderClues.js).
 const mapEntries = (model, fn) => ({
   ...model,
   clues: Object.fromEntries(Object.entries(model.clues).map(([key, e]) => [key, fn(e)])),
@@ -288,23 +286,25 @@ const mapEntries = (model, fn) => ({
 const commands = {
   // Not truncated: an over-full cell is flagged by gridChecks instead.
   setCell(model, r, c, content) {
-    if (!inGrid(model, r, c) || model.blocks[r * model.cols + c]) return model;
+    const i = cellIndex(model, r, c);
+    if (!inGrid(model, r, c) || model.blocks[i]) return model;
     const value = sanitizeCell(content);
-    if (model.cells[r * model.cols + c] === value) return model;
+    if (model.cells[i] === value) return model;
     const cells = model.cells.slice();
-    cells[r * model.cols + c] = value;
+    cells[i] = value;
     return { ...model, cells };
   },
 
   toggleBlock(model, r, c) {
     if (!inGrid(model, r, c)) return model;
-    const target = !model.blocks[r * model.cols + c];
+    const i = cellIndex(model, r, c);
+    const target = !model.blocks[i];
     const blocks = model.blocks.slice();
     const cells = model.cells.slice();
-    blocks[r * model.cols + c] = target;
-    if (target) cells[r * model.cols + c] = '';
+    blocks[i] = target;
+    if (target) cells[i] = '';
     if (blocks.every(Boolean)) return model;
-    const circles = model.circles.filter(k => { const [rr, cc] = parseCell(k); return !blocks[rr * model.cols + cc]; });
+    const circles = model.circles.filter(k => { const [rr, cc] = parseCell(k); return !blocks[cellIndex(model, rr, cc)]; });
     return rekey(model, { ...model, blocks, cells, circles });
   },
 
@@ -321,7 +321,7 @@ const commands = {
   setDisplayAnswer: (model, key, text) => (hasSlot(model, key) ? withClue(model, key, e => displayPatch(e, text)) : model),
 
   toggleCircle(model, r, c) {
-    if (!inGrid(model, r, c) || model.blocks[r * model.cols + c]) return model;
+    if (!inGrid(model, r, c) || model.blocks[cellIndex(model, r, c)]) return model;
     const k = cellKey(r, c);
     return { ...model, circles: model.circles.includes(k) ? model.circles.filter(x => x !== k) : sortCircles([...model.circles, k]) };
   },
@@ -332,8 +332,6 @@ const commands = {
     return { ...model, maxCellLetters: n };
   },
 
-  setHeader: (model, field, value) => ({ ...model, header: setHeaderField(model.header, field, value) }),
-
   attachOrphan(model, orphanId, key) {
     if (!hasSlot(model, key)) return model;                     // the slot went away since it was picked
     const slot = slots(model).find(s => s.key === key);
@@ -342,19 +340,17 @@ const commands = {
     return { ...withClue(model, key, e => ({ ...e, clue: taken.clue })), orphans: taken.orphans, nextId: taken.nextId };
   },
 
-  discardOrphan: (model, orphanId) => ({ ...model, orphans: model.orphans.filter(o => o.id !== orphanId) }),
-
-  fillEmptyClues: (model) => fillEmptyClues(model, mapEntries),
+  ...commonCommands(mapEntries),
 };
 
-// Enough shape that the editor can open a model (a draft, say) without crashing.
 function isModel(m) {
   if (!isModelBase(m, kind) || !Number.isInteger(m.rows) || !Number.isInteger(m.cols) || m.rows < 1 || m.cols < 1) return false;
   const total = m.rows * m.cols;
   if (!(m.maxCellLetters === null || (Number.isInteger(m.maxCellLetters) && m.maxCellLetters >= 1))) return false;
   if (!Array.isArray(m.blocks) || m.blocks.length !== total || !m.blocks.every(b => typeof b === 'boolean')) return false;
   if (!Array.isArray(m.cells) || m.cells.length !== total || !m.cells.every((c, i) => isCell(c) && !(m.blocks[i] && c !== ''))) return false;
-  if (!m.circles.every(k => typeof k === 'string' && /^\d+,\d+$/.test(k) && inGrid(m, ...parseCell(k)) && !m.blocks[parseCell(k)[0] * m.cols + parseCell(k)[1]])) return false;
+  const openCell = (k) => { const [r, c] = parseCell(k); return inGrid(m, r, c) && !m.blocks[cellIndex(m, r, c)]; };
+  if (!m.circles.every(k => typeof k === 'string' && /^\d+,\d+$/.test(k) && openCell(k))) return false;
   if (!m.clues || typeof m.clues !== 'object' || Array.isArray(m.clues)) return false;
   const keys = slots(m).map(s => s.key).sort();
   const have = Object.keys(m.clues).sort();
@@ -364,6 +360,6 @@ function isModel(m) {
 
 module.exports = {
   kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands, mapEntries,
-  gridStrings, slots, entryMaps, capOf, gridChecks, resizeLosses, slotName, MIN_ANSWER_LETTERS,
+  cellKey, parseCell, cellIndex, gridStrings, slots, entryMaps, capOf, gridChecks, slotName, MIN_ANSWER_LETTERS,
   DEFAULT_MAX_CELL_LETTERS, MAX_CELL_LETTERS_LIMIT,
 };

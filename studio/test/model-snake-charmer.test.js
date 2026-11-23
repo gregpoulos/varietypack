@@ -177,7 +177,7 @@ test('navigation helpers: wrap at both ends, Tab jumps, and | at the caret', () 
   assert.equal(sc.entryAtPosition(model, 9), 2);
 });
 
-// ── robustness (cross-tool review of PR 3a) ─────────────────────────────────
+// ── robustness ──────────────────────────────────────────────────────────────
 
 test('fromYaml: a shape that is not one of the four throws a StructureError', () => {
   assert.throws(() => imp({ ...puzzle(), shape: 'hexagon' }), (e) => e instanceof StructureError && /shape/.test(e.message));

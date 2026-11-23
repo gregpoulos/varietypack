@@ -297,12 +297,6 @@ select.readout:disabled, .shape select:disabled, .fld select:disabled { opacity:
 .diag-jump { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-decoration-color: var(--paper-line); cursor: pointer; }
 .diag-jump:hover { text-decoration-color: currentColor; }
 
-.editor { display: grid; gap: 14px; min-width: 0; }
-.seq { display: grid; gap: 6px; }
-.seq label { font: 500 12px var(--font-legend); letter-spacing: .12em; text-transform: uppercase; }
-.seq-row { display: flex; gap: 6px; }
-#sequence-field, #line-field { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--edge); border-radius: 2px; background: var(--paper); color: var(--paper-ink); font: 500 14px var(--font-mono); letter-spacing: .05em; }
-
 .board-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .tools { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 
@@ -570,4 +564,4 @@ input.fader::-moz-range-thumb { width: 20px; height: 32px; border: 0; border-rad
 .hs-instructions::placeholder { color: var(--tape-muted); opacity: 1; }
 
 /* The browser's default placeholder color fails contrast on paper. */
-.clue-input::placeholder, #max-cell-letters::placeholder { color: var(--paper-muted); opacity: 1; }
+.clue-input::placeholder { color: var(--paper-muted); opacity: 1; }

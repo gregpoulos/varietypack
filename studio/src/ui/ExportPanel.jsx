@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import core from '../core/index.js';
 import { VALID_THEMES } from '../../../shared/build/themeRegistry.js';
 import { canExport } from '../model/app.js';
 import { puzzleText } from '../model/doc.js';
@@ -25,8 +24,9 @@ function describe(target, doc, title, opts) {
 
 // A modal <dialog>: Escape or Close hide it. Its theme and Hide answers start from the
 // preview's each time it opens (the panel mounts per opening) and never change the
-// preview. Downloading a page, or a hidden-answers YAML, is refused unless the real
-// validator reports no errors; plain YAML and drafts always save.
+// preview. Downloading a page, or a hidden-answers YAML, needs a clean check of the
+// current text (canExport), and being modal, the dialog keeps the text from changing
+// under it; plain YAML and drafts always save.
 export function ExportPanel({ state, dispatch, title }) {
   const { doc, check } = state;
   const ref = useRef(null);
@@ -68,18 +68,6 @@ export function ExportPanel({ state, dispatch, title }) {
   const themeReason = themeLocked && saves !== 'draft' ? 'The YAML doesn’t parse, so it saves as typed.' : '';
 
   function onDownload(target) {
-    // Building the page, or hiding the answers in a YAML, needs a puzzle that builds. The
-    // debounced check may be behind the editor, so check the current text again.
-    // A muddled doc's YAML is exempt: it only re-themes an already-muddled file and can't
-    // fail to build.
-    if (target === 'page' || (hideAnswers && !muddled)) {
-      const fresh = core.checkText(puzzleText(doc), { font: 'embed' });
-      if (fresh.parseError || fresh.errors.length) {
-        dispatch({ type: 'SHOW_MESSAGE', text: 'Export stopped: the puzzle has problems. Fix them first.' });
-        dispatch({ type: 'HIDE_DIALOG' });
-        return;
-      }
-    }
     try {
       const out = buildExport(target, doc, { ...opts, savedAtIso: new Date().toISOString() });
       download(exportFileName(title, out.type), out.text, out.mime);

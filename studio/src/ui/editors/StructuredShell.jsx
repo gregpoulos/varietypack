@@ -4,6 +4,7 @@ import { PuzzleBox } from './PuzzleBox.jsx';
 import { GridSettings } from './GridSettings.jsx';
 import { FillCluesButton } from './FillCluesButton.jsx';
 import { focusBoardOnOpen as focusBoard } from './useBoardInput.js';
+import { undoRedoKeys } from './useBoardEditing.js';
 import { isTouchFirst } from '../../../../shared/engine-phone.mjs';
 import { PopoverScope } from '../usePopover.js';
 
@@ -29,9 +30,12 @@ export function StructuredShell({ state, dispatch, focusRef }) {
   useEffect(() => maybeFocusBoard(view, state.dialog), []);
   const fillClues = <FillCluesButton model={doc.model} dispatch={dispatch} />;
   const header = <PuzzleBox model={doc.model} dispatch={dispatch} />;
+  // Ctrl+Z and redo step the document's history from every field in the editor, never
+  // the browser's own text undo, whose input event would commit its result as a new step
+  // and clear redo.
   return (
     <PopoverScope.Provider value={`${doc.id}:${view}`}>
-      <div class="ed structured">
+      <div class="ed structured" onKeyDown={undoRedoKeys(dispatch)}>
         <Editor state={state} dispatch={dispatch} model={doc.model} phase={view === 'clues' ? 'clues' : 'board'} focusRef={focusRef} settings={settings} fillClues={fillClues} header={header} />
       </div>
     </PopoverScope.Provider>

@@ -1,5 +1,6 @@
 import { useRef } from 'preact/hooks';
 import { ChannelList, channelOf } from './ChannelList.jsx';
+import { LooseCluesNotice } from './LooseCluesNotice.jsx';
 import { useKeepRowsInView } from './useKeepRowsInView.js';
 
 // The Board phase's word list: one line per entry, its place and its answer. Give it the
@@ -9,25 +10,28 @@ import { useKeepRowsInView } from './useKeepRowsInView.js';
 // `active` is the entry at the caret, `crossing` the other direction's entry through it.
 // onSelect(j, ctx): ctx is `{ cutName }`, plus the group's fields for a grouped list, so
 // one handler can tell the lists apart.
-// looseCount: the loose-clue notice's count (the notice sits above this list in the side
-// column), so the column scrolls up to it when it appears.
-export function WordList({ lists, onSelect, looseCount = 0 }) {
+// looseCount and onShowLoose: the loose-clue notice drawn directly above the lists, which
+// the column scrolls up to when it appears; its button shows the Clues phase.
+export function WordList({ lists, onSelect, looseCount = 0, onShowLoose }) {
   const root = useRef(null);
   useKeepRowsInView(root, lists, 'word-row', looseCount);
   return (
-    <div id="word-list" ref={root}>
-      {lists.map((list, i) => (
-        <ChannelList key={list.cutName} list={list} channel={channelOf(i, lists.length)}
-          renderRow={(row, ctx) => (
-            <li class={'word-row' + (row.active ? ' on' : '') + (row.crossing ? ' crossing' : '')} key={row.id ?? row.j}
-              data-cut={list.cutName} data-entry={row.j} {...row.attrs}>
-              <button type="button" class="word-pick" onClick={() => onSelect(row.j, ctx)}>
-                <span class={'word-label' + (row.clash ? ' clash' : '')}>{row.label}</span>
-                <span class="word-answer">{row.answer}</span>
-              </button>
-            </li>
-          )} />
-      ))}
-    </div>
+    <>
+      <LooseCluesNotice count={looseCount} onShow={onShowLoose} />
+      <div id="word-list" ref={root}>
+        {lists.map((list, i) => (
+          <ChannelList key={list.cutName} list={list} channel={channelOf(i, lists.length)}
+            renderRow={(row, ctx) => (
+              <li class={'word-row' + (row.active ? ' on' : '') + (row.crossing ? ' crossing' : '')} key={row.id ?? row.j}
+                data-cut={list.cutName} data-entry={row.j} {...row.attrs}>
+                <button type="button" class="word-pick" onClick={() => onSelect(row.j, ctx)}>
+                  <span class={'word-label' + (row.clash ? ' clash' : '')}>{row.label}</span>
+                  <span class="word-answer">{row.answer}</span>
+                </button>
+              </li>
+            )} />
+        ))}
+      </div>
+    </>
   );
 }

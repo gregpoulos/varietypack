@@ -55,18 +55,18 @@ for (const kind of Object.keys(STRUCTURED)) {
     assert.equal(puzzleText(cleared), null);
     assert.notEqual(previewText(cleared), null);
   });
-
-  test(`${kind}: the fill command is one undo step`, () => {
-    const doc = newDoc({ id: 'a', now: 1, kind, size: Object.fromEntries(K.sizeFields.map(f => [f.name, (SIZES[kind] || {})[f.name] ?? f.default])) });
-    let s = reduce(initialState(), { type: 'OPEN_DOC', doc });
-    const before = s.doc.model;
-    s = reduce(s, { type: 'MODEL_COMMAND', name: 'fillEmptyClues', args: [], now: 5 });
-    assert.equal(emptyClueCount(s.doc.model, K.mapEntries), 0);
-    assert.equal(canUndo(s.history), true);
-    s = reduce(s, { type: 'UNDO' });
-    assert.equal(s.doc.model, before);
-  });
 }
+
+// The reducer and history are shared; only the command is per kind (tested above).
+test('the fill command is one undo step', () => {
+  let s = reduce(initialState(), { type: 'OPEN_DOC', doc: newDoc({ id: 'a', now: 1, kind: 'spiral', size: { cells: 40 } }) });
+  const before = s.doc.model;
+  s = reduce(s, { type: 'MODEL_COMMAND', name: 'fillEmptyClues', args: [], now: 5 });
+  assert.equal(emptyClueCount(s.doc.model, STRUCTURED.spiral.mapEntries), 0);
+  assert.equal(canUndo(s.history), true);
+  s = reduce(s, { type: 'UNDO' });
+  assert.equal(s.doc.model, before);
+});
 
 // A spiral with every cell and title filled but no clues.
 function unclued() {

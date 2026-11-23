@@ -38,6 +38,25 @@ function openActions(route) {
   return [{ type: 'SHOW_MESSAGE', text: MISSING }];
 }
 
+// Validates and builds `text` once typing pauses, and dispatches the result as `type`
+// with the text it was for. The preview always embeds the font, so the studio never
+// touches the network; options.font only applies to exports.
+function useDebouncedCheck(type, text, docId, hashedPreview, previewTheme, dispatch) {
+  useEffect(() => {
+    if (text == null) return undefined;
+    const timer = setTimeout(() => {
+      const result = core.checkText(text, {
+        font: 'embed', muddle: hashedPreview,
+        // Only when chosen: validateBuildOptions rejects `theme: null`, and leaving it
+        // out lets check.theme report the file's own.
+        ...(previewTheme !== null && { theme: previewTheme }),
+      });
+      dispatch({ type, text, result });
+    }, CHECK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [docId, text, hashedPreview, previewTheme]);
+}
+
 // The state to start in, read from the address. `fix` is true when the address has to be
 // rewritten to the start screen's.
 function bootState() {
@@ -78,36 +97,10 @@ export function App() {
   const hashedPreview = !!doc && doc.options.hashedPreview;
   const previewTheme = doc ? doc.options.previewTheme : null;
 
-  // Diagnostics loop: validate and build the current text once typing pauses. The preview
-  // always embeds the font, so the studio never touches the network; options.font only
-  // applies to exports.
-  useEffect(() => {
-    if (text == null) return undefined;
-    const timer = setTimeout(() => {
-      const result = core.checkText(text, {
-        font: 'embed', muddle: hashedPreview,
-        // Only when chosen: validateBuildOptions rejects `theme: null`, and leaving it
-        // out lets check.theme report the file's own.
-        ...(previewTheme !== null && { theme: previewTheme }),
-      });
-      dispatch({ type: 'CHECK_RESULT', text, result });
-    }, CHECK_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [doc?.id, text, hashedPreview, previewTheme]);
-
-  // The check of the placeholder text, kept apart from the real one (see
+  // Diagnostics loop: the real text, and the placeholder text kept apart from it (see
   // model/placeholderClues.js).
-  useEffect(() => {
-    if (placeholderText == null) return undefined;
-    const timer = setTimeout(() => {
-      const result = core.checkText(placeholderText, {
-        font: 'embed', muddle: hashedPreview,
-        ...(previewTheme !== null && { theme: previewTheme }),
-      });
-      dispatch({ type: 'PREVIEW_RESULT', text: placeholderText, result });
-    }, CHECK_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [doc?.id, placeholderText, hashedPreview, previewTheme]);
+  useDebouncedCheck('CHECK_RESULT', text, doc?.id, hashedPreview, previewTheme, dispatch);
+  useDebouncedCheck('PREVIEW_RESULT', placeholderText, doc?.id, hashedPreview, previewTheme, dispatch);
 
   // Autosave: a draft is written once edits pause, and straight away when the document is
   // left (flushDraft), so an edit made just before leaving isn't lost.

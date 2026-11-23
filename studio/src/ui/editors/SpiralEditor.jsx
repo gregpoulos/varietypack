@@ -1,8 +1,8 @@
 import spiral from '../../model/kinds/spiral.js';
 import { formatCell } from '../../model/cells.js';
 import { useBoardEditing } from './useBoardEditing.js';
-import { keepBoardFocus, boardHasFocus } from './useBoardInput.js';
-import { displayStatusFor } from './displayStatus.js';
+import { boardHasFocus } from './useBoardInput.js';
+import { spacedAnswer } from './displayStatus.js';
 import { SpiralBoard } from './SpiralBoard.jsx';
 import { ClueLists } from './ClueList.jsx';
 import { plural } from './plural.js';
@@ -10,9 +10,9 @@ import { PhaseLayout } from './PhaseLayout.jsx';
 import { WordList } from './WordList.jsx';
 import { Checks } from './Checks.jsx';
 import { KeyStrip, KeyList } from './KeyStrip.jsx';
-import { LooseCluesNotice } from './LooseCluesNotice.jsx';
+import { BoardFrame } from './BoardFrame.jsx';
 import { Latch } from '../Latch.jsx';
-import { CellMenu } from './CellMenu.jsx';
+import { CellMenu, circleAndRebusItems } from './CellMenu.jsx';
 
 const { commands, cutIndices, entryLabel, entryAtCell, entryFirstCell, stepRead, entryStart, breakAtCaret, gapToCutIndex, readsBackward } = spiral;
 const CUTS = ['inward', 'outward'];
@@ -57,8 +57,6 @@ export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillC
 
   const circleSet = new Set(model.circles);
 
-  // The selected row also carries the spaced answer and its status (ClueList shows them
-  // on that row only).
   function rowsFor(cutName) {
     const here = entryAtCell(model, cutName, caret);
     const mine = cutName === activeCut;
@@ -71,16 +69,11 @@ export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillC
         active: mine && j === here,
         crossing: !mine && j === here,
       };
-      if (row.active) {
-        row.display = entry.displayAnswer ?? '';
-        row.displayStatus = displayStatusFor(row.display, idx.map(i => model.cells[i]), readsBackward(cutName));
-      }
+      if (row.active) Object.assign(row, spacedAnswer(entry, idx.map(i => model.cells[i]), readsBackward(cutName)));
       return row;
     });
   }
 
-  // focusBoard: false is for a clue field gaining focus in the Clues phase, which must
-  // keep it so the keys typed there stay in the field.
   const select = (cutName) => (j, { focusBoard = true } = {}) => {
     moveTo({ caret: entryFirstCell(model, cutName, j), activeCut: cutName, composing: false });
     if (focusBoard) focus();
@@ -95,8 +88,7 @@ export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillC
   const lists = CUTS.map(cut => ({ cutName: cut, title: capital(cut), rowName: capital(cut), rows: rowsFor(cut) }));
   // The cell-level actions, one menu. Insert and Delete cell only in the Board phase.
   const cellItems = (structural) => [
-    { id: 'btn-circle', label: 'Toggle circle', checked: circleSet.has(caret), onSelect: () => run('toggleCircle', caret) },
-    { id: 'btn-rebus', label: composing ? 'Leave rebus mode' : 'Enter rebus mode', hint: 'Enter', checked: !!composing, onSelect: () => moveTo({ composing: !composing }) },
+    ...circleAndRebusItems({ circled: circleSet.has(caret), onCircle: () => run('toggleCircle', caret), composing, moveTo }),
     ...(structural ? [
       { id: 'btn-insert-before', label: 'Insert cell before', onSelect: () => run('insertCell', caret) },
       { id: 'btn-insert-after', label: 'Insert cell after', onSelect: () => run('insertCell', caret + 1) },
@@ -118,8 +110,7 @@ export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillC
       )}
       clueTools={<span class="tools"><CellMenu items={cellItems(false)} focus={focus} /></span>}
       board={(
-        <div id="board" class={'board ' + (activeCut === 'inward' ? 'in' : 'out')} onClick={focus} onMouseDown={keepBoardFocus}>
-          <input id="board-input" aria-label="Board input" {...inputProps} />
+        <BoardFrame channel={activeCut === 'inward' ? 1 : 2} focus={focus} inputProps={inputProps}>
           <SpiralBoard cells={model.cells} caret={caret} composing={composing} activeCut={activeCut}
             inStarts={model.cuts.inward.starts} outStarts={model.cuts.outward.starts} circles={circleSet}
             onCellClick={i => {
@@ -127,7 +118,7 @@ export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillC
               moveTo(i === caret && focused ? { activeCut: other(activeCut), composing: false } : { caret: i, composing: false });
             }}
             onGapClick={g => exec('toggleBreak', [activeCut, gapToCutIndex(model, activeCut, g)])} />
-        </div>
+        </BoardFrame>
       )}
       keys={(
         <KeyStrip
@@ -152,10 +143,8 @@ export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillC
         ]} />
       )}
       side={(
-        <>
-          <LooseCluesNotice count={model.orphans.length} onShow={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
-          <WordList lists={lists} onSelect={(j, ctx) => select(ctx.cutName)(j)} looseCount={model.orphans.length} />
-        </>
+        <WordList lists={lists} onSelect={(j, ctx) => select(ctx.cutName)(j)} looseCount={model.orphans.length}
+          onShowLoose={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
       )}
       clues={(
         <ClueLists lists={lists} orphans={model.orphans} targets={targets}
@@ -163,8 +152,6 @@ export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillC
           onDiscard={id => exec('discardOrphan', [id])}
           onSelect={(j, ctx) => select(ctx.cutName)(j)}
           onFocusClue={(j, ctx) => {
-            // A caret already inside this entry stays put, so tabbing into its clue
-            // doesn't reset a mid-entry caret.
             if (ctx.cutName === activeCut && entryAtCell(model, activeCut, caret) === j) moveTo({ composing: false });
             else select(ctx.cutName)(j, { focusBoard: false });
           }}

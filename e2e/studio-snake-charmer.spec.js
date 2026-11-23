@@ -7,8 +7,6 @@ const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
 const { cellMenuItem, expectTabLeavesClues, openStudio, openStudioFile, downloadText: download, typeBoard: type, showPhase } = require('./helpers');
 const { clickGapLine } = require('./helpers');
-const { buildFromObject } = require('../shared/build/buildFromObject');
-const { HOOKS } = require('../snake-charmer/src/builder');
 const { validate } = require('../snake-charmer/src/validator');
 
 let studio;
@@ -130,15 +128,6 @@ test('the shape select lists only shapes that fit', async ({ page }) => {
   expect(yaml.load(text).shape).toBe('stadium');
 });
 
-test('a Snake Charmer fixture round-trips through the editor', async ({ page }) => {
-  await openFile(page, fixture('rebus-8.yaml'));
-  await expect(page.locator('#problems-chip')).toContainText('Ready to export');
-  await page.locator('#btn-export').click();
-  const exported = yaml.load(await download(page, '#export-yaml'));
-  const original = yaml.load(fs.readFileSync(fixture('rebus-8.yaml'), 'utf8'));
-  expect(buildFromObject(exported, {}, HOOKS).html).toBe(buildFromObject(original, {}, HOOKS).html);
-});
-
 test('a complete puzzle exports YAML that validates', async ({ page }) => {
   await newRing(page, 16);
   await fillRing(page, 'ABCDEFGHIJKLMNOP');
@@ -196,19 +185,25 @@ test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacin
   await expectTabLeavesClues(page, inputs.last());
 });
 
-test('inserting a cell on lap 2 keeps the caret on the same lap and cell', async ({ page }) => {
+// The caret is a position over both laps, so a ring that grows or shrinks moves lap 2's
+// base. Undo and Redo change the ring's size as well as the Cell… menu does.
+test('inserting a cell on lap 2, and undoing it, keeps the caret on the same lap and cell', async ({ page }) => {
   await newRing(page, 16);
   await lap(page, 2).click();
   await cell(page, 3).click();
+  const onCell3 = async (count) => {
+    await expect(page.locator('path.rc')).toHaveCount(count);
+    await expect(lap(page, 2)).toHaveAttribute('aria-pressed', 'true');
+    expect(await page.locator('.rcaret').getAttribute('d')).toBe(await cell(page, 3).getAttribute('d'));
+  };
   await cellMenuItem(page, 'btn-insert-before');
-  await expect(page.locator('path.rc')).toHaveCount(17);
-  await expect(lap(page, 2)).toHaveAttribute('aria-pressed', 'true');
-  const caret = await page.locator('.rcaret').getAttribute('d');
-  expect(caret).toBe(await cell(page, 3).getAttribute('d'));
+  await onCell3(17);
+  await page.locator('#btn-undo').click();
+  await onCell3(16);
+  await page.locator('#btn-redo').click();
+  await onCell3(17);
   await cellMenuItem(page, 'btn-delete-cell');
-  await expect(page.locator('path.rc')).toHaveCount(16);
-  await expect(lap(page, 2)).toHaveAttribute('aria-pressed', 'true');
-  expect(await page.locator('.rcaret').getAttribute('d')).toBe(await cell(page, 3).getAttribute('d'));
+  await onCell3(16);
 });
 
 // Space is the shared editing hook's (useBoardEditing.js), so one kind covers it. This
@@ -243,18 +238,6 @@ test('the Board phase shows Snake Charmer\'s word list and checks', async ({ pag
   await expect(page.locator('.word-row.on')).toHaveCount(1);
   await expect(page.locator('.word-row.crossing')).toHaveCount(1);
   await expect(page.locator('#checks #meter-entries')).toContainText(`${n} entries`);
-});
-
-test('the Board phase fits one screen at laptop size', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await openFile(page, fixture('double-turn-72.yaml'));
-  const fits = await page.evaluate(() => ({
-    page: document.documentElement.scrollHeight <= window.innerHeight,
-    pane: (el => el.scrollHeight <= el.clientHeight)(document.getElementById('edit-view')),
-  }));
-  expect(fits).toEqual({ page: true, pane: true });
-  const box = await page.locator('#board').boundingBox();
-  expect(box.height).toBeGreaterThan(300);
 });
 
 test('focusing the clue of the entry the caret is in leaves the caret, and a different entry clue moves it', async ({ page }) => {

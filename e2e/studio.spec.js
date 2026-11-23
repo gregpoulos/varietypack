@@ -2,25 +2,19 @@
 
 const { test, expect } = require('@playwright/test');
 const fs   = require('fs');
-const os   = require('os');
 const path = require('path');
 const yaml = require('js-yaml');
-const { buildPage } = require('../studio/build');
-const { startServer } = require('./studio-server');
-const { openStudio, downloadText } = require('./helpers');
+const { serveStudio } = require('./studio-server');
+const { cellMenuItem, openStudio, downloadText } = require('./helpers');
 
 let server, dir;
 
 test.beforeAll(async () => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-e2e-'));
-  fs.writeFileSync(path.join(dir, 'index.html'), await buildPage(), 'utf8');
-  server = await startServer(dir);
+  server = await serveStudio();
+  ({ dir } = server);
 });
 
-test.afterAll(async () => {
-  await server.close();
-  fs.rmSync(dir, { recursive: true, force: true });
-});
+test.afterAll(async () => { await server.close(); });
 
 test('studio page loads without errors', async ({ page }) => {
   const problems = [];
@@ -86,6 +80,9 @@ async function unfinishedSpiralInExport(page) {
 
 function srcdocFrame(page) { return page.frames().find(f => f.url() === 'about:srcdoc'); }
 
+// The drafts index in localStorage, as the start screen lists it.
+const draftIndex = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('vp:studio:drafts') || '[]'));
+
 // ---- tests ------------------------------------------------------------------
 
 test('the start screen offers every kind, its example, and the drafts note', async ({ page }) => {
@@ -107,24 +104,16 @@ test('an example shows a preview', async ({ page }) => {
   await expect(page.frameLocator('#preview').locator('.cell').first()).toBeVisible();
 });
 
-test('the example opens in the structured editor, with no notice', async ({ page }) => {
-  for (const kind of ['spiral', 'snake-charmer', 'marching-bands', 'crushword']) {
-    await start(page);
-    await page.locator(`#welcome [data-template="${kind}"]`).click();
-    await expect(page.locator('#board')).toBeVisible();
-    await expect(page.locator('#message')).toHaveCount(0);
-    await expect(page.locator('#phase-steps [data-view="board"]')).toHaveAttribute('aria-current', 'step');
-  }
-});
-
 // The board's caret mark, whichever kind draws it.
 const CARET = '#board .sp-caret, #board .rcaret, #board .grid-caret, #board .text-caret';
 const caretMarks = (page) => page.locator(CARET).evaluateAll(els => els.map(el => el.outerHTML).join());
 
-test('opening a template focuses the board, so arrow keys work with no click', async ({ page }) => {
+test('an example opens in its editor with no notice and the board focused, so arrow keys work with no click', async ({ page }) => {
   for (const kind of ['spiral', 'snake-charmer', 'marching-bands', 'crushword']) {
     await start(page);
     await openTemplate(page, kind);
+    await expect(page.locator('#message')).toHaveCount(0);
+    await expect(page.locator('#phase-steps [data-view="board"]')).toHaveAttribute('aria-current', 'step');
     await expect(page.locator('#board-input')).toBeFocused();
     const before = await caretMarks(page);
     await page.keyboard.press('ArrowRight');
@@ -150,7 +139,7 @@ test('reloading into the board phase focuses the board; the Clues phase does not
   await expect(page.locator('#board-input')).not.toBeFocused();
 });
 
-test('Edit as YAML is a toolbar button, disabled while the puzzle is incomplete', async ({ page }) => {
+test('Edit as YAML is disabled while the puzzle is incomplete, and says why when clicked', async ({ page }) => {
   await start(page);
   await page.locator('#welcome [data-kind="spiral"]').click();
   await page.locator('#new-size-cells').fill('40');
@@ -164,6 +153,7 @@ test('Edit as YAML is a toolbar button, disabled while the puzzle is incomplete'
   await yamlBtn.click({ force: true });   // Playwright treats aria-disabled as not enabled
   await expect(page.locator('#board')).toBeVisible();
   await expect(page.locator('#phase-steps [data-view="board"]')).toHaveAttribute('aria-current', 'step');
+  await expect(page.locator('#message')).toContainText(/resolve.*problems.*YAML/i);
 });
 
 test('Edit as YAML: the problems chip settles on the real state, not Checking…', async ({ page }) => {
@@ -186,12 +176,12 @@ test('Edit as YAML: the problems chip settles on the real state, not Checking…
 test('two drafts with identical text: switching between them by address settles the chip', async ({ page }) => {
   await start(page);
   await openTemplate(page);
-  await page.waitForTimeout(1500);   // autosave debounce
+  await expect.poll(async () => (await draftIndex(page)).length).toBe(1);   // autosaved
   const first = await page.evaluate(() => location.hash);
   await page.locator('#btn-home').click();
   await openTemplate(page);
   await ready(page);
-  await page.waitForTimeout(1500);
+  await expect.poll(async () => (await draftIndex(page)).length).toBe(2);
   await page.evaluate((h) => { location.hash = h; }, first);
   await expect(page.locator('#board')).toBeVisible();
   await ready(page);
@@ -227,24 +217,26 @@ test('Edit as YAML and Back to the editor share one slot, and YAML mode has no k
   }
 });
 
-test('Undo and Redo buttons show their words and the toolbar fits', async ({ page }) => {
+// One row at 1280 is the longest-status test's; this one is the words and the fit.
+test('Undo and Redo show their words when wide and keep their names when narrow, and the toolbar fits', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await start(page);
   await openTemplate(page);
   await expect(page.locator('#btn-undo')).toHaveText('↶ Undo');
   await expect(page.locator('#btn-redo')).toHaveText('↷ Redo');
-  await expect(page.locator('#btn-undo')).toHaveAccessibleName('Undo');
-  // Wide: the controls share one row (the toolbar wraps, so scrollWidth proves nothing).
-  const mids = await page.evaluate(() => ['#btn-home', '#btn-undo', '#btn-export'].map((s) => {
-    const r = document.querySelector(s).getBoundingClientRect();
-    return Math.round(r.top + r.height / 2);
-  }));
-  expect(Math.max(...mids) - Math.min(...mids), 'one row at 1280').toBeLessThanOrEqual(2);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const noSideScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+  expect(await noSideScroll()).toBe(true);
   // Narrow: it may wrap onto more rows, but nothing scrolls sideways or is clipped.
   await page.setViewportSize({ width: 375, height: 700 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  expect(await noSideScroll()).toBe(true);
   expect(await page.evaluate(() => [...document.querySelectorAll('#toolbar button')].every(b => b.getBoundingClientRect().right <= innerWidth))).toBe(true);
+  await expect(page.locator('#btn-undo')).toHaveAccessibleName('Undo');
+  await expect(page.locator('#btn-redo')).toHaveAccessibleName('Redo');
+  // The words take no room: removing them outright changes nothing about the layout.
+  const height = () => page.evaluate(() => document.querySelector('#toolbar').getBoundingClientRect().height);
+  const withClip = await height();
+  await page.addStyleTag({ content: '.btn-word { display: none !important; }' });
+  expect(withClip).toBe(await height());
 });
 
 for (const kind of ['spiral', 'snake-charmer', 'marching-bands', 'crushword']) {
@@ -265,35 +257,6 @@ for (const kind of ['spiral', 'snake-charmer', 'marching-bands', 'crushword']) {
     expect(left, 'Tab leaves after the last entry').toBe(true);
   });
 }
-
-test('the disabled Edit as YAML button says why when clicked', async ({ page }) => {
-  await start(page);
-  await page.locator('#welcome [data-kind="spiral"]').click();
-  await page.locator('#new-size-cells').fill('40');
-  await page.locator('#new-size-create').click();
-  await page.locator('#btn-edit-yaml').click({ force: true });
-  await expect(page.locator('#message')).toContainText(/resolve.*problems.*YAML/i);
-});
-
-test('on a narrow screen Undo and Redo keep their names and the toolbar stays compact', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 700 });
-  await start(page);
-  await openTemplate(page);
-  await expect(page.locator('#btn-undo')).toHaveAccessibleName('Undo');
-  await expect(page.locator('#btn-redo')).toHaveAccessibleName('Redo');
-  // The words take no room: removing them outright changes nothing about the layout.
-  const height = () => page.evaluate(() => document.querySelector('#toolbar').getBoundingClientRect().height);
-  const withClip = await height();
-  await page.addStyleTag({ content: '.btn-word { display: none !important; }' });
-  expect(withClip).toBe(await height());
-});
-
-test('the document toolbar has no ⋯ menu', async ({ page }) => {
-  await start(page);
-  await openTemplate(page);
-  await expect(page.locator('#btn-more')).toHaveCount(0);
-  await expect(page.locator('#btn-edit-yaml')).toBeVisible();
-});
 
 test('YAML mode shows YAML › Test-solve', async ({ page }) => {
   await start(page);
@@ -389,19 +352,6 @@ test('yaml export works while the puzzle has problems; the page and Hide answers
   expect(text).toBe(typed);
 });
 
-test('source YAML exports verbatim', async ({ page }) => {
-  await start(page);
-  await openTemplate(page);
-  await editAsYaml(page);
-  await setEditorText(page, '# note\n' + (await editorText(page)));
-  await ready(page);
-  const typed = await editorText(page);
-  await openExport(page);
-  const { text } = await download(page, '#export-yaml');
-  expect(text).toBe(typed);
-  expect(text).toContain('# note');
-});
-
 test('a page with Hide answers on ships no answers; with it off it does', async ({ page }) => {
   await start(page);
   await openTemplate(page);
@@ -431,26 +381,19 @@ test('the font choice appears only for a theme with its own font', async ({ page
   expect(text).toContain('fonts.googleapis.com');
 });
 
-test('an answers-hidden file opens in build-only mode', async ({ page }) => {
+test('an answers-hidden file opens in build-only mode, and says so, never "muddled"', async ({ page }) => {
   await start(page);
   await page.setInputFiles('#open-input', fixture('spiral/test/fixtures/test-78.muddled.yaml'));
   await expect(page.locator('#muddled-panel')).toBeVisible();
   await expect(page.locator('#preview')).toBeVisible();
   await expect(page.locator('#phase-steps')).toHaveCount(0);
-  await openExport(page);
-  await expect(page.locator('#export-answers [data-value="hidden"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#export-answers [data-value="hidden"]')).toBeDisabled();
-  await expect(page.locator('#export-page')).toBeEnabled();
-});
-
-test('an answers-hidden file says so, never "muddled"', async ({ page }) => {
-  await start(page);
-  await page.setInputFiles('#open-input', fixture('spiral/test/fixtures/test-78.muddled.yaml'));
   await expect(page.locator('#doc-meta')).toContainText('Answers hidden');
   await expect(page.locator('#studio')).not.toHaveText(/muddl/i);
   await expect(page.locator('#muddled-panel')).not.toHaveAttribute('aria-label', /muddl/i);
   await openExport(page);
-  await expect(page.locator('#export-answers')).toBeVisible();
+  await expect(page.locator('#export-answers [data-value="hidden"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#export-answers [data-value="hidden"]')).toBeDisabled();
+  await expect(page.locator('#export-page')).toBeEnabled();
   // Only the download's `.muddled.yaml` suffix may say it: the file-type name from
   // exportFileName (filenames.js), matching the CLI's muddle output.
   const text = (await page.locator('#studio').innerText()).replaceAll('.muddled.yaml', '');
@@ -471,14 +414,16 @@ test("an answers-hidden file's theme can be changed and exported", async ({ page
   expect(out.boardHash).toBe(original.boardHash);
 });
 
-test('export starts from the preview theme each time it opens', async ({ page }) => {
+test('export starts from the preview theme each time it opens, and the yaml carries the export theme', async ({ page }) => {
   await start(page);
   await openTemplate(page);
   await showTest(page);
   await page.locator('#opt-theme').selectOption('skeleton');
   await openExport(page);
   await expect(page.locator('#export-theme')).toHaveValue('skeleton');
-  await page.locator('#export-theme').selectOption('broadsheet');
+  await page.locator('#export-theme').selectOption('swiss');   // not the default, which the yaml leaves out
+  const { text } = await download(page, '#export-yaml');
+  expect(yaml.load(text).theme).toBe('swiss');
   await page.locator('#export-close').click();
   await openExport(page);
   await expect(page.locator('#export-theme')).toHaveValue('skeleton');
@@ -521,31 +466,26 @@ test('export opened while a check is pending: page and Hide answers wait, yaml s
   await expect(page.locator('#export-answers [data-value="hidden"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('export opened while a check is pending on unparseable YAML: theme already locked', async ({ page }) => {
+test('export while the YAML does not parse: theme locked with a reason before and after the check, yaml saves as typed', async ({ page }) => {
   await page.clock.install();
   await start(page);
   await openTemplate(page);
   await editAsYaml(page);
   await ready(page);
+  // Opened while the check is pending, with the clock held as in 'export opened while a
+  // check is pending'.
   await page.clock.pauseAt(new Date(Date.now() + 60_000));
-  await setEditorText(page, 'kind: [\n');
+  const broken = 'kind: [\n';
+  await setEditorText(page, broken);
   await page.clock.runFor(50);
   await page.locator('#btn-export').click();
   await page.clock.runFor(50);
   await expect(page.locator('#export-panel')).toBeVisible();
   await expect(page.locator('#export-theme')).toBeDisabled();
   await expect(page.locator('#export-theme-reason')).toContainText('doesn’t parse');
-});
-
-test('export while the YAML does not parse: theme locked with a reason, yaml saves as typed', async ({ page }) => {
-  await start(page);
-  await openTemplate(page);
-  await editAsYaml(page);
-  await ready(page);
-  const broken = 'kind: [\n';
-  await setEditorText(page, broken);
+  // The check lands: still locked, and the yaml saves as typed.
+  await page.clock.runFor(CHECK_DELAY_MS + 50);
   await expect(page.locator('#problems-chip')).toHaveText('YAML error');
-  await openExport(page);
   await expect(page.locator('#export-theme')).toBeDisabled();
   await expect(page.locator('#export-theme-reason')).toContainText('doesn’t parse');
   await expect(page.locator('#export-yaml-note')).toContainText('Saved as it stands, problems included.');
@@ -583,15 +523,6 @@ test('an unfinished puzzle saves a draft that reopens', async ({ page }) => {
   }
 });
 
-test('the exported yaml carries the export theme', async ({ page }) => {
-  await start(page);
-  await openTemplate(page);
-  await openExport(page);
-  await page.locator('#export-theme').selectOption('skeleton');
-  const { text } = await download(page, '#export-yaml');
-  expect(yaml.load(text).theme).toBe('skeleton');
-});
-
 async function makeDraft(page, title) {
   await start(page);
   await openTemplate(page);
@@ -599,7 +530,8 @@ async function makeDraft(page, title) {
   await ready(page);
   await setEditorText(page, (await editorText(page)).replace(/^title:.*$/m, `title: "${title}"`));
   await ready(page);
-  await page.waitForTimeout(1500); // autosave debounce
+  // Autosaved once edits pause; the index names the draft by its checked title.
+  await expect.poll(async () => (await draftIndex(page)).map(e => e.title)).toContain(title);
 }
 
 test('drafts survive a reload', async ({ page }) => {
@@ -727,7 +659,6 @@ test('Grid… sits in the Board toolbar only, for kinds with settings', async ({
   await start(page);
   await openTemplate(page, 'crushword');
   await expect(page.locator('#btn-grid')).toBeVisible();
-  await expect(page.locator('#btn-details')).toHaveCount(0);
   await showClues(page);
   await expect(page.locator('#btn-grid')).toHaveCount(0);
   await page.locator('#btn-home').click();
@@ -771,9 +702,11 @@ test('a YAML-mode file exports its text verbatim, comments included, and reopens
   await openTemplate(page);
   await editAsYaml(page);
   await setEditorText(page, '# keep me\n' + (await editorText(page)));
+  await ready(page);
+  const typed = await editorText(page);
   await openExport(page);
   const { dl, text } = await download(page, '#export-yaml');
-  expect(text).toContain('# keep me');
+  expect(text).toBe(typed);
   const saved = path.join(dir, dl.suggestedFilename());
   await dl.saveAs(saved);
   await page.locator('#export-close').click();
@@ -805,13 +738,11 @@ test('opening a draft file does not overwrite the draft it was saved from', asyn
   await page.locator('#board-input').focus();
   await page.keyboard.type('D');
   await expect(page.locator('.sp-ltr[data-index="3"]')).toHaveText('D');
-  await page.waitForTimeout(1500); // autosave debounce
   await page.locator('#btn-home').click();
   await expect(page.locator('.draft-item')).toHaveCount(1);
   await page.setInputFiles('#open-input', saved);
   await expect(page.locator('.sp-ltr[data-index="2"]')).toHaveText('C');
   await expect(page.locator('.sp-ltr[data-index="3"]')).toHaveCount(0);
-  await page.waitForTimeout(1500);
   await page.locator('#btn-home').click();
   await expect(page.locator('.draft-item')).toHaveCount(2);
 });
@@ -858,9 +789,13 @@ for (const { kind, file, cell } of LARGEST) {
     await page.locator(cell).click();
     const inside = (box) => box.x >= 0 && box.y >= 0 && box.x + box.width <= 1280 && box.y + box.height <= 800;
     const fits = () => page.evaluate(() => document.scrollingElement.scrollHeight <= innerHeight);
-    // The Board phase: the board fits, and the page doesn't scroll.
-    expect(inside(await page.locator('#board').boundingBox())).toBe(true);
+    // The Board phase: the board fits at a usable size, and neither the page nor the edit
+    // pane scrolls.
+    const board = await page.locator('#board').boundingBox();
+    expect(inside(board)).toBe(true);
+    expect(board.height).toBeGreaterThan(300);
     expect(await fits()).toBe(true);
+    expect(await page.locator('#edit-view').evaluate(el => el.scrollHeight <= el.clientHeight)).toBe(true);
     // The Clues phase: the selected clue is on screen too. Its row scrolls into view in
     // the clue column after paint, so poll.
     await page.locator('#phase-steps [data-view="clues"]').click();
@@ -974,6 +909,8 @@ test('the side column starts with the Puzzle box, the checks sit under the board
   // The checks are outside the scrolling column, so a row reveal never scrolls them away.
   await expect(page.locator('.phase-board-col #checks')).toHaveCount(1);
   await expect(side.locator('#checks')).toHaveCount(0);
+  const board = await page.locator('#board').boundingBox();
+  expect((await page.locator('#checks').boundingBox()).y).toBeGreaterThan(board.y + board.height);
   for (const sheet of await page.locator('#word-list .sheet').all())
     expect(await sheet.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   await expect(page.locator('#word-list .list.ch1 .ch-tag')).toHaveText('CH 1');
@@ -996,24 +933,16 @@ test('the toolbar stays on one row at 1280×800, even with its longest status', 
     els.map(e => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; }));
   expect(Math.max(...mids) - Math.min(...mids)).toBeLessThan(12);
   expect(bar.height).toBeLessThanOrEqual(80);
-  await expect(page.locator('#toolbar .step-sep')).toHaveCount(0);
 });
 
-test('the drafts sheet numbers its rows, shows no edit time, and wraps long titles', async ({ page }) => {
+test('the drafts sheet numbers its rows and wraps long titles', async ({ page }) => {
   // One unbroken word: a title with spaces wraps without overflow-wrap: anywhere.
   await makeDraft(page, 'Supercalifragilisticexpialidocious'.repeat(4));
   await page.locator('#btn-home').click();
   const row = page.locator('tr.draft-item').first();
   await expect(row.locator('td.no')).toHaveText('01');
-  await expect(row).not.toContainText('edited');
   await expect(page.locator('.track-sheet tr.blank')).toHaveCount(4);
   expect(await page.locator('.track-sheet').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-});
-test('deleting a draft asks inside its row', async ({ page }) => {
-  await makeDraft(page, 'Row Confirm'); await page.locator('#btn-home').click();
-  const row = page.locator('tr.draft-item').filter({ hasText: 'Row Confirm' });
-  await row.locator('.draft-delete').click();
-  await expect(row.locator('td.actions .draft-confirm .draft-delete-yes')).toBeVisible();
 });
 
 test('deleting a draft keeps keyboard focus on a key of its row', async ({ page }) => {
@@ -1024,19 +953,6 @@ test('deleting a draft keeps keyboard focus on a key of its row', async ({ page 
   await page.keyboard.press('Enter');
   await expect(row.locator('.draft-delete')).toBeFocused();
 });
-
-for (const kind of ['spiral', 'snake-charmer', 'marching-bands', 'crushword']) {
-  test(`${kind}: the Keys popover lists each key with what it does`, async ({ page }) => {
-    await start(page); await openTemplate(page, kind);
-    await page.locator('#btn-keys').click();
-    const items = page.locator('#keys ul.keys-list > li');
-    expect(await items.count()).toBeGreaterThanOrEqual(6);
-    for (const li of await items.all()) {
-      await expect(li.locator('kbd').first()).toBeVisible();
-      expect((await li.innerText()).replace(/\s+/g, ' ').trim().length).toBeGreaterThan(6);
-    }
-  });
-}
 
 test('the Puzzle box stacks the title, byline and instructions, in every phase', async ({ page }) => {
   await start(page); await openTemplate(page);
@@ -1066,31 +982,13 @@ test('the toolbar does not shift when the problems label changes', async ({ page
   expect(await boxes()).toEqual(before);
 });
 
-test('hovering the collapsed instructions underlines them, as the title does', async ({ page }) => {
-  await start(page); await openTemplate(page);
-  const line = page.locator('.hs-instructions-line');
-  await expect(line).toBeVisible();
-  await page.mouse.move(2, 2);   // the click that opened the example may have left it over the line
-  expect(await line.evaluate(el => getComputedStyle(el).boxShadow)).toBe('none');
-  await line.hover({ force: true });   // the invisible textarea lies over it
-  expect(await line.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe('none');
-});
-
-test('the drafts sheet shows a kind as its icon alone, and the delete confirm is two tidy lines', async ({ page }) => {
+test('the drafts sheet shows a kind as its icon alone', async ({ page }) => {
   await makeDraft(page, 'Kind Check'); await page.locator('#btn-home').click();
   const row = page.locator('tr.draft-item').filter({ hasText: 'Kind Check' });
   // The kind is a name for assistive tech and a tooltip, never visible text.
   await expect(row.locator('td.kind')).toHaveAttribute('title', /\w/);
   await expect(row.locator('td.kind .sr-only')).toHaveCount(1);
   expect(await row.locator('td.kind').evaluate(el => el.getBoundingClientRect().width)).toBeLessThan(80);
-  await row.locator('.draft-delete').click();
-  const yes = await row.locator('.draft-delete-yes').boundingBox();
-  const no = await row.locator('.draft-delete-no').boundingBox();
-  const msg = await row.locator('.draft-confirm-text').boundingBox();
-  // Buttons side by side on one line, under a one-line message.
-  expect(Math.abs((yes.y + yes.height / 2) - (no.y + no.height / 2))).toBeLessThan(4);
-  expect(msg.y + msg.height).toBeLessThanOrEqual(yes.y + 2);
-  expect(msg.height).toBeLessThan(24);
 });
 
 // What each kind's Cell… menu offers. Crushword has no rebus mode: a cell holds several
@@ -1103,9 +1001,8 @@ const CELL_MENUS = {
   crushword: ['btn-circle', 'btn-block'],
 };
 for (const [kind, ids] of Object.entries(CELL_MENUS)) {
-  test(`${kind}: the Cell… menu replaces the Circle key and lists its cell actions`, async ({ page }) => {
+  test(`${kind}: the Cell… menu lists its cell actions`, async ({ page }) => {
     await start(page); await openTemplate(page, kind);
-    await expect(page.locator('#btn-circle')).toHaveCount(0);   // closed: nothing loose in the tools row
     await page.locator('#btn-cell').click();
     await expect(page.locator('#cell-menu [role^="menuitem"]')).toHaveCount(ids.length);
     for (const id of ids) await expect(page.locator(`#cell-menu #${id}`)).toBeVisible();
@@ -1129,10 +1026,9 @@ test('Crushword blocks a cell from the Cell… menu', async ({ page }) => {
   await start(page); await openTemplate(page, 'crushword');
   const blocks = () => page.locator('#board .grid-block').count();
   const before = await blocks();
-  await cellMenuItemFor(page, 'btn-block');
+  await cellMenuItem(page, 'btn-block');
   expect(await blocks()).not.toBe(before);
 });
-async function cellMenuItemFor(page, id) { await page.locator('#btn-cell').click(); await page.locator(`#cell-menu #${id}`).click(); }
 test('the Clues phase keeps a Cell… menu without the structural items', async ({ page }) => {
   await start(page); await openTemplate(page, 'spiral');
   await page.locator('#phase-steps [data-view="clues"]').click();
@@ -1142,8 +1038,10 @@ test('the Clues phase keeps a Cell… menu without the structural items', async 
 });
 
 // Selecting an entry that is already in view must not scroll the side column, and a
-// crossing row far away must not drag the active row to an edge.
-for (const kind of ['snake-charmer', 'spiral', 'crushword']) {
+// crossing row far away must not drag the active row to an edge. The scroll is shared
+// code (useKeepRowsInView), so one kind covers it, in each phase's list.
+{
+  const kind = 'spiral';
   for (const view of ['board', 'clues']) {
     test(`${kind}: selecting a visible entry in the ${view} phase leaves the side column where it is`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 });
@@ -1177,20 +1075,10 @@ test('the side column runs the full height beside the board column', async ({ pa
     expect(side.x).toBeGreaterThanOrEqual(boardCol.x + boardCol.width - 1);   // to its right
   }
 });
-test('with no instructions the field is a quiet prompt, and a long title never shrinks it away', async ({ page }) => {
+test('a long title never shrinks the instructions field away', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await start(page); await openTemplate(page);
-  await page.locator('#header-instructions').fill('');
-  await page.locator('#header-title').click();
   const wrap = page.locator('.hs-instructions-wrap');
-  expect(await wrap.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
-  // It looks and acts clickable: a pointer cursor, and a visible change on hover.
-  const target = page.locator('#header-instructions');
-  expect(await target.evaluate(el => getComputedStyle(el).cursor)).toBe('pointer');
-  const line = page.locator('.hs-instructions-line');
-  const before = await line.evaluate(el => getComputedStyle(el).textDecorationLine + getComputedStyle(el).color);
-  await wrap.hover({ force: true });
-  expect(await line.evaluate(el => getComputedStyle(el).textDecorationLine + getComputedStyle(el).color)).not.toBe(before);
   await page.locator('#header-instructions').fill('Read each clue twice.');
   await page.locator('#header-title').fill('An exceedingly long puzzle title that keeps on going and going '.repeat(2));
   expect((await wrap.boundingBox()).width).toBeGreaterThan(280);

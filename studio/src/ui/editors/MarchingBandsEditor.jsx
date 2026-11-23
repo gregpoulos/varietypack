@@ -1,10 +1,9 @@
-import { useEffect, useRef } from 'preact/hooks';
 import mb from '../../model/kinds/marching-bands.js';
 import { formatCell } from '../../model/cells.js';
 import geometry from './gridGeometry.js';
 import { useBoardEditing } from './useBoardEditing.js';
-import { keepBoardFocus, boardHasFocus } from './useBoardInput.js';
-import { displayStatusFor } from './displayStatus.js';
+import { boardHasFocus } from './useBoardInput.js';
+import { spacedAnswer } from './displayStatus.js';
 import { GridBoard } from './GridBoard.jsx';
 import { ClueLists } from './ClueList.jsx';
 import { plural } from './plural.js';
@@ -12,9 +11,9 @@ import { PhaseLayout } from './PhaseLayout.jsx';
 import { WordList } from './WordList.jsx';
 import { Checks } from './Checks.jsx';
 import { KeyStrip, KeyList } from './KeyStrip.jsx';
-import { LooseCluesNotice } from './LooseCluesNotice.jsx';
+import { BoardFrame } from './BoardFrame.jsx';
 import { Latch } from '../Latch.jsx';
-import { CellMenu } from './CellMenu.jsx';
+import { CellMenu, circleAndRebusItems } from './CellMenu.jsx';
 
 const { commands, rowOf, colOf, entryOfCell, entryIds, pathIds, isCenter, groupName, shortLabel, entryName,
   advance, stepBack, moveSpatial, stepGroup, breakAtCaret, FIRST_ENTRY_MESSAGE, readsBackward } = mb;
@@ -30,7 +29,7 @@ const cls = (group) => (group === 'rows' ? 'c1' : 'c2');
 // the next row or band.
 export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings, fillClues, header }) {
   const N = model.size;
-  const { ui, caret: heldCaret, moveTo, exec, run, say, focus, inputProps } = useBoardEditing({
+  const { ui, caret, moveTo, exec, run, say, focus, inputProps } = useBoardEditing({
     dispatch, model, commands, focusRef,
     positions: m => m.size * m.size,
     initialUi: { mode: 'rows' },
@@ -45,6 +44,14 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
       breakAt: (m, u) => breakAtCaret(m, u.mode, u.caret + 1),
       delete: (m, u) => ({ command: ['setCell', [u.caret + 1, '']] }),
       dot: (m, u) => ({ mode: other(u.mode) }),
+      // A resize (or its undo) changes N, and with it what a flat index means: the same
+      // row and column if that cell is still on the board (not the new center), else the
+      // first cell.
+      remap: (before, after, u) => {
+        const N2 = after.size;
+        const r = Math.floor(u.caret / before.size), c = u.caret % before.size;
+        return r < N2 && c < N2 && !isCenter(N2, r * N2 + c + 1) ? r * N2 + c : 0;
+      },
       focusTarget: (t, m) => {
         if (t.cells) return { caret: t.cells[0] - 1 };
         if (t.group) return { caret: entryIds(m, t.group, t.g, t.entry)[0] - 1, mode: t.group };
@@ -53,26 +60,6 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
     },
   });
   const { mode, composing } = ui;
-
-  // A resize (made in the settings, or undone) changes N, which changes what a flat index
-  // means, and the held caret can even be the new center block. So the caret is repaired
-  // at render, never left to an effect (that would draw one frame with an impossible
-  // cell): the same row and column if that cell is still on the board, otherwise the
-  // first cell.
-  const last = useRef({ N, caret: heldCaret });
-  let caret = heldCaret;
-  const resized = last.current.N !== N;
-  if (resized) {
-    const { N: n1, caret: old } = last.current;
-    const r = Math.floor(old / n1), c = old % n1;
-    caret = r < N && c < N && !isCenter(N, r * N + c + 1) ? r * N + c : 0;
-  } else if (isCenter(N, caret + 1)) {
-    caret = 0;
-  }
-  useEffect(() => {
-    if (caret !== heldCaret) moveTo({ caret, composing: false });
-    last.current = { N, caret };
-  });
   const id = caret + 1;
 
   const circleSet = new Set(model.circles);
@@ -80,8 +67,6 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
   const act = entryOfCell(model, mode, id);
   const cross = entryOfCell(model, other(mode), id);
 
-  // focusBoard: false is for a clue field gaining focus in the Clues phase, which must
-  // keep it so the keys typed there stay in the field.
   const select = (group, g, j, { focusBoard = true } = {}) => {
     moveTo({ caret: entryIds(model, group, g, j)[0] - 1, mode: group, composing: false });
     if (focusBoard) focus();
@@ -113,7 +98,8 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
     const splits = GROUPS.flatMap(group => model[group].flatMap((cut, g) =>
       cut.starts.filter(s => !(s === 0 && group === 'rows')).map(s => ({ group, g, s, e: edgeOf(group, g, s) }))));
     const keys = (group) => new Set(splits.filter(x => x.group === group).map(x => key(x.e)));
-    const shared = new Set([...keys('rows')].filter(k => keys('bands').has(k)));
+    const bandKeys = keys('bands');
+    const shared = new Set([...keys('rows')].filter(k => bandKeys.has(k)));
     const lines = [other(mode), mode].flatMap(group => splits.filter(x => x.group === group).map(({ g, s, e }) => {
       const off = shared.has(key(e)) ? (group === 'rows' ? -2.6 : 2.6) : 0;
       const dx = e.x1 === e.x2 ? off : 0, dy = e.x1 === e.x2 ? 0 : off;
@@ -164,8 +150,6 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
   }
 
   // ── clues ────────────────────────────────────────────────────────────────
-  // The selected row also carries the spaced answer and its status (ClueList shows them
-  // on that row only).
   const groupsFor = (group) => model[group].map((cut, g) => ({
     group, g, heading: groupName(group, g),
     rows: cut.entries.map((entry, j) => {
@@ -176,8 +160,7 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
       };
       if (row.active) {
         const ids = entryIds(model, group, g, j);
-        row.display = entry.displayAnswer ?? '';
-        row.displayStatus = displayStatusFor(row.display, ids.map(i => model.cells[i - 1]), readsBackward(model, group, g, ids));
+        Object.assign(row, spacedAnswer(entry, ids.map(i => model.cells[i - 1]), readsBackward(model, group, g, ids)));
       }
       return row;
     }),
@@ -187,10 +170,7 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
   })));
   const count = (group) => model[group].reduce((n, cut) => n + cut.entries.length, 0);
 
-  const cellItems = [
-    { id: 'btn-circle', label: 'Toggle circle', checked: circleSet.has(id), onSelect: () => run('toggleCircle', id) },
-    { id: 'btn-rebus', label: composing ? 'Leave rebus mode' : 'Enter rebus mode', hint: 'Enter', checked: !!composing, onSelect: () => moveTo({ composing: !composing }) },
-  ];
+  const cellItems = circleAndRebusItems({ circled: circleSet.has(id), onCircle: () => run('toggleCircle', id), composing, moveTo });
   const lists = GROUPS.map(group => ({ cutName: group, title: group === 'rows' ? 'Rows' : 'Bands', rowName: group === 'rows' ? 'Row' : 'Band', groups: groupsFor(group) }));
 
   return (
@@ -207,11 +187,10 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
       )}
       clueTools={<span class="tools"><CellMenu items={cellItems} focus={focus} /></span>}
       board={(
-        <div id="board" class={'board ' + (mode === 'rows' ? 'in' : 'out')} onClick={focus} onMouseDown={keepBoardFocus}>
-          <input id="board-input" aria-label="Board input" {...inputProps} />
+        <BoardFrame channel={mode === 'rows' ? 1 : 2} focus={focus} inputProps={inputProps}>
           <GridBoard rows={N} cols={N} cellAt={cellAt} caret={rc(id)} composing={composing} rowNumbers
             underlay={underlay()} overlay={overlay()} onCellClick={onCellClick} />
-        </div>
+        </BoardFrame>
       )}
       keys={(
         <KeyStrip
@@ -235,10 +214,8 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
         ]} />
       )}
       side={(
-        <>
-          <LooseCluesNotice count={model.orphans.length} onShow={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
-          <WordList lists={lists} onSelect={(j, ctx) => select(ctx.group, ctx.g, j)} looseCount={model.orphans.length} />
-        </>
+        <WordList lists={lists} onSelect={(j, ctx) => select(ctx.group, ctx.g, j)} looseCount={model.orphans.length}
+          onShowLoose={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
       )}
       clues={(
         <ClueLists lists={lists} orphans={model.orphans} targets={targets}
@@ -246,8 +223,6 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
           onDiscard={orphanId => exec('discardOrphan', [orphanId])}
           onSelect={(j, ctx) => select(ctx.group, ctx.g, j)}
           onFocusClue={(j, ctx) => {
-            // A caret already inside this entry stays put, so tabbing into its clue
-            // doesn't reset a mid-entry caret.
             if (ctx.group === mode && ctx.g === act.g && j === act.j) moveTo({ composing: false });
             else select(ctx.group, ctx.g, j, { focusBoard: false });
           }}

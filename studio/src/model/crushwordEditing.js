@@ -9,6 +9,7 @@
 //   the commands to run (typing: true joins the current undo run), the ui after them, and a
 //   line to show. `apply` folds `calls` into a model.
 const cw = require('./kinds/crushword');
+const { cellIndex } = cw;
 const { nextCell, prevCell, arrowTarget, typeAt, deleteBefore } = require('../../../crushword/src/typing.mjs');
 
 const BLOCK_MESSAGE = 'This cell is a block. Press # to open it.';
@@ -16,10 +17,10 @@ const LAST_OPEN_MESSAGE = 'A puzzle needs at least one open cell.';
 const NAME = { A: 'across', D: 'down' };
 const OTHER = { A: 'D', D: 'A' };
 
-const idOf = (m, r, c) => r * m.cols + c + 1;
+const idOf = (m, r, c) => cellIndex(m, r, c) + 1;
 const rcOf = (m, id) => ({ r: Math.floor((id - 1) / m.cols), c: (id - 1) % m.cols });
 const content = (m, id) => m.cells[id - 1];
-const blockAt = (m, r, c) => m.blocks[r * m.cols + c];
+const blockAt = (m, r, c) => m.blocks[cellIndex(m, r, c)];
 const entryAt = (maps, id, dir) => maps[NAME[dir]].at[id];
 
 // The ui on cell `id`, flipping the direction when the cell has no entry in it but has
@@ -54,12 +55,29 @@ function typeLetter(model, ui, ch) {
 // other.
 function nextOpen(model, r, c) {
   const total = model.rows * model.cols;
-  const from = r * model.cols + c;
+  const from = cellIndex(model, r, c);
   for (let k = 1; k <= total; k++) {
     const i = (from + k) % total;
     if (!model.blocks[i]) return i + 1;
   }
   return from + 1;
+}
+
+// "." and the direction latch: the other direction, when the caret's cell has an entry
+// that way.
+function switchDirection(model, ui) {
+  const other = OTHER[ui.dir];
+  const has = !blockAt(model, ui.r, ui.c) && entryAt(cw.entryMaps(model), idOf(model, ui.r, ui.c), other);
+  return done(has ? { ...ui, dir: other } : ui);
+}
+
+// "#" and the Cell… menu: blocks or opens the caret's cell. A new block sends the caret
+// on to the next open cell.
+function toggleBlockAt(model, ui) {
+  const after = cw.commands.toggleBlock(model, ui.r, ui.c);
+  if (after === model) return done(ui, [], { message: LAST_OPEN_MESSAGE });
+  const target = blockAt(after, ui.r, ui.c) ? nextOpen(after, ui.r, ui.c) : idOf(model, ui.r, ui.c);
+  return done(land(after, cw.entryMaps(after), ui, target, { pos: 0 }), [{ name: 'toggleBlock', args: [ui.r, ui.c] }]);
 }
 
 function pressKey(model, ui, e) {
@@ -110,7 +128,7 @@ function pressKey(model, ui, e) {
       return done(land(model, maps, { ...ui, dir: 'D' }, t, { pos: Math.min(ui.col, content(model, t).length), keepCol: true }));
     }
     case '.':
-      return done(!isBlock && entryAt(maps, id, OTHER[ui.dir]) ? { ...ui, dir: OTHER[ui.dir] } : ui);
+      return switchDirection(model, ui);
     case 'Tab': {
       const d = here ? ui.dir : isBlock ? null : OTHER[ui.dir];
       const info = d && entryAt(maps, id, d);
@@ -121,14 +139,8 @@ function pressKey(model, ui, e) {
       const num = order[step];
       return done(land(model, maps, { ...ui, dir: d }, cellsOf[num][0]));
     }
-    case '#': {
-      const after = cw.commands.toggleBlock(model, ui.r, ui.c);
-      if (after === model) return done(ui, [], { message: LAST_OPEN_MESSAGE });
-      const calls = [{ name: 'toggleBlock', args: [ui.r, ui.c] }];
-      const maps2 = cw.entryMaps(after);
-      const target = blockAt(after, ui.r, ui.c) ? nextOpen(after, ui.r, ui.c) : id;
-      return done(land(after, maps2, ui, target, { pos: 0 }), calls);
-    }
+    case '#':
+      return toggleBlockAt(model, ui);
     default:
       return { handled: false, calls: [], ui };
   }
@@ -172,4 +184,4 @@ function repair(model, ui) {
   return land(model, cw.entryMaps(model), ui, id, { pos, keepCol: true });
 }
 
-module.exports = { BLOCK_MESSAGE, LAST_OPEN_MESSAGE, apply, typeLetter, pressKey, clickCell, selectSlot, initialUi, repair };
+module.exports = { apply, typeLetter, pressKey, switchDirection, toggleBlockAt, clickCell, selectSlot, initialUi, repair };

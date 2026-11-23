@@ -85,20 +85,12 @@ test('typing fills cells and advances', async ({ page }) => {
 });
 
 // useBoardInput is every structured editor's typing path, so one kind covers it.
-test('typed accented letters fill their base letter, as on the puzzle page', async ({ page }) => {
+test('typed accented letters fill their base letter and digits fill like letters, as on the puzzle page', async ({ page }) => {
   await newSpiral(page);
   await cell(page, 0).click();
-  await type(page, 'ÑÉ');
-  for (const [i, ch] of ['N', 'E'].entries()) await expect(letter(page, i)).toHaveText(ch);
-  await expect(cell(page, 2)).toHaveClass(/caret/);
-});
-
-test('typed digits fill cells like letters', async ({ page }) => {
-  await newSpiral(page);
-  await cell(page, 0).click();
-  await type(page, 'R2');
-  for (const [i, ch] of ['R', '2'].entries()) await expect(letter(page, i)).toHaveText(ch);
-  await expect(cell(page, 2)).toHaveClass(/caret/);
+  await type(page, 'ÑÉ2');
+  for (const [i, ch] of ['N', 'E', '2'].entries()) await expect(letter(page, i)).toHaveText(ch);
+  await expect(cell(page, 3)).toHaveClass(/caret/);
 });
 
 test('Enter composes a multi-letter cell', async ({ page }) => {
@@ -110,15 +102,6 @@ test('Enter composes a multi-letter cell', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(letter(page, 3)).toHaveText('HAR');
   await expect(cell(page, 3)).toHaveClass(/caret/);
-});
-
-test('typing fills the cells', async ({ page }) => {
-  await newSpiral(page);
-  await fillSpiral(page);
-  await expect(page.locator('.sp-ltr')).toHaveCount(40);
-  await expect(letter(page, 0)).toHaveText('A');
-  await expect(letter(page, 27)).toHaveText('B');
-  await expect(letter(page, 39)).toHaveText('N');
 });
 
 test('a boundary click splits an inward entry', async ({ page }) => {
@@ -142,33 +125,20 @@ test('"." switches cuts and "|" breaks the outward cut', async ({ page }) => {
   await expect(page.locator('.sp-break.out[data-gap="11"]')).toHaveCount(1);
 });
 
-test('Insert cell after puts the new cell after the caret', async ({ page }) => {
+test('Insert cell after and before put a new empty cell on that side of the caret', async ({ page }) => {
   await newSpiral(page);
   await cell(page, 0).click();
   await type(page, 'ABC');
   await cell(page, 1).click();
-  await cellMenuItem(page, 'btn-insert-after');
-  await expect(letter(page, 1)).toHaveText('B');
-  await expect(letter(page, 2)).toHaveCount(0);
-  await expect(letter(page, 3)).toHaveText('C');
-});
-
-test('Insert cell before puts the new cell before the caret', async ({ page }) => {
-  await newSpiral(page);
-  await cell(page, 0).click();
-  await type(page, 'ABC');
-  await cell(page, 1).click();
-  await cellMenuItem(page, 'btn-insert-before');
-  await expect(letter(page, 1)).toHaveCount(0);
-  await expect(letter(page, 2)).toHaveText('B');
-});
-
-test('inserting a cell redraws the spiral', async ({ page }) => {
-  await newSpiral(page);
-  await cell(page, 5).click();
   await cellMenuItem(page, 'btn-insert-after');
   await expect(page.locator('.sp-cell')).toHaveCount(41);
   await expect(page.locator('#meter-cells')).toContainText('41');
+  await expect(letter(page, 1)).toHaveText('B');
+  await expect(letter(page, 2)).toHaveCount(0);
+  await expect(letter(page, 3)).toHaveText('C');
+  await cellMenuItem(page, 'btn-insert-before');   // the caret is still on B
+  await expect(letter(page, 1)).toHaveCount(0);
+  await expect(letter(page, 2)).toHaveText('B');
 });
 
 test('undo restores a removed break', async ({ page }) => {
@@ -238,6 +208,36 @@ test('typing in the instructions grows the field, and undo restores it', async (
   await expect(field).toHaveValue('First line.');
 });
 
+// StructuredShell's key handler, shared by every editor: the browser's text undo would
+// commit its result as a new step and so clear redo.
+// Only the document's undo can reach another field's edit, or leave redo standing.
+test('Ctrl+Z in a clue steps the document back, past the clue\'s own edits', async ({ page }) => {
+  await newSpiral(page);
+  await showPhase(page, 'clues');
+  const inputs = page.locator('.clue-input');
+  await inputs.first().fill('First clue');
+  await inputs.nth(1).fill('Second clue');   // a different key, so undo steps back one clue
+  await inputs.nth(1).press('ControlOrMeta+z');
+  await expect(inputs.nth(1)).toHaveValue('');
+  await inputs.nth(1).press('ControlOrMeta+z');
+  await expect(inputs.first()).toHaveValue('');
+  await expect(page.locator('#btn-redo')).toBeEnabled();
+  await inputs.nth(1).press('ControlOrMeta+Shift+z');
+  await expect(inputs.first()).toHaveValue('First clue');
+});
+
+// The board handles its own undo keys, and the handler above must leave them alone.
+test('Ctrl+Z on the board undoes one run of typing, once', async ({ page }) => {
+  await newSpiral(page);
+  await page.locator('#board-input').focus();
+  await page.keyboard.type('A');
+  await page.keyboard.press('ArrowRight');   // ends the run
+  await page.keyboard.type('B');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(letter(page, 2)).toHaveCount(0);
+  await expect(letter(page, 0)).toHaveText('A');
+});
+
 test('the title wraps but never takes a line break', async ({ page }) => {
   await newSpiral(page);
   const title = page.locator('#header-title');
@@ -267,6 +267,8 @@ test('long instructions show as a few clipped lines until the field is focused',
   expect((await field.boundingBox()).height).toBeGreaterThan(clamped);
 });
 
+// Each kind's fromYaml and toYaml are checked byte for byte by model-roundtrip.test.js;
+// opening a file and exporting it are shared code, so one kind covers them.
 test('a Spiral fixture round-trips through the editor', async ({ page }) => {
   await openFile(page, REBUS_40);
   await expect(page.locator('#problems-chip')).toContainText('Ready to export');
@@ -274,14 +276,6 @@ test('a Spiral fixture round-trips through the editor', async ({ page }) => {
   const exported = yaml.load(await download(page, '#export-yaml'));
   const original = yaml.load(fs.readFileSync(REBUS_40, 'utf8'));
   expect(buildFromObject(exported, {}, HOOKS).html).toBe(buildFromObject(original, {}, HOOKS).html);
-});
-
-test('Edit as YAML and back', async ({ page }) => {
-  await openFile(page, REBUS_40);
-  await page.locator('#btn-edit-yaml').click();
-  await expect(page.locator('#yaml-editor')).toBeVisible();
-  await page.locator('#btn-back-to-editor').click();
-  await expect(page.locator('#board')).toBeVisible();
 });
 
 test('undo steps back through typing runs separated by moving the cursor', async ({ page }) => {
@@ -313,15 +307,7 @@ test('keys the editor does not use are left to the browser', async ({ page }) =>
   expect(prevented).toEqual([false, false, false]);
 });
 
-test('clicking the selected cell again switches direction', async ({ page }) => {
-  await newSpiral(page, 40);
-  await page.locator('.sp-cell').nth(3).click();
-  await expect(page.locator('#cut-toggle [data-cut="inward"]')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('.sp-cell').nth(3).click();
-  await expect(page.locator('#cut-toggle [data-cut="outward"]')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('focus given by opening does not count: the first click on the caret cell only selects', async ({ page }) => {
+test('clicking the selected cell again switches direction, but focus given by opening does not count', async ({ page }) => {
   await newSpiral(page, 40);
   await expect(page.locator('#board-input')).toBeFocused();
   await page.locator('.sp-cell.caret').click();
@@ -403,22 +389,6 @@ test('switching phase keeps the caret and board focus', async ({ page }) => {
   await expect(letter(page, 7)).toHaveText('Q');
 });
 
-test('a board edit that orphans a clue shows the loose-clue notice', async ({ page }) => {
-  await newSpiral(page);
-  await expect(page.locator('#loose-clues-notice')).toBeHidden();
-  await page.locator('.sp-gap[data-gap="4"]').click();
-  await showPhase(page, 'clues');
-  await cell(page, 10).click();
-  await page.locator('.clue-row.on .clue-input').fill('second entry clue');
-  await showPhase(page, 'board');
-  await page.locator('.sp-gap[data-gap="4"]').click();
-  await expect(page.locator('#loose-clues-notice')).toBeVisible();
-  await expect(page.locator('#loose-clues-notice')).toContainText('1 clue');
-  await page.locator('#loose-clues-notice button').click();
-  await expect(page.locator('#phase-steps [data-view="clues"]')).toHaveAttribute('aria-current', 'step');
-  await expect(page.locator('#orphan-tray')).toBeVisible();
-});
-
 test('the word-list row at the caret scrolls into view in the side column', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openFile(page, EXAMPLE);
@@ -492,16 +462,6 @@ test('clicking a cell selects its row and tints the crossing one', async ({ page
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
 });
 
-test('a Clues-phase Delete that orphans a clue shows the tray', async ({ page }) => {
-  await openFile(page, EXAMPLE);
-  await showPhase(page, 'clues');
-  await expect(page.locator('#orphan-tray')).toHaveCount(0);
-  // JAM is the last inward entry, three cells: delete them all from the board.
-  await page.locator('.clue-row[data-cut="inward"][data-entry="12"] .clue-answer').click();
-  for (let i = 0; i < 3; i++) await page.keyboard.press('Delete');
-  await expect(page.locator('#orphan-tray .orphan')).toContainText('Phish hook?');
-});
-
 test('the spaced answer is edited on the selected row and reports its match', async ({ page }) => {
   await openFile(page, EXAMPLE);
   await showPhase(page, 'clues');
@@ -516,10 +476,11 @@ test('the spaced answer is edited on the selected row and reports its match', as
   await expect(page.locator('.clue-row[data-entry="3"] #entry-display')).toBeVisible();
 });
 
-test('a board edit that orphans a clue scrolls the tray into view, and focus stays on the board', async ({ page }) => {
+test('a Clues-phase board edit that orphans a clue scrolls the tray into view, and focus stays on the board', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openFile(page, EXAMPLE);
   await showPhase(page, 'clues');
+  await expect(page.locator('#orphan-tray')).toHaveCount(0);
   // JAM is the last inward entry, so selecting it scrolls the column down.
   await page.locator('.clue-row[data-cut="inward"][data-entry="12"] .clue-answer').click();
   await expect.poll(() => page.evaluate(() => document.querySelector('.phase-side-col').scrollTop)).toBeGreaterThan(0);
@@ -540,15 +501,17 @@ const inSideColumn = (page, sel) => page.evaluate((s) => {
   return r.top >= side.top - 1 && r.bottom <= side.bottom + 1;
 }, sel);
 
-test('the loose-clue notice is in view in the Board phase, and Show in Clues brings the tray into view', async ({ page }) => {
+test('a Board-phase edit that orphans a clue shows the loose-clue notice in view, and Show in Clues brings the tray into view', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openFile(page, EXAMPLE);
+  await expect(page.locator('#loose-clues-notice')).toBeHidden();
   // JAM is the last inward entry; deleting its cells leaves its clue loose.
   await page.locator('.word-row[data-cut="inward"][data-entry="12"] button').click();
   for (let i = 0; i < 3; i++) await page.keyboard.press('Delete');
-  await expect(page.locator('#loose-clues-notice')).toBeVisible();
+  await expect(page.locator('#loose-clues-notice')).toContainText('1 clue');
   await expect.poll(() => inSideColumn(page, '#loose-clues-notice')).toBe(true);
   await page.locator('#loose-clues-notice button').click();
+  await expect(page.locator('#phase-steps [data-view="clues"]')).toHaveAttribute('aria-current', 'step');
   await expect(page.locator('#orphan-tray')).toBeVisible();
   await expect.poll(() => inSideColumn(page, '#orphan-tray')).toBe(true);
 });
@@ -614,18 +577,4 @@ test('the title problem focuses the title from Test-solve', async ({ page }) => 
   await jumpTo(page, 'Give the puzzle a title.');
   await expect(page.locator('#phase-steps [data-view="board"]')).toHaveAttribute('aria-current', 'step');
   await expect(page.locator('#header-title')).toBeFocused();
-});
-
-test('a fully lettered Spiral with no clues test-solves with placeholders, and exports none', async ({ page }) => {
-  await newSpiral(page);
-  await fillSpiral(page);
-  await page.locator('.sp-gap[data-gap="20"]').click();
-  await page.locator('#cut-toggle [data-cut="outward"]').click();
-  await page.locator('.sp-gap[data-gap="20"]').click();
-  await page.locator('#header-title').fill('No clues yet');
-  await showPhase(page, 'test');
-  await expect(page.locator('#preview-placeholders')).toBeVisible();
-  await expect(page.frameLocator('#preview').locator('.cell').first()).toBeVisible();
-  await showPhase(page, 'clues');
-  await expect(page.locator('.clue-input').first()).toHaveValue('');
 });

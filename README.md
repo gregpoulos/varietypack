@@ -155,7 +155,6 @@ What it does today:
 
 - **A structured editor for every kind**: type letters onto the real board (the spiral, the ring, the grid), split entries where you want them (Crushword: place blocks as you go, with live numbering), and then clue them in the Clues step, a list of their own. New puzzles start from a chosen size, or from a kind's example; opening a source file imports it into the editor, and it exports a file that builds the same page.
 - **Test-solving an unfinished puzzle**: a puzzle missing only clues still test-solves, with placeholder text in the empty ones; the Clues step's Fill empty clues writes that text into the puzzle so you can edit it.
-- **YAML mode for every kind**, for power users: use the Edit as YAML button, or open a file the editor can't represent.
 - **Live problems list** (the same validators as `varietypack validate`) and a **sandboxed preview** you can test-solve, with the time it took you to solve it shown beside the preview. A theme picker beside the preview restyles it, and Export starts from that theme.
 - **Export** offers the puzzle page or the source YAML, each in a theme you choose, with an optional *Answers: Hidden* setting that produces the answers-hidden form of either. A puzzle with errors can't export its page; an unfinished one still saves a draft file you can reopen in the studio.
 - **Back and Forward** move between the start screen, your puzzles and their phases, and a reload returns to the open puzzle.

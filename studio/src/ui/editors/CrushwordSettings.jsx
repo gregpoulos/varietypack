@@ -8,22 +8,22 @@ import { Fader } from './Fader.jsx';
 const [rowsField, colsField] = cw.sizeFields;
 
 // What a resize does, in words: the cells it adds or removes, the clues it would orphan
-// and whether the pattern stays symmetric. Counted from the resize's own result.
-function resizeSummary(model, R2, C2) {
+// and whether the pattern stays symmetric. Counted from the resize's own result, `after`.
+function resizeSummary(model, after) {
+  const { rows: R2, cols: C2 } = after;
   const parts = [];
   if (R2 < model.rows) parts.push(`Removes the bottom ${plural(model.rows - R2, 'row', 'rows')}.`);
   if (C2 < model.cols) parts.push(`Removes the right ${plural(model.cols - C2, 'column', 'columns')}.`);
   if (R2 > model.rows) parts.push(`Adds ${plural(R2 - model.rows, 'empty row', 'empty rows')} at the bottom.`);
   if (C2 > model.cols) parts.push(`Adds ${plural(C2 - model.cols, 'empty column', 'empty columns')} on the right.`);
-  const lost = cw.resizeLosses(model, R2, C2);
+  const lost = after.orphans.length - model.orphans.length;
   if (lost) parts.push(lost === 1 ? '1 clue loses its entry and moves to Unattached clues.' : `${lost} clues lose their entry and move to Unattached clues.`);
-  if (cw.gridChecks(model).symmetric && !cw.gridChecks(cw.commands.resize(model, R2, C2)).symmetric) parts.push('The block pattern won’t be symmetric.');
+  if (cw.gridChecks(model).symmetric && !cw.gridChecks(after).symmetric) parts.push('The block pattern won’t be symmetric.');
   return parts.join(' ');
 }
 
-// The grid's size and letters-per-cell live in the puzzle's settings, away from the
-// editing controls so a resize isn't triggered by accident. The resize form
-// is the confirmation: it says what it will set aside before it applies.
+// Crushword's settings (GridSettings): the grid's size, through a resize form that says
+// what it will set aside, and the letters per cell.
 export function CrushwordSettings({ model, dispatch }) {
   const { rows, cols } = model;
   const [open, setOpen] = useState(false);
@@ -43,7 +43,7 @@ export function CrushwordSettings({ model, dispatch }) {
     preview = (
       <>
         <CrushwordThumb rows={R2} cols={C2} blocks={after.blocks} fresh={fresh} />
-        <p id="resize-summary">{resizeSummary(model, R2, C2)}</p>
+        <p id="resize-summary">{resizeSummary(model, after)}</p>
       </>
     );
   }

@@ -1,8 +1,8 @@
 import sc from '../../model/kinds/snake-charmer.js';
 import { formatCell } from '../../model/cells.js';
 import { useBoardEditing } from './useBoardEditing.js';
-import { keepBoardFocus, boardHasFocus } from './useBoardInput.js';
-import { displayStatusFor } from './displayStatus.js';
+import { boardHasFocus } from './useBoardInput.js';
+import { spacedAnswer } from './displayStatus.js';
 import { RingBoard } from './RingBoard.jsx';
 import { ClueLists } from './ClueList.jsx';
 import { ShapeSelect } from './ShapeSelect.jsx';
@@ -11,9 +11,9 @@ import { PhaseLayout } from './PhaseLayout.jsx';
 import { WordList } from './WordList.jsx';
 import { Checks } from './Checks.jsx';
 import { KeyStrip, KeyList } from './KeyStrip.jsx';
-import { LooseCluesNotice } from './LooseCluesNotice.jsx';
+import { BoardFrame } from './BoardFrame.jsx';
 import { Latch } from '../Latch.jsx';
-import { CellMenu } from './CellMenu.jsx';
+import { CellMenu, circleAndRebusItems } from './CellMenu.jsx';
 
 const { commands, total, positionsOf, ringLabel, twin, entryAtPosition, coincidentStarts, stepPosition, entryStartPosition, breakAtCaret } = sc;
 
@@ -67,22 +67,16 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
   const here = entryAtPosition(model, caret);
   const across = entryAtPosition(model, twin(model, caret));
 
-  // The selected row also carries the spaced answer and its status (ClueList shows them
-  // on that row only). The crossing row is the entry covering the caret's cell on the
-  // other lap, unless that is the selected entry itself.
+  // The crossing row is the entry covering the caret's cell on the other lap, unless that
+  // is the selected entry itself.
   const rows = model.cut.entries.map((entry, j) => {
     const row = {
       id: entry.id, j, clue: entry.clue, label: `${j + 1}.`, answer: answerOf(j),
       active: j === here, crossing: j === across && across !== here, clash: clashEntries.has(j),
     };
-    if (row.active) {
-      row.display = entry.displayAnswer ?? '';
-      row.displayStatus = displayStatusFor(row.display, positionsOf(model, j).map(p => model.ring[p % N]));
-    }
+    if (row.active) Object.assign(row, spacedAnswer(entry, positionsOf(model, j).map(p => model.ring[p % N])));
     return row;
   });
-  // focusBoard: false is for a clue field gaining focus in the Clues phase, which must
-  // keep it so the keys typed there stay in the field.
   const select = (j, { focusBoard = true } = {}) => {
     moveTo({ caret: model.cut.starts[j], composing: false });
     if (focusBoard) focus();
@@ -96,8 +90,7 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
 
   // The cell-level actions, one menu. Insert and Delete cell only in the Board phase.
   const cellItems = (structural) => [
-    { id: 'btn-circle', label: 'Toggle circle', checked: circleSet.has(caret % N), onSelect: () => run('toggleCircle', caret % N) },
-    { id: 'btn-rebus', label: composing ? 'Leave rebus mode' : 'Enter rebus mode', hint: 'Enter', checked: !!composing, onSelect: () => moveTo({ composing: !composing }) },
+    ...circleAndRebusItems({ circled: circleSet.has(caret % N), onCircle: () => run('toggleCircle', caret % N), composing, moveTo }),
     ...(structural ? [
       { id: 'btn-insert-before', label: 'Insert cell before', onSelect: () => run('insertCell', caret % N) },
       { id: 'btn-insert-after', label: 'Insert cell after', onSelect: () => run('insertCell', caret % N + 1) },
@@ -124,8 +117,7 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
       )}
       clueTools={<span class="tools"><CellMenu items={cellItems(false)} focus={focus} /></span>}
       board={(
-        <div id="board" class={'board ' + (lapNow === 1 ? 'in' : 'out')} onClick={focus} onMouseDown={keepBoardFocus}>
-          <input id="board-input" aria-label="Board input" {...inputProps} />
+        <BoardFrame channel={lapNow} focus={focus} inputProps={inputProps}>
           <RingBoard ring={model.ring} shape={model.shape} caret={caret} composing={composing} starts={model.cut.starts} circles={circleSet}
             onCellClick={k => {
               const focused = boardHasFocus();
@@ -136,7 +128,7 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
               const r = breakAtCaret(model, p);
               if (r.message) say(r.message); else exec('toggleBreak', [r.index]);
             }} />
-        </div>
+        </BoardFrame>
       )}
       keys={(
         <KeyStrip
@@ -162,10 +154,8 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
         ]} />
       )}
       side={(
-        <>
-          <LooseCluesNotice count={model.orphans.length} onShow={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
-          <WordList lists={listTitled('Entries')} onSelect={j => select(j)} looseCount={model.orphans.length} />
-        </>
+        <WordList lists={listTitled('Entries')} onSelect={j => select(j)} looseCount={model.orphans.length}
+          onShowLoose={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
       )}
       clues={(
         <ClueLists lists={listTitled('Clues')} orphans={model.orphans} targets={targets}
@@ -173,8 +163,6 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
           onDiscard={id => exec('discardOrphan', [id])}
           onSelect={j => select(j)}
           onFocusClue={j => {
-            // A caret already inside this entry stays put, so tabbing into its clue
-            // doesn't reset a mid-entry caret.
             if (entryAtPosition(model, caret) === j) moveTo({ composing: false });
             else select(j, { focusBoard: false });
           }}

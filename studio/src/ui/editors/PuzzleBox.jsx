@@ -1,6 +1,5 @@
 import { useState } from 'preact/hooks';
 import { AutoTextarea } from './AutoTextarea.jsx';
-import { undoRedoKeys } from './useBoardEditing.js';
 import header from '../../model/header.js';
 
 const { HEADER_LIMITS, titleSizePx } = header;
@@ -26,12 +25,10 @@ export function PuzzleBox({ model, dispatch }) {
     type: 'MODEL_COMMAND', name: 'setHeader', args: [field, value], key: `header:${field}`, now: Date.now(),
   });
   const set = (field) => (e) => setField(field, e.currentTarget.value);
-  // Undo and redo act on the model, so a header edit steps back with the rest.
-  const onKeyDown = undoRedoKeys(dispatch);
   const date = String(h.date ?? '');
   const author = h.author ?? '';
   return (
-    <section id="puzzle-box" class="puzzle-box engraved" aria-labelledby="puzzle-legend" onKeyDown={onKeyDown}>
+    <section id="puzzle-box" class="puzzle-box engraved" aria-labelledby="puzzle-legend">
       <h3 id="puzzle-legend" class="legend">Puzzle</h3>
       {/* The title wraps in the narrow column, so it is a textarea that refuses line
           breaks: Enter does nothing, and a pasted break becomes a space. */}

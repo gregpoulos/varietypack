@@ -1,10 +1,14 @@
 'use strict';
 // What every structured kind module needs and would otherwise repeat: label formatting,
-// the cell and circle housekeeping, parsing a list of entries into cells, and the orphan
-// swap. Kind modules keep what is genuinely theirs (geometry, coordinates, labels).
+// the cell and circle housekeeping, parsing a list of entries into cells, the orphan
+// swap, the completeness problems every kind reports, and the commands every kind has in
+// the same form. Kind modules keep what is genuinely theirs (geometry, coordinates,
+// labels).
 const { parseAnswerCells } = require('../../../shared/build/cells');
 const { normalize } = require('../../../shared/normalize.mjs');
 const { StructureError } = require('./errors');
+const { setHeaderField } = require('./header');
+const { fillEmptyClues } = require('./placeholderClues');
 
 // 1-based, runs compressed: [2,3,4,8] → '3–5, 9'.
 function runsLabel(indices) {
@@ -46,6 +50,14 @@ function cumulativeStarts(lists) {
   return { starts, total: at };
 }
 
+function assertTitle(puzzle) {
+  if (puzzle.title !== undefined && typeof puzzle.title !== 'string') throw new StructureError('the title must be text (put numbers in quotes)');
+}
+
+// The positions an entry lists under styles.circle; a bad list is the validator's to
+// report, so it counts as none here.
+const listedCircles = (entry) => (entry.styles && Array.isArray(entry.styles.circle) ? entry.styles.circle : []);
+
 // Each entry's cells. Anything that can't be represented throws a StructureError, so the
 // file opens in YAML mode with the validator's view instead of crashing the editor.
 function parseEntryCells(entries, listName) {
@@ -74,6 +86,33 @@ function takeOrphan({ orphans, nextId }, orphanId, target, label) {
     nextId++;
   }
   return { clue: orphan.clue, orphans: rest, nextId };
+}
+
+// A completeness item. Every one blocks export.
+const problem = (message, target) => ({ level: 'error', message, target });
+
+// The problems every kind reports: the title, first in its list, and the loose clues,
+// last.
+const titleProblems = (model) => (model.header.title.trim() ? [] : [problem('Give the puzzle a title.', { header: 'title' })]);
+const orphanProblems = (model) => model.orphans.map(o => problem(`Unattached clue "${o.clue}" (from ${o.from}). Attach or discard it.`, { orphan: o.id }));
+
+// A grid's empty cells as one problem: a lone cell by its place, else the first few and a
+// count. place(cell) names a cell as "(row, column)".
+const MAX_LISTED = 10;
+function emptyCellsProblems(cells, place) {
+  if (!cells.length) return [];
+  if (cells.length === 1) return [problem(`Cell ${place(cells[0])} is empty.`, { cells })];
+  const more = cells.length > MAX_LISTED ? `, and ${cells.length - MAX_LISTED} more` : '';
+  return [problem(`Empty cells: ${cells.slice(0, MAX_LISTED).map(place).join(', ')}${more}.`, { cells })];
+}
+
+// The commands every kind has in the same form; mapEntries is the kind's own.
+function commonCommands(mapEntries) {
+  return {
+    setHeader: (model, field, value) => ({ ...model, header: setHeaderField(model.header, field, value) }),
+    discardOrphan: (model, orphanId) => ({ ...model, orphans: model.orphans.filter(o => o.id !== orphanId) }),
+    fillEmptyClues: (model) => fillEmptyClues(model, mapEntries),
+  };
 }
 
 // Sets an entry's "answer with spacing"; a blank text removes it.
@@ -105,6 +144,7 @@ function isModelBase(m, kind) {
 }
 
 module.exports = {
-  runsLabel, sanitizeCell, toggleSorted, remapCircles, cumulativeStarts,
-  parseEntryCells, takeOrphan, displayPatch, isCut, isCell, isCells, isCircles, isModelBase,
+  runsLabel, sanitizeCell, toggleSorted, remapCircles, cumulativeStarts, assertTitle, listedCircles,
+  parseEntryCells, takeOrphan, problem, titleProblems, orphanProblems, emptyCellsProblems, commonCommands,
+  displayPatch, isCut, isCell, isCells, isCircles, isModelBase,
 };

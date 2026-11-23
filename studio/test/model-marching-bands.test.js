@@ -254,7 +254,7 @@ test('entryOfCell and entryIds: which entry covers a cell, and the cells of an e
   assert.deepEqual(mb.entryIds(model, 'rows', 0, 1), [3, 4, 5]);
 });
 
-// ── robustness (cross-tool review of PR 3b) ─────────────────────────────────
+// ── robustness ──────────────────────────────────────────────────────────────
 
 test('stepBack: the previous id along the path, and nothing before a path\'s first cell', () => {
   const { model } = imp();
@@ -279,11 +279,6 @@ test('isModel: circles are real ids (1 up, never the center) and the center cell
   const cells = model.cells.slice(); cells[12] = 'x';
   bad({ cells });
   assert.equal(mb.isModel({ ...model, circles: [1, 25] }), true);
-});
-
-test('the line-field message for a first entry has one home', () => {
-  assert.equal(mb.FIRST_ENTRY_MESSAGE.bands, mb.breakAtCaret(imp().model, 'bands', 1).message);
-  assert.equal(mb.FIRST_ENTRY_MESSAGE.rows, mb.breakAtCaret(imp().model, 'rows', 1).message);
 });
 
 test('resize refuses a size above the size field\'s maximum', () => {

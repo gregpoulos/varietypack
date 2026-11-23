@@ -351,7 +351,7 @@ test('entryAtCell: which entry of a cut covers a cell', () => {
   assert.equal(spiral.entryAtCell(model, 'outward', 4), 1);
 });
 
-// ── robustness (code review of PR #20) ──────────────────────────────────────
+// ── robustness ──────────────────────────────────────────────────────────────
 
 test('fromYaml: a puzzle with no cells, or an answer with no letters, throws a StructureError', () => {
   assert.throws(() => spiral.fromYaml({ kind: 'spiral', title: 'T', inward: [], outward: [] }), (e) => e instanceof StructureError && /no cells/.test(e.message));

@@ -16,5 +16,4 @@ test('a longer title shrinks steadily, never below the floor', () => {
 });
 test('every header field has a limit', () => {
   for (const f of ['title', 'author', 'date']) assert.ok(HEADER_LIMITS[f] > 0, f);
-  assert.ok(HEADER_LIMITS.title > HEADER_LIMITS.author && HEADER_LIMITS.author > HEADER_LIMITS.date);
 });

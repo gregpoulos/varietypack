@@ -3,14 +3,6 @@
 const { test } = require('node:test');
 const assert   = require('node:assert/strict');
 const { formatCell, formatAnswer, sameCells } = require('../src/model/cells');
-const { StructureError } = require('../src/model/errors');
-
-test('StructureError is an Error with its own name', () => {
-  const e = new StructureError('nope');
-  assert.ok(e instanceof Error);
-  assert.equal(e.name, 'StructureError');
-  assert.equal(e.message, 'nope');
-});
 
 test('formatCell: empty, single letter, rebus', () => {
   assert.equal(formatCell(''), '·');

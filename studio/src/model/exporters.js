@@ -114,4 +114,4 @@ function themeHasFont(theme) {
   return !!(THEME_REGISTRY[theme] && THEME_REGISTRY[theme].fonts);
 }
 
-module.exports = { yamlSaves, setThemeLine, buildExport, themeHasFont, themeApplies, fileTheme, previewTheme, DEFAULT_THEME };
+module.exports = { yamlSaves, setThemeLine, buildExport, themeHasFont, themeApplies, fileTheme, previewTheme };

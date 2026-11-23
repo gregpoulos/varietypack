@@ -5,7 +5,7 @@ const yaml = require('js-yaml');
 const { buildFromObject } = require('../../../shared/build/buildFromObject');
 const { muddlePuzzle, MUDDLED_DUMP_OPTIONS } = require('../../../shared/build/muddleUtils');
 
-const { KINDS, hooksFor, kindError } = require('../../../shared/build/tools');
+const { hooksFor, kindError } = require('../../../shared/build/tools');
 
 const { SHAPES, SHAPE_NAMES, autoShape } = require('../../../snake-charmer/src/layout');
 
@@ -80,4 +80,4 @@ function checkText(text, options = {}) {
   return { parseError: null, ...checkPuzzle(puzzle, options) };
 }
 
-module.exports = { KINDS, parseYaml, dumpYaml, validate, build, muddle, checkPuzzle, checkText, feasibleShapes, autoShape, SHAPE_NAMES };
+module.exports = { parseYaml, dumpYaml, validate, build, muddle, checkPuzzle, checkText, feasibleShapes, autoShape, SHAPE_NAMES };

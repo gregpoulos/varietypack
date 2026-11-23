@@ -13,11 +13,4 @@ function revealDelta(col, row) {
   return 0;
 }
 
-// Only the active row (the entry at the caret) ever causes a scroll, and only when it is
-// out of view. The crossing row is context: revealing it would move the column for a row
-// the author isn't editing.
-function planReveal(col, active) {
-  return active ? revealDelta(col, active) : 0;
-}
-
-module.exports = { revealDelta, planReveal };
+module.exports = { revealDelta };

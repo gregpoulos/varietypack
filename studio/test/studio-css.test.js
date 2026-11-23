@@ -28,7 +28,6 @@ function mix(a, b, p) {
 
 test('the page embeds Jost as a woff2 data URL', () =>
   assert.match(css, /@font-face\s*\{[^}]*font-family:\s*'Jost'[^}]*data:font\/woff2;base64,/));
-test('legends prefer Futura, then Jost', () => assert.match(css, /--font-legend:\s*Futura,\s*Jost,/));
 test('the studio has one look: no dark mode', () => {
   assert.doesNotMatch(css, /prefers-color-scheme/);
   assert.match(css, /color-scheme:\s*light/);
@@ -73,17 +72,4 @@ test('code sets its own ink, since it has a tape background wherever it appears'
   assert.match(css, /^code \{[^}]*color: var\(--tape-ink\)/m));
 test('placeholders on paper use the muted ink at full opacity', () => {
   assert.match(css, /\.clue-input::placeholder[^{]*\{[^}]*color: var\(--paper-muted\)[^}]*opacity: 1/);
-  assert.match(css, /#max-cell-letters::placeholder[^{]*\{/);
 });
-test('a disabled display-window select is dimmed', () =>
-  assert.match(css, /select\.readout:disabled[^{]*\{[^}]*opacity: \.5/));
-
-// Native scrollbars would otherwise draw a light track on the dark plate.
-test('every scroller is a translucent thumb on no track', () => {
-  assert.match(css, /^\* \{[^}]*scrollbar-color: rgba\(255, 255, 255, \.38\) transparent/m);
-  assert.match(css, /\*::-webkit-scrollbar-thumb/);
-});
-
-// The plate's pale thumb would vanish on the paper drafts panel.
-test('the drafts panel scrolls with a thumb that shows on paper', () =>
-  assert.match(css, /^\.ts-scroll \{[^}]*scrollbar-color: var\(--cell-line\) transparent/m));

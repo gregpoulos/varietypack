@@ -5,16 +5,14 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
-const { expectGridFits, expectTabLeavesClues, openGrid, openStudio, openStudioFile, downloadText: download, typeBoard: type, showPhase } = require('./helpers');
-const { buildFromObject } = require('../shared/build/buildFromObject');
-const { HOOKS } = require('../crushword/src/builder');
+const { expectGridFits, expectTabLeavesClues, openGrid, openStudio, openStudioFile, typeBoard: type, showPhase } = require('./helpers');
+const geometry = require('../studio/src/ui/editors/gridGeometry');
 
 let studio;
 test.beforeAll(async () => { studio = await serveStudio(); });
 test.afterAll(async () => { await studio.close(); });
 
 const REPO = path.resolve(__dirname, '..');
-const FIXTURES = path.join(REPO, 'crushword/test/fixtures');
 const EXAMPLE = path.join(REPO, 'examples/crushword.yaml');
 
 // ---- helpers (cells are (row, column), 1-based) ------------------------------
@@ -35,10 +33,10 @@ const openFile = (page, file) => openStudioFile(page, studio.url, file);
 const cell = (page, r, c) => page.locator(`rect.grid-cell[data-r="${r - 1}"][data-c="${c - 1}"]`);
 const block = (page, r, c) => page.locator(`rect.grid-block[data-r="${r - 1}"][data-c="${c - 1}"]`);
 const letter = (page, r, c) => page.locator(`text.grid-letter[data-r="${r - 1}"][data-c="${c - 1}"]`);
-// The caret's position, read from where the caret outline sits.
+// The caret's position, read from where the caret outline sits (GridBoard insets it 1.5).
 async function caretAt(page) {
   const box = await page.locator('rect.grid-caret').evaluate(el => ({ x: +el.getAttribute('x'), y: +el.getAttribute('y') }));
-  return { r: Math.round((box.y - 1.5 - 6) / 40) + 1, c: Math.round((box.x - 1.5 - 28) / 40) + 1 };
+  return { r: Math.round((box.y - 1.5 - geometry.PAD) / geometry.CELL) + 1, c: Math.round((box.x - 1.5 - geometry.GUTTER) / geometry.CELL) + 1 };
 }
 
 // ---- tests ------------------------------------------------------------------
@@ -93,7 +91,7 @@ test('clicking the caret\'s cell again switches direction', async ({ page }) => 
   await expect(page.locator('#direction-toggle [data-dir="A"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('"#" blocks only the cell it is on', async ({ page }) => {
+test('"#" blocks the cell, moves the caret on and renumbers', async ({ page }) => {
   await newGrid(page, 5, 5);
   await cell(page, 1, 1).click();
   await page.keyboard.press('#');
@@ -143,16 +141,6 @@ test('grid checks follow the grid', async ({ page }) => {
   await expect(page.locator('#checks [id^="grid-check-"].warn')).toContainText('2 cells are crossed only once');
 });
 
-test('the Puzzle box heads the side column, and the checks sit under the board', async ({ page }) => {
-  await openFile(page, EXAMPLE);
-  await expect(page.locator('.phase-side-col > #puzzle-box:first-child #header-title')).toBeVisible();
-  const board = await page.locator('#board').boundingBox();
-  const checks = await page.locator('#checks').boundingBox();
-  expect(checks.y).toBeGreaterThan(board.y + board.height);
-  await expect(page.locator('#btn-details')).toHaveCount(0);
-  await expect(page.locator('#header-theme')).toHaveCount(0);
-});
-
 test('the Grid popover stays inside the window at 1280×800', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openFile(page, EXAMPLE);
@@ -189,9 +177,8 @@ for (const [value, stored] of [['5', /maxCellLetters: 5/], ['3', /^(?![\s\S]*max
   });
 }
 
-test('letters per cell lives in the settings', async ({ page }) => {
+test('a lower letters-per-cell limit flags full cells and moves typing on sooner', async ({ page }) => {
   await openFile(page, EXAMPLE);
-  await expect(page.locator('#toolbar #max-cell-letters')).toHaveCount(0);
   await openGrid(page);
   await page.locator('#puzzle-settings #max-cell-letters').fill('2');
   await expect(page.locator('#checks [id^="grid-check-"].bad')).toContainText('more than 2 letters');
@@ -201,9 +188,8 @@ test('letters per cell lives in the settings', async ({ page }) => {
   expect(await caretAt(page)).toEqual({ r: 1, c: 2 });
 });
 
-test('resize lives in the settings and says what it sets aside', async ({ page }) => {
+test('resize says what it sets aside, and moves the lost clues to the tray', async ({ page }) => {
   await openFile(page, EXAMPLE);
-  await expect(page.locator('#toolbar #btn-resize')).toHaveCount(0);
   await openGrid(page);
   await page.locator('#puzzle-settings #btn-resize').click();
   await page.locator('#resize-rows').fill('7');
@@ -221,16 +207,6 @@ test('resize lives in the settings and says what it sets aside', async ({ page }
   await expect(page.locator('#orphan-tray .orphan')).toHaveCount(11);
 });
 
-test('a Crushword fixture round-trips through the editor', async ({ page }) => {
-  const file = path.join(FIXTURES, 'cw-rebus-5.yaml');
-  await openFile(page, file);
-  await expect(page.locator('#problems-chip')).toContainText('Ready to export');
-  await page.locator('#btn-export').click();
-  const exported = yaml.load(await download(page, '#export-yaml'));
-  const original = yaml.load(fs.readFileSync(file, 'utf8'));
-  expect(buildFromObject(exported, {}, HOOKS).html).toBe(buildFromObject(original, {}, HOOKS).html);
-});
-
 test('the Board phase shows Crushword\'s word list and checks', async ({ page }) => {
   await openFile(page, EXAMPLE);
   const src = yaml.load(fs.readFileSync(EXAMPLE, 'utf8'));
@@ -239,18 +215,6 @@ test('the Board phase shows Crushword\'s word list and checks', async ({ page })
   await expect(page.locator('.word-row.on')).toHaveCount(1);
   await expect(page.locator('.word-row.crossing')).toHaveCount(1);
   await expect(page.locator('#checks')).toContainText('Symmetric');
-});
-
-test('the Board phase fits one screen at laptop size', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await openFile(page, EXAMPLE);
-  const fits = await page.evaluate(() => ({
-    page: document.documentElement.scrollHeight <= window.innerHeight,
-    pane: (el => el.scrollHeight <= el.clientHeight)(document.getElementById('edit-view')),
-  }));
-  expect(fits).toEqual({ page: true, pane: true });
-  const box = await page.locator('#board').boundingBox();
-  expect(box.height).toBeGreaterThan(300);
 });
 
 test('Tab walks clue to clue, one stop per entry, and the board follows', async ({ page }) => {

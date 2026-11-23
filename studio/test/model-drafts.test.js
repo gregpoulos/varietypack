@@ -2,15 +2,27 @@
 
 const { test } = require('node:test');
 const assert   = require('node:assert/strict');
-const { newDoc } = require('../src/model/doc');
+const fs       = require('fs');
+const path     = require('path');
+const { newDoc, openText } = require('../src/model/doc');
+const { STRUCTURED } = require('../src/model/kinds');
 const { serializeDraft, parseDraft, indexEntry } = require('../src/model/drafts');
 
+const ROOT = path.resolve(__dirname, '..', '..');
 const doc = newDoc({ id: 'd1', now: 7, kind: 'spiral', yaml: 'kind: spiral\n' });
 
 test('serializeDraft then parseDraft round-trips the document', () => {
   const text = serializeDraft(doc, '2026-10-06T00:00:00.000Z');
   assert.deepEqual(parseDraft(text), doc);
   assert.equal(JSON.parse(text).savedAt, '2026-10-06T00:00:00.000Z');
+});
+
+test('a structured draft of every kind round-trips', () => {
+  for (const kind of Object.keys(STRUCTURED)) {
+    const { doc: d } = openText(fs.readFileSync(path.join(ROOT, 'examples', `${kind}.yaml`), 'utf8'), { id: 's', now: 1 });
+    assert.equal(d.mode, 'structured', kind);
+    assert.deepEqual(parseDraft(serializeDraft(d, 'x')), d, kind);
+  }
 });
 
 test('parseDraft rejects an object that is not a draft', () => {
@@ -47,20 +59,13 @@ test('parseDraft fills in missing options with the defaults', () => {
 
 test('parseDraft rejects a structured draft whose model is not shaped like a model', () => {
   assert.throws(() => parseDraft('{"studio":1,"doc":{"id":"x","mode":"structured","model":{"kind":"spiral"}}}'), /Not a studio draft file/);
-});
-
-test('a Snake Charmer draft round-trips, and a malformed one is rejected', () => {
-  const { newDoc } = require('../src/model/doc');
-  const doc = newDoc({ id: 'sc', now: 1, kind: 'snake-charmer', size: { cells: 16 } });
-  assert.deepEqual(parseDraft(serializeDraft(doc, 'x')), doc);
   assert.throws(() => parseDraft('{"studio":1,"doc":{"id":"x","mode":"structured","model":{"kind":"snake-charmer","ring":[]}}}'), /Not a studio draft file/);
 });
 
 test('a structured draft must name the same kind as its model', () => {
-  const { newDoc } = require('../src/model/doc');
-  const doc = newDoc({ id: 'sc', now: 1, kind: 'snake-charmer', size: { cells: 16 } });
+  const sc = newDoc({ id: 'sc', now: 1, kind: 'snake-charmer', size: { cells: 16 } });
   for (const kind of [null, 'spiral', undefined]) {
-    assert.throws(() => parseDraft(serializeDraft({ ...doc, kind }, 'x')), /Not a studio draft file/, String(kind));
+    assert.throws(() => parseDraft(serializeDraft({ ...sc, kind }, 'x')), /Not a studio draft file/, String(kind));
   }
 });
 
@@ -71,17 +76,11 @@ test('indexEntry carries what the draft list shows', () => {
 // A structured draft whose model is shaped wrongly must be refused at parse time, not
 // crash the reducer when the document opens.
 function structuredDraft(mutate) {
-  const { openText } = require('../src/model/doc');
-  const fs = require('fs'), path = require('path');
-  const text = fs.readFileSync(path.join(__dirname, '..', '..', 'examples', 'spiral.yaml'), 'utf8');
+  const text = fs.readFileSync(path.join(ROOT, 'examples', 'spiral.yaml'), 'utf8');
   const d = JSON.parse(JSON.stringify(openText(text, { id: 's', now: 1 }).doc));
   mutate(d.model);
   return JSON.stringify({ studio: 1, doc: d });
 }
-
-test('parseDraft accepts a real structured document', () => {
-  assert.equal(parseDraft(structuredDraft(() => {})).mode, 'structured');
-});
 
 test('parseDraft rejects a structured model whose cuts are not shaped like cuts', () => {
   const bad = [
@@ -94,11 +93,6 @@ test('parseDraft rejects a structured model whose cuts are not shaped like cuts'
     m => { m.circles = [m.cells.length + 3]; },
   ];
   for (const mutate of bad) assert.throws(() => parseDraft(structuredDraft(mutate)), /Not a studio draft file/);
-});
-
-test('a draft saved without previewTheme loads with it null', () => {
-  const d = parseDraft('{"studio":1,"doc":{"id":"x","mode":"yaml","yaml":"a","options":{"font":"link","hashedPreview":true,"phoneWidth":false}}}');
-  assert.equal(d.options.previewTheme, null);
 });
 
 test('a draft with an unknown previewTheme loads with it null; a known one is kept', () => {

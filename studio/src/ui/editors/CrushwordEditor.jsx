@@ -3,7 +3,7 @@ import cw from '../../model/kinds/crushword.js';
 import E from '../../model/crushwordEditing.js';
 import { formatCell } from '../../model/cells.js';
 import geometry from './gridGeometry.js';
-import { useBoardInput, keepBoardFocus, boardHasFocus } from './useBoardInput.js';
+import { useBoardInput, boardHasFocus } from './useBoardInput.js';
 import { useFocusTarget, handleUndoRedo } from './useBoardEditing.js';
 import { GridBoard } from './GridBoard.jsx';
 import { ClueLists } from './ClueList.jsx';
@@ -12,17 +12,16 @@ import { PhaseLayout } from './PhaseLayout.jsx';
 import { WordList } from './WordList.jsx';
 import { Checks } from './Checks.jsx';
 import { KeyStrip, KeyList } from './KeyStrip.jsx';
-import { LooseCluesNotice } from './LooseCluesNotice.jsx';
+import { BoardFrame } from './BoardFrame.jsx';
 import { Latch, LatchKey } from '../Latch.jsx';
 import { CellMenu } from './CellMenu.jsx';
 
 const { CELL, cellOrigin } = geometry;
+const { cellKey: key, parseCell: parse, cellIndex } = cw;
 const DIRS = ['A', 'D'];
 const OTHER = { A: 'D', D: 'A' };
 const WORD = { A: 'Across', D: 'Down' };
 const CUT = { A: 'across', D: 'down' };
-const key = (r, c) => `${r},${c}`;
-const parse = (k) => k.split(',').map(Number);
 // "1 Across", as the solver's clue list names an entry (cw.slotName is "Across 1", for
 // messages).
 const entryName = (slot) => `${slot.num} ${WORD[slot.dir]}`;
@@ -34,7 +33,7 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
   const [showChecks, setShowChecks] = useState(true);
   const ui = E.repair(model, held);               // after a resize or an undo the cell may be gone
   const { r, c } = ui;
-  const isBlock = model.blocks[r * model.cols + c];
+  const isBlock = model.blocks[cellIndex(model, r, c)];
 
   // Handlers read the latest model and ui from here: a pasted string reaches onLetter
   // several times in one event, before Preact re-renders.
@@ -97,7 +96,7 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
   const cross = slotAt(OTHER[ui.dir]);
   const activeCells = new Set(main ? main.cells : []);
   const overfull = new Set(checks.overfull);
-  const letterOf = (k) => { const [kr, kc] = parse(k); return model.cells[kr * model.cols + kc]; };
+  const letterOf = (k) => { const [kr, kc] = parse(k); return model.cells[cellIndex(model, kr, kc)]; };
   const answerOf = (slot) => slot.cells.map(k => formatCell(letterOf(k))).join('');
   const entryId = (slot) => model.clues[slot.key].id;
 
@@ -106,11 +105,9 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
     runResult(E.clickCell(live.current.model, live.current.ui, cr, cc, focused));
   }
   function setDir(d) {
-    if (d !== ui.dir) runResult(E.pressKey(model, ui, { key: '.' }));
+    if (d !== ui.dir) runResult(E.switchDirection(model, ui));
     focus();
   }
-  // focusBoard: false is for a clue field gaining focus in the Clues phase, which must
-  // keep it so the keys typed there stay in the field.
   function select(slotKey, { focusBoard = true } = {}) {
     const next = E.selectSlot(model, slotKey);
     if (!next) return;
@@ -123,7 +120,7 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
 
   // ── the board ────────────────────────────────────────────────────────────
   function cellAt(cr, cc) {
-    const i = cr * model.cols + cc;
+    const i = cellIndex(model, cr, cc);
     if (model.blocks[i]) return { block: true, content: '', circled: false };
     const k = key(cr, cc);
     return { block: false, content: model.cells[i], number: numbers[k], circled: circleSet.has(k), active: activeCells.has(k), over: overfull.has(k) };
@@ -172,7 +169,7 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
 
   const cellItems = [
     { id: 'btn-circle', label: 'Toggle circle', checked: !isBlock && circleSet.has(key(r, c)), disabled: isBlock, onSelect: () => circle(r, c) },
-    { id: 'btn-block', label: 'Toggle block', hint: '#', checked: isBlock, onSelect: () => runResult(E.pressKey(model, ui, { key: '#' })) },
+    { id: 'btn-block', label: 'Toggle block', hint: '#', checked: isBlock, onSelect: () => runResult(E.toggleBlockAt(model, ui)) },
   ];
   const lists = DIRS.map(d => ({ cutName: CUT[d], title: WORD[d], rowName: WORD[d], rows: listRows(d) }));
 
@@ -190,11 +187,10 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
       )}
       clueTools={<span class="tools"><CellMenu items={cellItems} focus={focus} /></span>}
       board={(
-        <div id="board" class={'board ' + (ui.dir === 'A' ? 'in' : 'out')} onClick={focus} onMouseDown={keepBoardFocus}>
-          <input id="board-input" aria-label="Board input" {...inputProps} />
+        <BoardFrame channel={ui.dir === 'A' ? 1 : 2} focus={focus} inputProps={inputProps}>
           <GridBoard rows={model.rows} cols={model.cols} cellAt={cellAt} caret={{ r, c }} composing={false}
             textCaret={isBlock ? undefined : ui.pos} underlay={underlay()} onCellClick={onCellClick} onBlockClick={onCellClick} />
-        </div>
+        </BoardFrame>
       )}
       keys={(
         <KeyStrip
@@ -224,10 +220,8 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
         </Checks>
       )}
       side={(
-        <>
-          <LooseCluesNotice count={model.orphans.length} onShow={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
-          <WordList lists={lists} onSelect={slotKey => select(slotKey)} looseCount={model.orphans.length} />
-        </>
+        <WordList lists={lists} onSelect={slotKey => select(slotKey)} looseCount={model.orphans.length}
+          onShowLoose={() => dispatch({ type: 'SET_VIEW', view: 'clues' })} />
       )}
       clues={(
         <ClueLists lists={lists} orphans={model.orphans} targets={targets}
@@ -236,8 +230,7 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
           onDiscard={orphanId => exec('discardOrphan', [orphanId])}
           onSelect={slotKey => select(slotKey)}
           onFocusClue={slotKey => {
-            // A cursor already in this entry stays put, so tabbing into its clue doesn't
-            // reset a mid-entry cursor; moveTo still ends the typing run.
+            // moveTo with the same ui still ends the typing run.
             if (main?.key === slotKey) moveTo(ui);
             else select(slotKey, { focusBoard: false });
           }}

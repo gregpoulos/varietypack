@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import reveal from '../../model/reveal.js';
 
-const { revealDelta, planReveal } = reveal;
+const { revealDelta } = reveal;
 
 // Keeps the active row of a list visible as the caret moves, scrolling only when it is
 // out of view. It scrolls only the enclosing `.phase-side-col` (scrollIntoView would
@@ -26,9 +26,10 @@ export function useKeepRowsInView(rootRef, lists, rowClass, orphanCount = 0) {
     prevOrphans.current = orphanCount;
     if (!col) return;
     if (grew) { col.scrollTop = 0; return; }
-    // Only the active row, and only when it is out of view (planReveal).
+    // Only the active row (the entry at the caret) moves the column. The crossing row is
+    // context: revealing it would move the column for a row the author isn't editing.
     const active = rootRef.current.querySelector(`.${rowClass}.on`);
-    col.scrollTop += planReveal(col.getBoundingClientRect(), active && active.getBoundingClientRect());
+    if (active) revealInColumn(col, active);
   }, [marked, orphanCount]);
 }
 

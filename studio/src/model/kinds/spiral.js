@@ -1,7 +1,8 @@
 'use strict';
 // The Spiral kind module: the reference implementation of the kind-module contract.
-// Every kind module exports `kind`, `sizeFields`, `isModel`, `newModel`, `fromYaml`,
-// `toYaml`, `completeness`, `commands` (including `fillEmptyClues`) and `mapEntries` (a
+// Every kind module exports `kind`, `sizeFields`, `isModel` (enough shape that the editor
+// can open a model, a draft say, without crashing), `newModel`, `fromYaml`, `toYaml`,
+// `completeness`, `commands` (including kindCommon's commonCommands) and `mapEntries` (a
 // copy with every entry replaced by fn(entry), for placeholderClues.js); anything else it
 // exports serves its own editor. Pure and CommonJS.
 //
@@ -12,13 +13,15 @@
 //     orphans: [], nextId }
 // An outward entry [s, e) covers cell indices T-1-s down to T-e.
 const { StructureError } = require('../errors');
-const { fillEmptyClues } = require('../placeholderClues');
 const { sameCell } = require('../../../../shared/build/validateEntry');
 const { formatCell } = require('../cells');
 const { ranges, entryAt, addBreak, removeBreak, reanchor } = require('../starts');
 const { newEntry, entryFromYaml, entryToYaml, circledPositions } = require('../entries');
-const { headerFromYaml, headerToYaml, setHeaderField } = require('../header');
-const { runsLabel, sanitizeCell, toggleSorted, remapCircles, cumulativeStarts, parseEntryCells, takeOrphan, displayPatch, isCut, isCells, isCircles, isModelBase } = require('../kindCommon');
+const { headerFromYaml, headerToYaml } = require('../header');
+const {
+  runsLabel, sanitizeCell, toggleSorted, remapCircles, cumulativeStarts, assertTitle, listedCircles, parseEntryCells,
+  takeOrphan, titleProblems, orphanProblems, problem, commonCommands, displayPatch, isCut, isCells, isCircles, isModelBase,
+} = require('../kindCommon');
 
 const kind = 'spiral';
 const sizeFields = [{ name: 'cells', label: 'Cells', min: 40, max: 200, default: 78 }];
@@ -103,7 +106,7 @@ function newModel({ cells }) {
 }
 
 function fromYaml(puzzle) {
-  if (puzzle.title !== undefined && typeof puzzle.title !== 'string') throw new StructureError('the title must be text (put numbers in quotes)');
+  assertTitle(puzzle);
   const inLists = parseEntryCells(puzzle.inward, 'inward');
   const outLists = parseEntryCells(puzzle.outward, 'outward');
   const inward = cumulativeStarts(inLists);
@@ -145,7 +148,7 @@ function fromYaml(puzzle) {
   CUTS.forEach(cutName => {
     (puzzle[cutName] || []).forEach((e, j) => {
       const idx = cutIndices(model0, cutName, j);
-      for (const p of (e.styles && Array.isArray(e.styles.circle) ? e.styles.circle : [])) {
+      for (const p of listedCircles(e)) {
         if (!Number.isInteger(p) || p < 0 || p >= idx.length) continue;
         circleSet.add(idx[p]);
         listed[cutName].add(`${j}:${p}`);
@@ -193,9 +196,8 @@ function toYaml(model) {
 const capital = (s) => s[0].toUpperCase() + s.slice(1);
 
 function completeness(model) {
-  const out = [];
-  const err = (message, target) => out.push({ level: 'error', message, target });
-  if (!model.header.title.trim()) err('Give the puzzle a title.', { header: 'title' });
+  const out = titleProblems(model);
+  const err = (message, target) => out.push(problem(message, target));
   const empty = [];
   model.cells.forEach((c, i) => { if (c === '') empty.push(i); });
   if (empty.length) {
@@ -209,10 +211,7 @@ function completeness(model) {
       err(`${capital(entryLabel(cutName, j))} (${lo === hi ? `cell ${lo}` : `cells ${lo}–${hi}`}) has no clue.`, { cut: cutName, entry: j });
     });
   }
-  for (const o of model.orphans) {
-    err(`Unattached clue "${o.clue}" (from ${o.from}). Attach or discard it.`, { orphan: o.id });
-  }
-  return out;
+  return [...out, ...orphanProblems(model)];
 }
 
 // ── commands ────────────────────────────────────────────────────────────────
@@ -244,7 +243,6 @@ function applyEdit(model, newCells, d) {
   };
 }
 
-// A copy with every entry replaced by fn(entry) (placeholderClues.js).
 const mapEntries = (model, fn) => ({
   ...model,
   cuts: Object.fromEntries(CUTS.map(c => [c, { ...model.cuts[c], entries: model.cuts[c].entries.map(e => fn(e)) }])),
@@ -304,8 +302,6 @@ const commands = {
     return { ...model, circles: toggleSorted(model.circles, i) };
   },
 
-  setHeader: (model, field, value) => ({ ...model, header: setHeaderField(model.header, field, value) }),
-
   attachOrphan(model, orphanId, cutName, j) {
     if (!hasEntry(model, cutName, j)) return model;   // the entry went away since it was picked
     const taken = takeOrphan(model, orphanId, model.cuts[cutName].entries[j], entryLabel(cutName, j));
@@ -313,12 +309,9 @@ const commands = {
     return { ...withEntry(model, cutName, j, e => ({ ...e, clue: taken.clue })), orphans: taken.orphans, nextId: taken.nextId };
   },
 
-  discardOrphan: (model, orphanId) => ({ ...model, orphans: model.orphans.filter(o => o.id !== orphanId) }),
-
-  fillEmptyClues: (model) => fillEmptyClues(model, mapEntries),
+  ...commonCommands(mapEntries),
 };
 
-// Enough shape that the editor can open a model (a draft, say) without crashing.
 function isModel(m) {
   return isModelBase(m, kind)
     && isCells(m.cells) && m.cells.length > 0 && isCircles(m.circles, m.cells.length)

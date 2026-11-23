@@ -189,7 +189,7 @@ async function expectGridFits(page) {
   expect(box.x).toBeGreaterThanOrEqual(0);
 }
 
-// Opens the Cell… menu and chooses an item by its id (btn-circle, btn-insert-cell, …).
+// Opens the Cell… menu and chooses an item by its id (btn-circle, btn-insert-after, …).
 async function cellMenuItem(page, id) {
   if (!(await page.locator('#cell-menu').isVisible())) await page.locator('#btn-cell').click();
   await page.locator(`#cell-menu #${id}`).click();

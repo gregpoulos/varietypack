@@ -57,7 +57,7 @@ test('typing: the cap is the model\'s maxCellLetters', () => {
 });
 
 test('typing on a block says so and changes nothing', () => {
-  const m = cw.commands.toggleBlock(blank(), 0, 0, false);
+  const m = cw.commands.toggleBlock(blank(), 0, 0);
   const res = E.typeLetter(m, at(0, 0), 'a');
   assert.deepEqual(res.calls, []);
   assert.equal(res.message, 'This cell is a block. Press # to open it.');
@@ -65,79 +65,78 @@ test('typing on a block says so and changes nothing', () => {
 
 test('Shift+Enter goes back a cell, landing at the end of its content', () => {
   const m = E.apply(blank(), { calls: [{ name: 'setCell', args: [0, 0, 'ab'] }] });
-  const res = E.pressKey(m, at(0, 1), key('Enter', { shiftKey: true }), true);
+  const res = E.pressKey(m, at(0, 1), key('Enter', { shiftKey: true }));
   assert.deepEqual([res.ui.r, res.ui.c, res.ui.pos], [0, 0, 2]);
 });
 
 test('Backspace deletes the letter before the cursor; Alt deletes everything before it', () => {
   const m = E.apply(blank(), { calls: [{ name: 'setCell', args: [0, 0, 'abc'] }] });
-  assert.deepEqual(E.pressKey(m, at(0, 0, { pos: 2, col: 2 }), key('Backspace'), true).calls.map(c => c.args), [[0, 0, 'ac']]);
-  const alt = E.pressKey(m, at(0, 0, { pos: 2, col: 2 }), key('Backspace', { altKey: true }), true);
+  assert.deepEqual(E.pressKey(m, at(0, 0, { pos: 2, col: 2 }), key('Backspace')).calls.map(c => c.args), [[0, 0, 'ac']]);
+  const alt = E.pressKey(m, at(0, 0, { pos: 2, col: 2 }), key('Backspace', { altKey: true }));
   assert.deepEqual(alt.calls.map(c => c.args), [[0, 0, 'c']]);
   assert.equal(alt.ui.pos, 0);
 });
 
 test('arrows: ←/→ move through the letters, then cross to the neighbor setting Across; Alt jumps to the edge', () => {
   const m = E.apply(blank(), { calls: [{ name: 'setCell', args: [0, 0, 'ab'] }, { name: 'setCell', args: [1, 0, 'xy'] }] });
-  assert.equal(E.pressKey(m, at(0, 0, { pos: 0 }), key('ArrowRight'), true).ui.pos, 1);
-  assert.equal(E.pressKey(m, at(0, 0, { pos: 0 }), key('ArrowRight', { altKey: true }), true).ui.pos, 2);
-  const cross = E.pressKey(m, at(0, 0, { pos: 2, col: 2, dir: 'D' }), key('ArrowRight'), true);
+  assert.equal(E.pressKey(m, at(0, 0, { pos: 0 }), key('ArrowRight')).ui.pos, 1);
+  assert.equal(E.pressKey(m, at(0, 0, { pos: 0 }), key('ArrowRight', { altKey: true })).ui.pos, 2);
+  const cross = E.pressKey(m, at(0, 0, { pos: 2, col: 2, dir: 'D' }), key('ArrowRight'));
   assert.deepEqual([cross.ui.r, cross.ui.c, cross.ui.pos, cross.ui.dir], [0, 1, 0, 'A']);
-  const back = E.pressKey(m, at(0, 1, { pos: 0 }), key('ArrowLeft'), true);
+  const back = E.pressKey(m, at(0, 1, { pos: 0 }), key('ArrowLeft'));
   assert.deepEqual([back.ui.r, back.ui.c, back.ui.pos], [0, 0, 2]);        // near side: the end of the left cell
-  const altBack = E.pressKey(m, at(0, 1, { pos: 0 }), key('ArrowLeft', { altKey: true }), true);
+  const altBack = E.pressKey(m, at(0, 1, { pos: 0 }), key('ArrowLeft', { altKey: true }));
   assert.deepEqual([altBack.ui.r, altBack.ui.c, altBack.ui.pos], [0, 0, 0]);   // far side
 });
 
 test('arrows: ↑/↓ keep the sticky column and set Down; at the edge they are left to the page', () => {
   const m = E.apply(blank(), { calls: [{ name: 'setCell', args: [1, 0, 'xy'] }] });
-  const down = E.pressKey(m, at(0, 0, { pos: 0, col: 1 }), key('ArrowDown'), true);
+  const down = E.pressKey(m, at(0, 0, { pos: 0, col: 1 }), key('ArrowDown'));
   assert.deepEqual([down.ui.r, down.ui.c, down.ui.pos, down.ui.col, down.ui.dir], [1, 0, 1, 1, 'D']);
-  const edge = E.pressKey(m, at(0, 0), key('ArrowUp'), true);
+  const edge = E.pressKey(m, at(0, 0), key('ArrowUp'));
   assert.equal(edge.handled, false);
 });
 
 test('arrows skip block runs', () => {
   let m = blank();
-  m = cw.commands.toggleBlock(m, 0, 1, false);
-  m = cw.commands.toggleBlock(m, 0, 2, false);
-  const res = E.pressKey(m, at(0, 0), key('ArrowRight'), true);
+  m = cw.commands.toggleBlock(m, 0, 1);
+  m = cw.commands.toggleBlock(m, 0, 2);
+  const res = E.pressKey(m, at(0, 0), key('ArrowRight'));
   assert.deepEqual([res.ui.r, res.ui.c], [0, 3]);
 });
 
-const plusGrid = () => E.apply(blank(3, 3), { calls: [{ name: 'toggleBlock', args: [0, 1, false] }, { name: 'toggleBlock', args: [2, 1, false] }] });
+const plusGrid = () => E.apply(blank(3, 3), { calls: [{ name: 'toggleBlock', args: [0, 1] }, { name: 'toggleBlock', args: [2, 1] }] });
 
 test('"." toggles the direction, but only when the cell has an entry the other way', () => {
-  assert.equal(E.pressKey(blank(), at(0, 0), key('.'), true).ui.dir, 'D');
-  assert.equal(E.pressKey(plusGrid(), at(1, 1), key('.'), true).ui.dir, 'A');       // (1,1) has no down entry in the plus
+  assert.equal(E.pressKey(blank(), at(0, 0), key('.')).ui.dir, 'D');
+  assert.equal(E.pressKey(plusGrid(), at(1, 1), key('.')).ui.dir, 'A');       // (1,1) has no down entry in the plus
 });
 
 test('landing on a cell with no entry in the current direction flips the direction', () => {
   // Right from (0,0) jumps the block to (0,2), which has only a down entry: ArrowRight
   // sets Across, landing flips it back.
-  const res = E.pressKey(plusGrid(), at(0, 0, { dir: 'D' }), key('ArrowRight'), true);
+  const res = E.pressKey(plusGrid(), at(0, 0, { dir: 'D' }), key('ArrowRight'));
   assert.deepEqual([res.ui.r, res.ui.c, res.ui.dir], [0, 2, 'D']);
 });
 
 test('Tab goes to the first cell of the next entry in the direction; past the last (Shift+Tab before the first) it is left to the browser', () => {
   const m = blank(3, 3);
-  assert.deepEqual([E.pressKey(m, at(0, 1), key('Tab'), true).ui.r, E.pressKey(m, at(0, 1), key('Tab'), true).ui.c], [1, 0]);
-  assert.equal(E.pressKey(m, at(2, 0), key('Tab'), true).handled, false);
-  assert.equal(E.pressKey(m, at(0, 0), key('Tab', { shiftKey: true }), true).handled, false);
-  const back = E.pressKey(m, at(1, 0), key('Tab', { shiftKey: true }), true);
+  assert.deepEqual([E.pressKey(m, at(0, 1), key('Tab')).ui.r, E.pressKey(m, at(0, 1), key('Tab')).ui.c], [1, 0]);
+  assert.equal(E.pressKey(m, at(2, 0), key('Tab')).handled, false);
+  assert.equal(E.pressKey(m, at(0, 0), key('Tab', { shiftKey: true })).handled, false);
+  const back = E.pressKey(m, at(1, 0), key('Tab', { shiftKey: true }));
   assert.deepEqual([back.ui.r, back.ui.c], [0, 0]);
 });
 
 test('Tab on a block is left to the browser', () => {
-  const m = cw.commands.toggleBlock(blank(), 2, 2, false);
-  assert.equal(E.pressKey(m, at(2, 2), key('Tab'), false).handled, false);
+  const m = cw.commands.toggleBlock(blank(), 2, 2);
+  assert.equal(E.pressKey(m, at(2, 2), key('Tab')).handled, false);
 });
 
-test('# blocks only the one cell and moves the caret to the next open cell', () => {
+test('# blocks the cell and moves the caret to the next open cell', () => {
   const res = E.pressKey(blank(), at(0, 0), key('#'));
   const m = E.apply(blank(), res);
   assert.equal(m.blocks[0], true);
-  assert.equal(m.blocks[24], false);
   assert.deepEqual([res.ui.r, res.ui.c], [0, 1]);
 });
 
@@ -151,9 +150,9 @@ test('# on a block opens it and stays', () => {
 });
 
 test('# on the last open cell says a puzzle needs one', () => {
-  const one = E.apply(blank(3, 3), { calls: [{ name: 'toggleBlock', args: [0, 0, false] }] });
+  const one = E.apply(blank(3, 3), { calls: [{ name: 'toggleBlock', args: [0, 0] }] });
   let m = one;
-  for (const [r, c] of [[0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1]]) m = cw.commands.toggleBlock(m, r, c, false);
+  for (const [r, c] of [[0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1]]) m = cw.commands.toggleBlock(m, r, c);
   const res = E.pressKey(m, at(2, 2), key('#'));
   assert.deepEqual(res.calls, []);
   assert.equal(res.message, 'A puzzle needs at least one open cell.');
@@ -168,7 +167,7 @@ test('clicking: an open cell takes the caret to the end of its content; the care
 });
 
 test('clicking a block puts the caret on it', () => {
-  const m = cw.commands.toggleBlock(blank(), 0, 0, false);
+  const m = cw.commands.toggleBlock(blank(), 0, 0);
   assert.deepEqual([E.clickCell(m, at(2, 2), 0, 0, true).ui.r, E.clickCell(m, at(2, 2), 0, 0, true).ui.c], [0, 0]);
 });
 

@@ -2,7 +2,7 @@
 // A studio document, and the pure transitions on it. No Date.now(), no Math.random(), no
 // DOM: callers pass in `now` and `id`.
 //
-//   { v: 1, id, kind: string|null, mode: 'yaml'|'muddled'|'structured',
+//   { id, kind: string|null, mode: 'yaml'|'muddled'|'structured',
 //     yaml: string|null,         // 'yaml': the author's text; 'muddled': the file as opened
 //     muddled: object|null,      // 'muddled': the parsed file
 //     model: object,             // 'structured' only: the kind's cells-first model
@@ -23,7 +23,7 @@ function defaultOptions() {
 // With `yaml`, a YAML-mode document. Without it, a structured one: `kind` must have a
 // structured editor and `size` maps each of its sizeFields to a number.
 function newDoc({ id, now, kind, yaml, size }) {
-  const base = { v: 1, id, kind: kind ?? null, muddled: null, options: defaultOptions(), updatedAt: now };
+  const base = { id, kind: kind ?? null, muddled: null, options: defaultOptions(), updatedAt: now };
   if (typeof yaml === 'string') return { ...base, mode: 'yaml', yaml };
   if (!STRUCTURED[kind]) throw new Error(`"${kind}" has no structured editor`);
   if (!size) throw new Error('a structured document needs a size');

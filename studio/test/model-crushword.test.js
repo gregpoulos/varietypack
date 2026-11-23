@@ -90,13 +90,6 @@ test('toYaml: numbers ascend, circles are written on both crossing entries, maxC
   assert.equal(cw.toYaml(cw.commands.setMaxCellLetters(model, 2)).maxCellLetters, 2);
 });
 
-test('toggleBlock: blocks only the cell it is given', () => {
-  const m = cw.newModel({ rows: 5, cols: 5 });
-  const n = run(m, 'toggleBlock', 0, 0);
-  assert.equal(n.blocks[0], true);
-  assert.equal(n.blocks[24], false);
-});
-
 test('toggleBlock: clues of slots whose start survives are kept; a removed slot\'s clue is orphaned with its old number', () => {
   let m = cw.newModel({ rows: 5, cols: 5 });
   m = cw.commands.setClue(m, 'A 0,0', 'across one');
@@ -178,7 +171,7 @@ test('gridChecks: short counts letters, and only for filled slots', () => {
   assert.deepEqual(cw.gridChecks({ ...base, cells: ['a', ''] }).short, []);              // unfilled: not short yet
 });
 
-test('resize keeps clues whose slot start survives, and resizeLosses equals the orphans it adds', () => {
+test('resize keeps clues whose slot start survives and orphans the rest', () => {
   let m = cw.newModel({ rows: 5, cols: 5 });
   for (const s of cw.slots(m)) m = cw.commands.setClue(m, s.key, `clue ${s.key}`);
   const n = run(m, 'resize', 3, 5);                       // drops the bottom two rows
@@ -186,11 +179,9 @@ test('resize keeps clues whose slot start survives, and resizeLosses equals the 
   assert.equal(n.cells.length, 15);
   assert.equal(n.clues['A 0,0'].clue, 'clue A 0,0');
   assert.ok(!('A 4,0' in n.clues));
-  const lost = cw.resizeLosses(m, 3, 5);
-  assert.ok(lost > 0);
-  assert.equal(n.orphans.length - m.orphans.length, lost);
-  assert.equal(cw.resizeLosses(m, 7, 5), 0);
+  assert.ok(n.orphans.length > m.orphans.length);
   const grown = run(m, 'resize', 7, 5);
+  assert.equal(grown.orphans.length, m.orphans.length);
   assert.equal(grown.cells.length, 35);
   assert.equal(grown.blocks.filter(Boolean).length, 0);
 });

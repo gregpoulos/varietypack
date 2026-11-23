@@ -18,9 +18,8 @@ function resizeSummary(model, n2) {
   return `${keep} Every band’s path changes, so each band goes back to one entry and keeps only its first clue.${moved}`;
 }
 
-// The grid's size lives in the puzzle's settings, away from the editing controls so a
-// resize isn't triggered by accident. The form is the confirmation: it says
-// what it will set aside before it applies.
+// Marching Bands' settings (GridSettings): the grid's size, through a resize form that
+// says what it will set aside.
 export function MarchingBandsSettings({ model, dispatch }) {
   const N = model.size;
   const [open, setOpen] = useState(false);

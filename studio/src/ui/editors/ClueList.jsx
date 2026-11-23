@@ -13,9 +13,11 @@ import { useKeepRowsInView } from './useKeepRowsInView.js';
 // a grouped list names a field by the group's heading and the row's label instead.
 // `channel` (1, 2 or null) is the list's place among its siblings (see ChannelList).
 // onSelect(j, ctx) is for a click on the row's place or answer. onFocusClue(j, ctx) is
-// for a clue gaining focus, where the editor moves the caret without taking focus from
-// the field. ctx is `{ cutName }`, plus the group's fields for a grouped list, as
-// WordList passes it, so one handler can serve every list.
+// for a clue gaining focus: the editor moves the caret to that entry without taking focus
+// from the field (its select's `focusBoard: false`), and leaves a caret already inside
+// the entry where it is, so tabbing into a clue doesn't reset a mid-entry caret. ctx is
+// `{ cutName }`, plus the group's fields for a grouped list, as WordList passes it, so
+// one handler can serve every list.
 //
 // Only the selected row has a spaced-answer field, and it sits on the answer line, ahead
 // of the clue, so the browser's own Tab order walks clue to clue (one stop per entry) and

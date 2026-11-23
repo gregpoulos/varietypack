@@ -47,4 +47,4 @@ function indexEntry(doc, title) {
   return { id: doc.id, title, kind: doc.kind, updatedAt: doc.updatedAt };
 }
 
-module.exports = { DRAFT_VERSION, serializeDraft, parseDraft, indexEntry };
+module.exports = { serializeDraft, parseDraft, indexEntry };

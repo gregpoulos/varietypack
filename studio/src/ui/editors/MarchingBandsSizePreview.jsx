@@ -18,7 +18,7 @@ export function GridThumb({ n }) {
   return <svg viewBox={`-1 -1 ${n * T + 2} ${n * T + 2}`} class="thumb" aria-hidden="true">{rects}</svg>;
 }
 
-export function sizeSummary(n) {
+function sizeSummary(n) {
   const bands = Math.floor(n / 2);
   const letters = n * n - (n % 2);
   return `${n} × ${n}: ${n} rows and ${bands} band${bands === 1 ? '' : 's'}, ${letters} letters.${n % 2 ? ' Odd sizes black out the center square.' : ''}`;

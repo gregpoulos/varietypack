@@ -29,3 +29,13 @@ export function CellMenu({ items, focus }) {
     </span>
   );
 }
+
+// The circle and rebus items of a board whose cells take one letter unless composed:
+// `circled` is the caret cell's circle, `onCircle` toggles it, and `moveTo` is
+// useBoardEditing's.
+export function circleAndRebusItems({ circled, onCircle, composing, moveTo }) {
+  return [
+    { id: 'btn-circle', label: 'Toggle circle', checked: circled, onSelect: onCircle },
+    { id: 'btn-rebus', label: composing ? 'Leave rebus mode' : 'Enter rebus mode', hint: 'Enter', checked: !!composing, onSelect: () => moveTo({ composing: !composing }) },
+  ];
+}

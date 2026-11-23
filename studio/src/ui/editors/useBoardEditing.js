@@ -21,14 +21,27 @@ import { revealInColumn } from './useKeepRowsInView.js';
 //     vertical(model, ui, d) optional: caret for ↑ (d = -1) and ↓ (d = 1); without it those keys are left alone
 //     delete(model, ui)      optional: { command: [name, args] } for Delete; default removes the cell (deleteCell)
 //     dot(model, ui)         the ui patch for "." (switch cut / lap)
-//     remap(before, after, ui)  optional: the caret once a command has changed how many
-//                            positions there are (insert/delete a cell); without it the caret is clamped
+//     remap(before, after, ui)  optional: the caret once the model has changed how many
+//                            positions there are (a command, an undo, a resize); without it the
+//                            caret is clamped
 //     focusTarget(target, model, ui)  a ui patch for a diagnostics target the kind owns, or null
 // Returns { ui, caret, moveTo, exec, run, say, focus, inputProps }.
 export function useBoardEditing({ dispatch, model, commands, positions, initialUi = {}, nav, focusRef }) {
   const T = positions(model);
   const [raw, setUi] = useState({ caret: 0, composing: false, ...initialUi });
-  const ui = { ...raw, caret: Math.min(raw.caret, T - 1) };
+  // The model the held caret was placed on. Whatever changes the number of positions (a
+  // command, an undo, a resize in the settings), the caret is remapped here at render,
+  // never later in an effect, which would draw one frame with an impossible caret; the
+  // effect then only brings the held state up to date. A caret moved between the render
+  // and the effect (a click) was placed on the new model already, so it is kept.
+  const placedOn = useRef(model);
+  const remapped = nav.remap && positions(placedOn.current) !== T ? nav.remap(placedOn.current, model, raw) : raw.caret;
+  const ui = { ...raw, caret: Math.min(remapped, T - 1) };
+  useEffect(() => {
+    placedOn.current = model;
+    const held = raw.caret;
+    if (remapped !== held) setUi(u => (u.caret === held ? { ...u, caret: remapped } : u));
+  });
 
   // A pasted or filled string reaches onLetter several times in one event, before Preact
   // re-renders. `live` carries the latest model and cursor so each letter sees the last.
@@ -36,11 +49,8 @@ export function useBoardEditing({ dispatch, model, commands, positions, initialU
   live.current = { model, ui };
 
   function exec(name, args = [], key) {
-    const before = live.current.model;
-    const after = commands[name](before, ...args);
-    live.current.model = after;
+    live.current.model = commands[name](live.current.model, ...args);
     dispatch({ type: 'MODEL_COMMAND', name, args, key, now: Date.now() });
-    if (nav.remap && positions(after) !== positions(before)) moveTo({ caret: nav.remap(before, after, live.current.ui) });
   }
   // Letters typed in one go share an undo step. Anything that isn't typing (a click, an
   // arrow key, Enter) ends the run, so one Ctrl+Z undoes one run, not the whole session.
@@ -136,10 +146,11 @@ export function handleUndoRedo(e, dispatch) {
   return true;
 }
 
-// A form's keydown handler that routes only undo and redo (z and y chords) to the model,
-// leaving other chords (copy, paste, select all) to the field.
+// A keydown handler for a container of fields that routes only undo and redo (z and y
+// chords) to the model, leaving other chords (copy, paste, select all) to the field. A
+// key the board has already handled (defaultPrevented) is left alone, so it undoes once.
 export function undoRedoKeys(dispatch) {
-  return (e) => { if (['z', 'y'].includes(e.key.toLowerCase())) handleUndoRedo(e, dispatch); };
+  return (e) => { if (!e.defaultPrevented && ['z', 'y'].includes(e.key.toLowerCase())) handleUndoRedo(e, dispatch); };
 }
 
 // The diagnostics list jumps into an editor through App's focusRef: header and orphan

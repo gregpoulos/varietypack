@@ -13,12 +13,14 @@
 const { bandCells, rowCells, bandIndexOf, centerN, arrowTarget, onBandBottomEdge } = require('../../../../marching-bands/src/layout.mjs');
 const { sameCell } = require('../../../../shared/build/validateEntry');
 const { StructureError } = require('../errors');
-const { fillEmptyClues } = require('../placeholderClues');
 const { formatCell } = require('../cells');
 const { ranges, entryAt, addBreak, removeBreak, orphanOf } = require('../starts');
 const { newEntry, entryFromYaml, entryToYaml, circledPositions } = require('../entries');
-const { headerFromYaml, headerToYaml, setHeaderField } = require('../header');
-const { sanitizeCell, toggleSorted, cumulativeStarts, parseEntryCells, takeOrphan, displayPatch, isCut, isCells, isCircles, isModelBase } = require('../kindCommon');
+const { headerFromYaml, headerToYaml } = require('../header');
+const {
+  sanitizeCell, toggleSorted, cumulativeStarts, assertTitle, listedCircles, parseEntryCells, takeOrphan,
+  titleProblems, orphanProblems, emptyCellsProblems, problem, commonCommands, displayPatch, isCut, isCells, isCircles, isModelBase,
+} = require('../kindCommon');
 
 const kind = 'marching-bands';
 const sizeFields = [{ name: 'size', label: 'Grid size', min: 3, max: 25, default: 13 }];
@@ -123,7 +125,7 @@ function newModel({ size }) {
 }
 
 function fromYaml(puzzle) {
-  if (puzzle.title !== undefined && typeof puzzle.title !== 'string') throw new StructureError('the title must be text (put numbers in quotes)');
+  assertTitle(puzzle);
   if (!Array.isArray(puzzle.rows) || !Array.isArray(puzzle.bands)) throw new StructureError('"rows" and "bands" must be lists');
   if (puzzle.rows.length === 0) throw new StructureError('the puzzle has no rows');
   const rowLists = puzzle.rows.map((row, r) => parseEntryCells(row && row.entries, `rows[${r}].entries`));
@@ -186,7 +188,7 @@ function fromYaml(puzzle) {
   const circleIds = new Set();
   GROUPS.forEach(group => (puzzle[group] || []).forEach((cut, g) => cut.entries.forEach((e, j) => {
     const ids = entryIds(model0, group, g, j);
-    for (const p of (e.styles && Array.isArray(e.styles.circle) ? e.styles.circle : [])) {
+    for (const p of listedCircles(e)) {
       if (!Number.isInteger(p) || p < 0 || p >= ids.length) continue;
       circleIds.add(ids[p]);
       listed.add(`${group}:${ids[p]}`);
@@ -231,26 +233,15 @@ function toYaml(model) {
 
 // ── completeness ──────────────────────────────────────────
 
-const MAX_LISTED = 10;
-
 function completeness(model) {
   const N = model.size;
-  const out = [];
-  const err = (message, target) => out.push({ level: 'error', message, target });
-  if (!model.header.title.trim()) err('Give the puzzle a title.', { header: 'title' });
   const empty = [];
   model.cells.forEach((c, i) => { if (c === '' && !isCenter(N, i + 1)) empty.push(i + 1); });
-  if (empty.length === 1) {
-    err(`Cell (${rowOf(N, empty[0]) + 1}, ${colOf(N, empty[0]) + 1}) is empty.`, { cells: empty });
-  } else if (empty.length) {
-    const shown = empty.slice(0, MAX_LISTED).map(id => `(${rowOf(N, id) + 1}, ${colOf(N, id) + 1})`).join(', ');
-    err(`Empty cells: ${shown}${empty.length > MAX_LISTED ? `, and ${empty.length - MAX_LISTED} more` : ''}.`, { cells: empty });
-  }
+  const out = [...titleProblems(model), ...emptyCellsProblems(empty, id => `(${rowOf(N, id) + 1}, ${colOf(N, id) + 1})`)];
   GROUPS.forEach(group => model[group].forEach((cut, g) => cut.entries.forEach((entry, j) => {
-    if (!entry.clue.trim()) err(`${entryName(group, g, j)} has no clue.`, { group, g, entry: j });
+    if (!entry.clue.trim()) out.push(problem(`${entryName(group, g, j)} has no clue.`, { group, g, entry: j }));
   })));
-  for (const o of model.orphans) err(`Unattached clue "${o.clue}" (from ${o.from}). Attach or discard it.`, { orphan: o.id });
-  return out;
+  return [...out, ...orphanProblems(model)];
 }
 
 // ── resizing ────────────────────────────────────────────────────────────────
@@ -325,7 +316,7 @@ const withEntry = (model, group, g, j, patch) => {
 };
 const hasEntry = (model, group, g, j) => !!(model[group] && model[group][g] && model[group][g].entries[j]);
 
-// A copy with every entry replaced by fn(entry): rows, then bands (placeholderClues.js).
+// Rows, then bands: the order decides which placeholder clue each entry gets.
 const mapEntries = (model, fn) => {
   const cuts = (list) => list.map(c => ({ ...c, entries: c.entries.map(e => fn(e)) }));
   return { ...model, rows: cuts(model.rows), bands: cuts(model.bands) };
@@ -366,8 +357,6 @@ const commands = {
     return { ...model, circles: toggleSorted(model.circles, id) };
   },
 
-  setHeader: (model, field, value) => ({ ...model, header: setHeaderField(model.header, field, value) }),
-
   attachOrphan(model, orphanId, group, g, j) {
     if (!hasEntry(model, group, g, j)) return model;           // the entry went away since it was picked
     const taken = takeOrphan(model, orphanId, model[group][g].entries[j], entryName(group, g, j));
@@ -375,12 +364,9 @@ const commands = {
     return { ...withEntry(model, group, g, j, e => ({ ...e, clue: taken.clue })), orphans: taken.orphans, nextId: taken.nextId };
   },
 
-  discardOrphan: (model, orphanId) => ({ ...model, orphans: model.orphans.filter(o => o.id !== orphanId) }),
-
-  fillEmptyClues: (model) => fillEmptyClues(model, mapEntries),
+  ...commonCommands(mapEntries),
 };
 
-// Enough shape that the editor can open a model (a draft, say) without crashing.
 function isModel(m) {
   if (!isModelBase(m, kind) || !Number.isInteger(m.size) || m.size < 3 || typeof m.emitSize !== 'boolean') return false;
   const N = m.size;
@@ -393,6 +379,6 @@ function isModel(m) {
 
 module.exports = {
   kind, sizeFields, isModel, newModel, fromYaml, toYaml, completeness, commands, mapEntries,
-  pathIds, isCenter, rowOf, colOf, groupOf, shortLabel, entryName, groupName, entryOfCell, entryIds, readsBackward,
+  pathIds, isCenter, rowOf, colOf, shortLabel, entryName, groupName, entryOfCell, entryIds, readsBackward,
   advance, stepBack, moveSpatial, stepGroup, breakAtCaret, FIRST_ENTRY_MESSAGE, resizeLosses,
 };

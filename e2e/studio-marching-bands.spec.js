@@ -5,10 +5,8 @@ const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const { serveStudio } = require('./studio-server');
-const { expectGridFits, expectTabLeavesClues, openGrid, openStudio, openStudioFile, downloadText: download, typeBoard: type, showPhase } = require('./helpers');
+const { expectGridFits, expectTabLeavesClues, openGrid, openStudio, openStudioFile, typeBoard: type, showPhase } = require('./helpers');
 const { clickGapLine } = require('./helpers');
-const { buildFromObject } = require('../shared/build/buildFromObject');
-const { HOOKS } = require('../marching-bands/src/builder');
 
 let studio;
 test.beforeAll(async () => { studio = await serveStudio(); });
@@ -91,11 +89,10 @@ test('clicking a boundary splits and joins', async ({ page }) => {
   await expect(page.locator('#orphan-tray .orphan')).toHaveCount(1);
 });
 
-test('resize lives in the settings and says what it sets aside', async ({ page }) => {
+test('resize says what it sets aside, and keeps the top-left letters', async ({ page }) => {
   await newGrid(page, 5);
   await page.locator('#board-input').fill('Q');
   await expect(letter(page, 0, 0)).toHaveText('Q');
-  await expect(page.locator('#toolbar #btn-resize')).toHaveCount(0);
   await openGrid(page);
   await page.locator('#puzzle-settings #btn-resize').click();
   await expect(page.locator('#resize-form')).toBeVisible();
@@ -119,15 +116,6 @@ test('the Grid popover stays inside the window at 1280×800', async ({ page }) =
   await page.locator('#puzzle-settings #btn-resize').click();
   await expect(page.locator('#resize-form')).toBeVisible();
   await expectGridFits(page);
-});
-
-test('a Marching Bands fixture round-trips through the editor', async ({ page }) => {
-  await openFile(page, fixture('rebus-5.yaml'));
-  await expect(page.locator('#problems-chip')).toContainText('Ready to export');
-  await page.locator('#btn-export').click();
-  const exported = yaml.load(await download(page, '#export-yaml'));
-  const original = yaml.load(fs.readFileSync(fixture('rebus-5.yaml'), 'utf8'));
-  expect(buildFromObject(exported, {}, HOOKS).html).toBe(buildFromObject(original, {}, HOOKS).html);
 });
 
 test('shrinking the grid with the caret where the new center will be does not crash, and undo is safe', async ({ page }) => {
@@ -181,18 +169,6 @@ test('the Board phase shows Marching Bands\' word list and checks', async ({ pag
   await expect(page.locator('.word-row.on')).toHaveCount(1);
   await expect(page.locator('.word-row.crossing')).toHaveCount(1);
   await expect(page.locator('#checks #meter-rows')).toContainText('row entries');
-});
-
-test('the Board phase fits one screen at laptop size', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await openFile(page, path.join(REPO, 'examples/marching-bands.yaml'));
-  const fits = await page.evaluate(() => ({
-    page: document.documentElement.scrollHeight <= window.innerHeight,
-    pane: (el => el.scrollHeight <= el.clientHeight)(document.getElementById('edit-view')),
-  }));
-  expect(fits).toEqual({ page: true, pane: true });
-  const box = await page.locator('#board').boundingBox();
-  expect(box.height).toBeGreaterThan(300);
 });
 
 test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacing field', async ({ page }) => {
