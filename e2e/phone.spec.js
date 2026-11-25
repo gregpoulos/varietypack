@@ -12,6 +12,7 @@
 
 const { test, expect } = require('@playwright/test');
 const { buildPuzzleFile } = require('../test/helpers');
+const { LOOPS } = require('../snake-charmer/src/entryMaps.mjs');
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
@@ -244,6 +245,9 @@ for (const fx of TOOL_FIXTURES) {
         await page.locator('#drawn-kb [data-key="."]').tap();
         await expect(state).not.toHaveText(before);
         expect(await focusedId(page)).toBe('hidden-input');
+        // The key sends a "." keydown, but tapping it teaches nothing about the "." key,
+        // so the desktop layout's tip must still show there later (setupSwitchTip).
+        expect(await page.evaluate(() => localStorage.getItem('vp:pref:usedSwitchKey'))).toBeNull();
       });
     }
 
@@ -429,8 +433,8 @@ test.describe('snake-charmer fill-in list loops', () => {
     btns.findIndex(b => b.classList.contains('active')));
   // The entry that straddles the end of the first loop: its index and how many of its
   // cells lie in the first loop.
-  const straddler = page => page.evaluate(() => {
-    const { entries, loops } = window.PUZZLE_DATA;
+  const straddler = page => page.evaluate(loops => {
+    const { entries } = window.PUZZLE_DATA;
     const ring = entries.reduce((n, e) => n + e.length, 0) / loops;
     let start = 0;
     for (let i = 0; i < entries.length; i++) {
@@ -438,7 +442,7 @@ test.describe('snake-charmer fill-in list loops', () => {
       start += entries[i].length;
     }
     return null;
-  });
+  }, LOOPS);
 
   test('tapping a second-loop clue makes the second loop active', async ({ page }) => {
     await load(page, 'snake-charmer');
@@ -790,6 +794,20 @@ test.describe('marching-bands clue navigator', () => {
 });
 
 test.describe('crushword', () => {
+  // The period tip is for a hardware keyboard; the drawn one shows its own switch key.
+  // Shared code, so one tool covers it.
+  test('a tap on the active cell switches direction and shows no period tip', async ({ page }) => {
+    await load(page, 'crushword');
+    const cell = page.locator('#' + await crossedCrushwordCell(page));
+    await cell.tap();
+    const state = page.locator(SWITCH_STATE.crushword);
+    const before = await state.textContent();
+    await page.waitForTimeout(350);   // past the double-tap window, where a tap zooms instead
+    await cell.tap();
+    await expect(state).not.toHaveText(before);
+    expect(await page.locator('.switch-tip').count()).toBe(0);   // shows during the tap, if at all
+  });
+
   test('Next commits the cell and advances', async ({ page }) => {
     await load(page, 'crushword');
     const tapped = await tapMiddleCell(page);
@@ -1029,8 +1047,8 @@ test.describe('crushword', () => {
   });
 
   // Guards against a scroll at restore time, or a scroll-snap, bringing the page to the
-  // resumed cell. At load the clue lists sit in the hidden list pane, so this never
-  // reaches scrollIntoViewBelow's phone guard: the list-view test below is its test.
+  // resumed cell. At load the clue lists sit in the hidden list pane, so the engine's
+  // clue following never runs; the list-view test below covers it once the list shows.
   test('a page restored from a save loads scrolled to the top', async ({ page }) => {
     await load(page, 'crushword');
     // The last cell, left composing, so the restore resumes on it, far down the clues.
@@ -1167,6 +1185,38 @@ test.describe('crushword', () => {
     await page.locator('#menu-btn').tap();
     await expect(page.locator('#menu-panel')).toBeVisible();
     expect(await box(page, '#solve-stage')).toEqual(before);
+  });
+
+  test('the crossings panel is hidden, on the grid and on the Clues screen', async ({ page }) => {
+    await load(page, 'crushword');
+    await expect(page.locator('#crossings')).toBeHidden();
+    await page.locator('#clues-btn').tap();
+    await expect(page.locator('.clue-columns')).toBeVisible();
+    await expect(page.locator('#crossings')).toBeHidden();
+  });
+
+  // A cell with an entry in one direction only (cw-9 has them) leaves the bar's crossing
+  // row empty rather than stale; the one test of that branch of setupClueBar().show.
+  test('the bar shows the crossing clue, and none for a cell without one', async ({ page }) => {
+    await load(page, 'crushword');
+    await page.locator('#' + await crossedCrushwordCell(page)).tap();
+    // The row is never shown on the phone (phone.css), so read the flag the bar sets.
+    await expect(page.locator('#active-clue-secondary')).toHaveJSProperty('hidden', false);
+    const oneWay = await page.evaluate(() => {
+      const grid = window.PUZZLE_DATA.grid;
+      const open = (r, c) => grid[r] !== undefined && grid[r][c] === '.';
+      for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[r].length; c++) {
+          if (open(r, c) && !(open(r, c - 1) || open(r, c + 1)) && (open(r - 1, c) || open(r + 1, c))) {
+            return 'cell-' + (r * grid[r].length + c + 1);
+          }
+        }
+      }
+      return null;
+    });
+    expect(oneWay, 'cw-9 has a Down-only cell').not.toBeNull();
+    await page.locator('#' + oneWay).tap();
+    await expect(page.locator('#active-clue-secondary')).toHaveJSProperty('hidden', true);
   });
 
   test('stepping through clues of differing length changes the clue but never the grid', async ({ page }) => {

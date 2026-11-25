@@ -6,21 +6,22 @@ const { setupEmbedResize } = require('../engine-chrome.mjs');
 
 // root.height is the box height (getBoundingClientRect), which can shrink; scrollHeight
 // can't. A fake ResizeObserver that records its callback so a test can fire it.
-function fakeEnv({ framed = true, phone = false } = {}) {
+function fakeEnv({ framed = true, fills = false } = {}) {
   const posted = [];
   const root = {
     height: 480.2,
     getBoundingClientRect() { return { height: this.height }; },
-    classList: { contains: c => phone && c === 'phone' },
   };
   const win = {};
+  win.getComputedStyle = () => ({ getPropertyValue: p => (p === '--fills-view' && env.fills ? ' 1' : '') });
   win.parent = framed ? { postMessage: (msg, origin) => posted.push({ msg, origin }) } : win;
   let fire;
   class RO {
     constructor(cb) { fire = cb; }
     observe(el) { this.el = el; }
   }
-  return { win, root, RO, posted, fire: () => fire() };
+  const env = { win, root, RO, posted, fills, fire: () => fire() };
+  return env;
 }
 
 test('embed resize: the first callback posts the document height', () => {
@@ -53,13 +54,29 @@ test('embed resize: without ResizeObserver does nothing', () => {
   assert.deepEqual(env.posted, []);
 });
 
-// The phone layout is one screen high however tall its frame is, so it asks the host
-// for a screen-high frame rather than reporting a height to copy; a desktop page doesn't.
-test('embed resize: a phone layout asks to fill the screen, a desktop page does not', () => {
-  for (const phone of [true, false]) {
-    const env = fakeEnv({ phone });
+// A layout that fills its view (the phone layout, Crushword's desktop fill layout) is one
+// screen high however tall its frame is, so it asks the host for a screen-high frame
+// rather than reporting a height to copy; any other page doesn't.
+test('embed resize: a page whose layout fills its view asks to fill the screen, others do not', () => {
+  for (const fills of [true, false]) {
+    const env = fakeEnv({ fills });
     setupEmbedResize({ win: env.win, root: env.root, RO: env.RO });
     env.fire();
-    assert.equal(env.posted[0].msg.fill, phone || undefined);
+    assert.equal(env.posted[0].msg.fill, fills || undefined);
   }
+});
+
+// The layout can change while the page is open (a resize across Crushword's width
+// threshold) without the height changing, and the host must still hear about it.
+test('embed resize: fill follows the layout as it changes', () => {
+  const env = fakeEnv({ fills: false });
+  setupEmbedResize({ win: env.win, root: env.root, RO: env.RO });
+  env.fire();
+  assert.equal(env.posted[0].msg.fill, undefined);
+  env.fills = true;
+  env.fire();
+  assert.equal(env.posted.length, 2);
+  assert.equal(env.posted[1].msg.fill, true);
+  env.fire();
+  assert.equal(env.posted.length, 2);
 });

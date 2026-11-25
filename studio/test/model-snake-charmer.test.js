@@ -121,12 +121,12 @@ test('toggleBreak: removing a break orphans its clue, and 0 and out-of-range do 
   assert.deepEqual(run(model, 'toggleBreak', 16), model);
 });
 
-test('other commands: setShape, setClue, setDisplayAnswer, setHeader, attach and discard orphans', () => {
+test('other commands: setShape, setClue, setDisplayText, setHeader, attach and discard orphans', () => {
   const { model } = imp();
   assert.equal(run(model, 'setShape', 'turn').shape, 'turn');
   assert.equal(run(run(model, 'setShape', 'turn'), 'setShape', null).shape, null);
   assert.equal(run(model, 'setClue', 3, 'new').cut.entries[3].clue, 'new');
-  assert.equal(run(model, 'setDisplayAnswer', 0, 'A-B-C').cut.entries[0].displayAnswer, 'A-B-C');
+  assert.equal(run(model, 'setDisplayText', 0, 'A-B-C').cut.entries[0].displayText, 'A-B-C');
   assert.equal(run(model, 'setHeader', 'author', 'Me').header.author, 'Me');
   const orphaned = run(model, 'toggleBreak', 10);
   const attached = run(orphaned, 'attachOrphan', orphaned.orphans[0].id, 0);
@@ -137,11 +137,11 @@ test('other commands: setShape, setClue, setDisplayAnswer, setHeader, attach and
 
 // Identity, not equality: history.commit records a step for any result that isn't the
 // very same model, so a stale index must hand the model back untouched.
-test('setClue and setDisplayAnswer return the model itself for an entry that does not exist', () => {
+test('setClue and setDisplayText return the model itself for an entry that does not exist', () => {
   const { model } = imp();
   for (const j of [-1, model.cut.entries.length, 99]) {
     assert.equal(sc.commands.setClue(model, j, 'x'), model);
-    assert.equal(sc.commands.setDisplayAnswer(model, j, 'X'), model);
+    assert.equal(sc.commands.setDisplayText(model, j, 'X'), model);
   }
 });
 

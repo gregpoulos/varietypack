@@ -28,6 +28,16 @@ test('a click on a cell passes its number to the handler', () => {
   assert.deepEqual(seen, [12, 0]);
 });
 
+// For what points at the cell, such as the switch tip.
+test('a click on a cell passes the cell itself too', () => {
+  const svg = makeSvg();
+  const cell = { id: 'cell-3' };
+  let seen = null;
+  setupCellClicks(svg, (_n, el) => { seen = el; });
+  svg.clickOn(cell);
+  assert.equal(seen, cell);
+});
+
 test('a click outside every cell is ignored', () => {
   const svg = makeSvg();
   const seen = [];

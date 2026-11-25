@@ -2,7 +2,7 @@ import sc from '../../model/kinds/snake-charmer.js';
 import { formatCell } from '../../model/cells.js';
 import { useBoardEditing } from './useBoardEditing.js';
 import { boardHasFocus } from './useBoardInput.js';
-import { spacedAnswer } from './displayStatus.js';
+import { displayTextOf } from './displayStatus.js';
 import { RingBoard } from './RingBoard.jsx';
 import { ClueLists } from './ClueList.jsx';
 import { ShapeSelect } from './ShapeSelect.jsx';
@@ -74,7 +74,7 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
       id: entry.id, j, clue: entry.clue, label: `${j + 1}.`, answer: answerOf(j),
       active: j === here, crossing: j === across && across !== here, clash: clashEntries.has(j),
     };
-    if (row.active) Object.assign(row, spacedAnswer(entry, positionsOf(model, j).map(p => model.ring[p % N])));
+    if (row.active) Object.assign(row, displayTextOf(entry, positionsOf(model, j).map(p => model.ring[p % N])));
     return row;
   });
   const select = (j, { focusBoard = true } = {}) => {
@@ -167,7 +167,7 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
             else select(j, { focusBoard: false });
           }}
           onClue={(j, text) => exec('setClue', [j, text], `clue:${model.cut.entries[j].id}`)}
-          onDisplay={(j, text) => exec('setDisplayAnswer', [j, text], `display:${model.cut.entries[j].id}`)} />
+          onDisplay={(j, text) => exec('setDisplayText', [j, text], `display:${model.cut.entries[j].id}`)} />
       )} />
   );
 }

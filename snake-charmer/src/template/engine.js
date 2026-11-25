@@ -7,10 +7,10 @@ import {
   clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
   scrollByKey, setupCellClicks, setupClueBar, setupCongratsDialog, setupControls,
   setupEmbedResize, setupKeydown, setupKeysOverlay, setupRebusButton, setupStorage,
-  setupMarkLayer, storageKey, svgEl
+  setupMarkLayer, setupSwitchTip, storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
 import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
-import { buildEntryMaps, nextRingPos, prevRingPos } from '../entryMaps.mjs';
+import { LOOPS, buildEntryMaps, nextRingPos, prevRingPos } from '../entryMaps.mjs';
 import { getStadiumRenderer } from './shapes/stadium.mjs';
 import { getTurnRenderer } from './shapes/turn.mjs';
 import { getDoubleTurnRenderer } from './shapes/double-turn.mjs';
@@ -29,7 +29,7 @@ function init() {
 
   // ── Geometry & index maps ─────────────────────────────────────────────────
   const { cellPath, letterCenter, labelPos } = getShapeRenderer(data.shape)(data.ring);
-  const { entryAtCell, ringPosByEntry, canonicalStart } = buildEntryMaps(data.entries, data.loops);
+  const { entryAtCell, ringPosByEntry, canonicalStart } = buildEntryMaps(data.entries, LOOPS);
 
   // Entry indices that start (posInEntry 0) at each ring position, for number labels
   const entriesStartingAt = Array.from({ length: ringSize }, () => []);
@@ -97,14 +97,14 @@ function init() {
   // between the last ring position and the first.
   function advanceCell() {
     const nextPos = nextRingPos(activeRingPos, ringSize);
-    const nextLoop = nextPos === 0 ? (activeLoop + 1) % data.loops : activeLoop;
+    const nextLoop = nextPos === 0 ? (activeLoop + 1) % LOOPS : activeLoop;
     focusCell(nextPos, nextLoop);
   }
 
   function retreatCell() {
     const prevPos = prevRingPos(activeRingPos, ringSize);
     const prevLoop = prevPos === ringSize - 1
-      ? (activeLoop - 1 + data.loops) % data.loops : activeLoop;
+      ? (activeLoop - 1 + LOOPS) % LOOPS : activeLoop;
     focusCell(prevPos, prevLoop);
   }
 
@@ -126,7 +126,7 @@ function init() {
     // highlight (snake-charmer-specific; `.secondary-entry`).
     const activeEntryIdx = entryAtCell[activeRingPos][activeLoop];
     const activeEntryPositions = new Set(activeContextCells());
-    const otherLoop = (activeLoop + 1) % data.loops;
+    const otherLoop = (activeLoop + 1) % LOOPS;
     const secondaryEntryIdx = entryAtCell[activeRingPos][otherLoop];
     const secondaryPositions = new Set(
       secondaryEntryIdx !== activeEntryIdx ? ringPosByEntry[secondaryEntryIdx] : []
@@ -290,12 +290,13 @@ function init() {
   });
 
   setupEmbedResize();
+  const switchTip = setupSwitchTip('loops', { isSolved: () => latch.solved });
 
   const loopBtns = (() => {
     const toggle = document.getElementById('loop-toggle');
     const cumPos = [0];
     for (const e of data.entries) cumPos.push(cumPos[cumPos.length - 1] + e.length);
-    return Array.from({ length: data.loops }, (_, l) => {
+    return Array.from({ length: LOOPS }, (_, l) => {
       const loopStart = l * ringSize;
       const loopEnd = (l + 1) * ringSize;
       let first = -1, last = -1;
@@ -307,7 +308,11 @@ function init() {
       }
       const btn = htmlEl('button', { type: 'button', class: 'toggle-opt' + (l === 0 ? ' active' : '') },
         `Clues ${first}–${last}`);
-      btn.addEventListener('click', () => focusCell(activeRingPos, l));
+      btn.addEventListener('click', () => {
+        const switched = l !== activeLoop;
+        focusCell(activeRingPos, l);
+        if (switched) switchTip.atToggle(toggle);
+      });
       toggle.appendChild(btn);
       return btn;
     });
@@ -332,7 +337,8 @@ function init() {
     if (latch.solved && e.key !== 'Tab') return;
     if (e.key === '.') {
       e.preventDefault();
-      focusCell(activeRingPos, (activeLoop + 1) % data.loops);
+      focusCell(activeRingPos, (activeLoop + 1) % LOOPS);
+      switchTip.noteKey(e);
       return;
     }
     if (e.key === 'Tab') {
@@ -407,9 +413,11 @@ function init() {
   });
 
   // A click on a cell moves there; a second click on the active cell switches loop.
-  setupCellClicks(svg, rp => {
-    const loop = rp === activeRingPos ? (activeLoop + 1) % data.loops : activeLoop;
+  setupCellClicks(svg, (rp, cell) => {
+    const loop = rp === activeRingPos ? (activeLoop + 1) % LOOPS : activeLoop;
+    const switched = loop !== activeLoop;
     focusCell(rp, loop);
+    if (switched) switchTip.atCell(cell);
   });
 
   function resetBoard() {
@@ -433,7 +441,7 @@ function init() {
       for (const rp of wrong) flashWrong(cellPaths[rp], flashLayer);
       // The list's ids are snake positions, one per loop of each ring position.
       if (phone) {
-        phone.fillList.flash(wrong.flatMap(rp => Array.from({ length: data.loops }, (_, l) => snakePos(rp, l))));
+        phone.fillList.flash(wrong.flatMap(rp => Array.from({ length: LOOPS }, (_, l) => snakePos(rp, l))));
       }
     },
   });

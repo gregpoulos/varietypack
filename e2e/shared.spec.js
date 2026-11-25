@@ -64,6 +64,7 @@ const TOOLS = [
     rebusCorrectCells: 40, rebusCorrectClueItems: 16, rebusClueItems: 16,
     cluesMarkCorrect: true, hasRebusButton: true,
     markCellId: 'cell-1', markLetterIndex: 0, sameEntryCellId: 'cell-2',
+    switchCellId: 'cell-2',
   },
   {
     name: 'snake-charmer',
@@ -85,6 +86,7 @@ const TOOLS = [
     rebusCorrectCells: 8, rebusCorrectClueItems: 5, rebusClueItems: 5,
     cluesMarkCorrect: true, hasRebusButton: true,
     markCellId: 'cell-0', markLetterIndex: 0, sameEntryCellId: 'cell-1',
+    switchCellId: 'cell-1',
   },
   {
     name: 'marching-bands',
@@ -107,6 +109,7 @@ const TOOLS = [
     // and marking them would spoil the puzzle.
     rebusCorrectClueItems: 0, rebusClueItems: 15, cluesMarkCorrect: false, hasRebusButton: true,
     markCellId: 'cell-1', markLetterIndex: 0, sameEntryCellId: 'cell-2',
+    switchCellId: 'cell-2',
   },
   {
     name: 'crushword',
@@ -128,6 +131,8 @@ const TOOLS = [
     // cw-9's first open cell has no across entry (its row run is length 1), so the
     // engine auto-flips to down and cell-11 is the next cell of that same down entry.
     markCellId: 'cell-2', markLetterIndex: 1, sameEntryCellId: 'cell-11',
+    // Not active at load, and in an entry each way, so two clicks on it switch direction.
+    switchCellId: 'cell-6',
   },
 ];
 
@@ -339,6 +344,97 @@ for (const tool of RING_TOOLS) {
   });
 }
 
+// ---- I2: the switch tip — all four tools, toggles on the ring tools ------------------
+// A switch made with the mouse tells the solver, once, that the period key does it too
+// (docs/CROSS_TOOL_SPEC.md → "Period key — direction/mode toggle"). Each engine wires its
+// re-click and its toggle to the shared tip, so each wiring is tested here; when the tip
+// shows, and that "." stops it for good, is shared code, so it runs on one tool.
+
+// Asserts the tip is beside `target` (within a small gap, above or below) and spans its
+// center, so its arrow can point there.
+async function expectTipBeside(page, target) {
+  const tip = page.locator('.switch-tip');
+  await expect(tip).toBeVisible();
+  const [t, r] = [await tip.boundingBox(), await target.boundingBox()];
+  const cx = r.x + r.width / 2;
+  expect(t.x).toBeLessThan(cx);
+  expect(t.x + t.width).toBeGreaterThan(cx);
+  const gap = t.y >= r.y + r.height ? t.y - (r.y + r.height) : r.y - (t.y + t.height);
+  expect(gap).toBeGreaterThanOrEqual(0);
+  expect(gap).toBeLessThan(20);
+}
+
+// How many tips are up, read once. A tip shows during the click that earns it, so there
+// is nothing to wait for; and a retrying toHaveCount(0) would pass whatever the code
+// does, since a tip leaves on its own. One fading out (no .shown) is on its way out.
+function tipShowing(page) {
+  return page.locator('.switch-tip.shown').count();
+}
+
+for (const tool of ALL_TOOLS) {
+  test(`[${tool.name}] a second click on the active cell shows the period tip at the cell, once`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const cell = page.locator('#' + tool.switchCellId);
+    await cell.click();
+    expect(await tipShowing(page)).toBe(0);   // a move is not a switch
+    await cell.click();
+    await expectTipBeside(page, cell);
+    await expect(page.locator('.switch-tip')).toContainText('period');
+    await cell.click();                                           // switch back
+    expect(await tipShowing(page)).toBe(0);
+  });
+}
+
+for (const tool of RING_TOOLS) {
+  // Spiral's toggle sits under the board, near the window's bottom at the default size,
+  // so its tip flips above it; the others' go below.
+  test(`[${tool.name}] clicking the other toggle option shows the period tip at the toggle, on screen`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.locator('.puzzle-toggle .toggle-opt.active').click();   // no switch
+    expect(await tipShowing(page)).toBe(0);
+    await page.locator('.puzzle-toggle .toggle-opt:not(.active)').click();
+    await expectTipBeside(page, page.locator('.puzzle-toggle'));
+    const t = await page.locator('.switch-tip').boundingBox();
+    expect(t.y).toBeGreaterThanOrEqual(0);
+    expect(t.y + t.height).toBeLessThanOrEqual(page.viewportSize().height);
+  });
+}
+
+{
+  const tool = TOOLS.find(t => t.name === 'spiral');
+  // Space on a focused toggle option clicks it, and a keyboard user needs no tip about a
+  // key. The mouse press first is what a stale "the last press was a mouse" would go by.
+  test(`[${tool.name}] a switch made by Space on the toggle shows no tip`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    await page.locator('.puzzle-toggle .toggle-opt.active').click();   // no switch
+    const other = page.locator('.puzzle-toggle .toggle-opt:not(.active)');
+    const label = await other.textContent();
+    await other.focus();
+    await page.keyboard.press('Space');
+    await expect(page.locator('.puzzle-toggle .toggle-opt.active')).toHaveText(label);
+    expect(await tipShowing(page)).toBe(0);
+  });
+
+  test(`[${tool.name}] once the solver has pressed ".", a mouse switch shows no tip, on later visits too`, async ({ page }) => {
+    await page.goto('file://' + tool.paths.plain);
+    await ready(tool, page);
+    const cell = page.locator('#' + tool.switchCellId);
+    await page.keyboard.press('.');
+    await cell.click();
+    await cell.click();
+    await expect(cell).toHaveClass(/active-cell/);
+    expect(await tipShowing(page)).toBe(0);
+    await page.reload();
+    await ready(tool, page);
+    await cell.click();
+    await cell.click();
+    expect(await tipShowing(page)).toBe(0);
+  });
+}
+
 // ---- K: one solve, and everything it leaves behind — all four tools ------------------
 // A single solve per tool asserts the completion payload, the congrats dialog, the
 // board's painted state, the lock on editing keys, and that Tab still steps. Each part
@@ -442,6 +538,14 @@ for (const tool of ALL_TOOLS) {
       await page.keyboard.type('ZZZZZ');
       await page.keyboard.press('Backspace');
       expect(await page.locator('.cell-letter').allTextContents()).toEqual(before);
+
+      // "." does nothing on a solved board, so a mouse switch there earns no tip about
+      // it. Crushword's solve clicks cells that are already active (fillCrushwordCell),
+      // which spends its one tip before the board is solved, so it can't show this.
+      if (tool.ring) {
+        await page.locator(tool.readySelector + '.active-cell').first().click();
+        expect(await tipShowing(page)).toBe(0);
+      }
     });
 
     await test.step('navigation', async () => {
@@ -993,7 +1097,9 @@ for (const tool of ALL_TOOLS) {
 // ---- U: clue-list scrolling — marching-bands, crushword -------------------------------
 // docs/CROSS_TOOL_SPEC.md → "syncUI() contract"
 
-for (const tool of TOOLS.filter(t => t.name === 'marching-bands' || t.name === 'crushword')) {
+// Marching Bands only: Crushword follows the active clue in its own panes, not by
+// scrolling the page, and e2e/crushword.spec.js pins that rule.
+for (const tool of TOOLS.filter(t => t.name === 'marching-bands')) {
   test(`[${tool.name}] the clue list scrolls only when the active clue changes`, async ({ page }) => {
     // Short enough that, scrolled to the bottom, the first clue is off screen in both
     // tools.
@@ -2453,7 +2559,8 @@ for (const tool of ALL_TOOLS) {
 // The clue bar reserves its right gutter for the buttons that share its band: ☰ alone
 // (60px), or ☰ and the help button (100px). A hashed page has no help button, so it keeps
 // the narrower gutter and its clues wrap no earlier than they must.
-for (const tool of ALL_TOOLS.filter(t => t.name !== 'marching-bands')) {
+// Not Marching Bands (no bar) or Crushword (its bar shows only in the phone layout).
+for (const tool of ALL_TOOLS.filter(t => t.name !== 'marching-bands' && t.name !== 'crushword')) {
   test(`[${tool.name}] the clue bar's right gutter fits the help button only when there is one`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);

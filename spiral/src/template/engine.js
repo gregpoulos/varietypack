@@ -7,7 +7,7 @@ import {
   clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
   scrollByKey, setupCellClicks, setupClueBar, setupCongratsDialog, setupControls,
   setupEmbedResize, setupKeydown, setupKeysOverlay, setupRebusButton, setupStorage,
-  setupMarkLayer, storageKey, svgEl
+  setupMarkLayer, setupSwitchTip, storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
 import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
 import {
@@ -384,10 +384,13 @@ function init() {
   });
 
   setupEmbedResize();
+  const switchTip = setupSwitchTip('inward / outward', { isSolved: () => latch.solved });
   directionBtns.forEach(btn => {
     btn.addEventListener('click', () => {
+      const switched = btn.dataset.dir !== direction;
       direction = btn.dataset.dir;
       focusCell(activeCell);
+      if (switched) switchTip.atToggle(btn.parentElement);
     });
   });
 
@@ -412,6 +415,7 @@ function init() {
       e.preventDefault();
       direction = DIRS[direction].opposite;
       focusCell(activeCell);
+      switchTip.noteKey(e);
       return;
     }
     if (e.key === 'Tab') {
@@ -487,9 +491,11 @@ function init() {
 
   // A click on a cell moves there; a second click on the active cell switches
   // direction.
-  setupCellClicks(svg, n => {
-    if (n === activeCell) direction = DIRS[direction].opposite;
+  setupCellClicks(svg, (n, cell) => {
+    const again = n === activeCell;
+    if (again) direction = DIRS[direction].opposite;
     focusCell(n);
+    if (again) switchTip.atCell(cell);
   });
 
   svg.addEventListener('click', e => {

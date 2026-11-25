@@ -3,7 +3,7 @@ import { formatCell } from '../../model/cells.js';
 import geometry from './gridGeometry.js';
 import { useBoardEditing } from './useBoardEditing.js';
 import { boardHasFocus } from './useBoardInput.js';
-import { spacedAnswer } from './displayStatus.js';
+import { displayTextOf } from './displayStatus.js';
 import { GridBoard } from './GridBoard.jsx';
 import { ClueLists } from './ClueList.jsx';
 import { plural } from './plural.js';
@@ -160,7 +160,7 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
       };
       if (row.active) {
         const ids = entryIds(model, group, g, j);
-        Object.assign(row, spacedAnswer(entry, ids.map(i => model.cells[i - 1]), readsBackward(model, group, g, ids)));
+        Object.assign(row, displayTextOf(entry, ids.map(i => model.cells[i - 1]), readsBackward(model, group, g, ids)));
       }
       return row;
     }),
@@ -227,7 +227,7 @@ export function MarchingBandsEditor({ dispatch, model, phase, focusRef, settings
             else select(ctx.group, ctx.g, j, { focusBoard: false });
           }}
           onClue={(j, text, ctx) => exec('setClue', [ctx.group, ctx.g, j, text], `clue:${model[ctx.group][ctx.g].entries[j].id}`)}
-          onDisplay={(j, text, ctx) => exec('setDisplayAnswer', [ctx.group, ctx.g, j, text], `display:${model[ctx.group][ctx.g].entries[j].id}`)} />
+          onDisplay={(j, text, ctx) => exec('setDisplayText', [ctx.group, ctx.g, j, text], `display:${model[ctx.group][ctx.g].entries[j].id}`)} />
       )} />
   );
 }

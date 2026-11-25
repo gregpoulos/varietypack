@@ -3,6 +3,8 @@
 const { test } = require('node:test');
 const assert   = require('node:assert/strict');
 const vm       = require('vm');
+const os       = require('os');
+const { execFileSync } = require('child_process');
 const esbuild  = require('esbuild');
 const { engineJs } = require('../build/engineBundle');
 const { KINDS } = require('../build/tools');
@@ -35,6 +37,19 @@ test('engineJs: bundles each tool once per process', () => {
     delete require.cache[modulePath];
   }
   assert.equal(calls, 1);
+});
+
+// esbuild marks each module in the bundle with a comment holding its path, so a path
+// taken from the working directory would make the same tree build different pages from
+// different directories, and a byte-for-byte comparison of two builds report false
+// differences (docs/TESTING.md → "What to run when").
+// esbuild reads the directory once, when it loads, so the other build is another process.
+test('engineJs: the script is the same whatever directory the build runs from', () => {
+  const modulePath = require.resolve('../build/engineBundle');
+  const elsewhere = execFileSync(process.execPath,
+    ['-e', `process.stdout.write(require(${JSON.stringify(modulePath)}).engineJs('spiral'))`],
+    { cwd: os.tmpdir(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  assert.equal(elsewhere, engineJs('spiral'));
 });
 
 // injectTemplate inserts the script as it is, so a closing </script or an opening <!--

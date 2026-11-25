@@ -7,7 +7,7 @@ import {
   clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
   scrollByKey, scrollIntoViewBelow, setupCellClicks, setupCongratsDialog,
   setupControls, setupEmbedResize, setupKeydown, setupKeysOverlay, setupRebusButton,
-  setClueHtml, setupMarkLayer, setupStorage, storageKey, svgEl
+  setClueHtml, setupMarkLayer, setupStorage, setupSwitchTip, storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
 import { setupPhoneLayout, stepIndex } from '../../../shared/engine-phone.mjs';
 import {
@@ -417,11 +417,14 @@ function init() {
   });
 
   setupEmbedResize();
+  const switchTip = setupSwitchTip('rows / bands', { isSolved: () => latch.solved });
   document.getElementById('mode-toggle').addEventListener('click', e => {
     const btn = e.target.closest('.toggle-opt');
     if (!btn) return;
+    const switched = btn.dataset.mode !== mode;
     mode = btn.dataset.mode;
     focusCell(activeCell);
+    if (switched) switchTip.atToggle(e.currentTarget);
   });
 
   const keysOverlay = setupKeysOverlay(
@@ -444,6 +447,7 @@ function init() {
       e.preventDefault();
       mode = MODES[mode].other;
       focusCell(activeCell);
+      switchTip.noteKey(e);
       return;
     }
 
@@ -525,9 +529,11 @@ function init() {
   });
 
   // A click on a cell moves there; a second click on the active cell switches mode.
-  setupCellClicks(svg, n => {
-    if (n === activeCell) mode = MODES[mode].other;
+  setupCellClicks(svg, (n, cell) => {
+    const again = n === activeCell;
+    if (again) mode = MODES[mode].other;
     focusCell(n);
+    if (again) switchTip.atCell(cell);
   });
 
   function resetBoard() {

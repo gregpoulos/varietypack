@@ -41,10 +41,9 @@ body { line-height: 1.4; }
 
 /* Tools with a fixed active-clue bar reserve its height as body padding, and expose it
    as --active-clue-bar-space for anything positioned against the bar (#menu-btn and
-   #menu-panel in theme-components.css, Crushword's sticky grid). The bar's min-height
-   fills that space, and its clue text can never wrap (nowrap + ellipsis), so this is an
-   exact height, not a floor — which is what makes calc()-only positioning against it
-   exact. */
+   #menu-panel in theme-components.css). The bar's min-height fills that space, and its
+   clue text can never wrap (nowrap + ellipsis), so this is an exact height, not a
+   floor — which is what makes calc()-only positioning against it exact. */
 body.has-clue-bar {
   --active-clue-bar-space: 56px;
   padding-top: var(--active-clue-bar-space);
@@ -100,6 +99,13 @@ body.has-clue-bar {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 6px;
+}
+
+/* Crushword's crossings panel heading, a small label like the list headings above. */
+#crossings h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .clue-section :is(ul, ol) { list-style: none; }
@@ -192,6 +198,33 @@ button:disabled { opacity: 0.4; cursor: default; }
 .puzzle-toggle { display: flex; overflow: hidden; }
 .puzzle-toggle .toggle-opt { border: none; flex: 1; white-space: nowrap; }
 .toggle-opt { user-select: none; }
+
+/* The switch tip (setupSwitchTip, shared/engine-chrome.mjs), placed by script. Its arrow
+   sits --arrow-x from its left edge, on the side facing what it points at: the top, or
+   the bottom when .above. Below the fixed corner buttons. */
+.switch-tip {
+  position: absolute;
+  z-index: 40;
+  white-space: nowrap;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;   /* SWITCH_TIP_FADE_MS */
+}
+.switch-tip.shown { opacity: 1; }
+.switch-tip::before {
+  content: '';
+  position: absolute;
+  left: var(--arrow-x);
+  bottom: 100%;
+  margin-left: -6px;
+  border: 6px solid transparent;
+}
+.switch-tip.above::before { bottom: auto; top: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .switch-tip { transition: none; }
+}
 
 #keys-btn,
 #menu-btn {
@@ -592,9 +625,10 @@ html.phone #clue-full {
 /* #menu-btn and #help-btn sit *within* #active-clue-bar's own band instead of floating
    below it as a separate row — no extra vertical space. Pure CSS calc() against the
    bar's min-height (base.css), not JS-measured: nothing has to re-measure it when the
-   bar or the viewport resizes. --corner-* are the buttons' measurements (base.css);
-   Marching Bands, with no bar, keeps the plain default `top`. The phone layout moves the
-   buttons into its top bar instead (phone.css). */
+   bar or the viewport resizes. --corner-* are the buttons' measurements (base.css). A
+   tool with no bar (Marching Bands, and Crushword outside the phone layout) keeps the
+   plain default `top`. The phone layout moves the buttons into its top bar instead
+   (phone.css). */
 .has-clue-bar #menu-btn,
 .has-clue-bar #help-btn { top: calc((var(--active-clue-bar-space) - var(--corner-btn)) / 2); }
 
@@ -606,7 +640,7 @@ html.phone #clue-full {
 
 /* Right gutter for the bar's own text now that #menu-btn shares its row: its width and
    inset, plus a gap to the text. Lives here rather than in base.css's shared
-   #active-clue-bar rule since only these three tools ever place the button there.
+   #active-clue-bar rule since only Snake Charmer and Spiral place the button there.
    A page with a help button (setupHelpMenu puts `has-help-btn` on <body>; a hashed
    build has none) also reserves its width and the gap between them. Same specificity as
    the rule above, so it follows it; the phone layer overrides both. */
@@ -643,6 +677,8 @@ a { color: var(--theme-color-link); }
 .clue-item.active-clue     { background: var(--theme-color-active-clue); }
 .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
 .clue-item.filled .clue-text { text-decoration: var(--theme-clue-filled-decoration); opacity: var(--theme-clue-filled-opacity); }
+
+#crossings h3 { color: var(--theme-color-muted); }
 
 .clue-section h2 {
   color:          var(--theme-color-text);
@@ -726,6 +762,21 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 .toggle-opt:not(:last-child)   { border-right: 1px solid var(--theme-color-btn2-border); }
 .toggle-opt.active             { background: var(--theme-color-btn-bg); color: var(--theme-color-btn-text); cursor: default; }
 .toggle-opt:not(.active):hover { background: var(--theme-color-btn2-hover); }
+
+/* Switch tip: the button colors, ringed (arrow included) in the page's color, so a tip
+   that crosses a block of the same dark color still stands apart from it. */
+.switch-tip {
+  --ring: var(--theme-color-bg);
+  background:    var(--theme-color-btn-bg);
+  color:         var(--theme-color-btn-text);
+  border-radius: var(--theme-control-radius);
+  filter: drop-shadow(2px 0 0 var(--ring)) drop-shadow(-2px 0 0 var(--ring))
+          drop-shadow(0 2px 0 var(--ring)) drop-shadow(0 -2px 0 var(--ring))
+          drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+.switch-tip::before       { border-bottom-color: var(--theme-color-btn-bg); }
+.switch-tip.above::before { border-bottom-color: transparent; border-top-color: var(--theme-color-btn-bg); }
+.switch-tip b             { font-size: 1.15em; }
 
 /* SVG cell states */
 .cell              { fill: var(--theme-color-cell-bg); stroke: var(--theme-color-cell-stroke); stroke-width: 0.5; }
@@ -1050,12 +1101,11 @@ html.phone .clue-item .list-cell.list-cursor.composing {
 /* Spiral */
 .tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
 .tool-spiral #direction-chevron { stroke-width: 0.9; }
-/* Crushword, and Marching Bands when stacked */
+/* Marching Bands when stacked */
 /* Opaque background is load-bearing, not cosmetic: .puzzle-center is
-   position:sticky over the clues (each tool's base.css), which scroll directly
+   position:sticky over the clues (its base.css), which scroll directly
    underneath it in the same horizontal space — without this, clue text
    would show through the sticky grid as it scrolls. */
-.tool-crushword .puzzle-center,
 .tool-marching-bands .puzzle-center { background: var(--theme-color-bg); }
 
 /* Crushword */
@@ -1075,12 +1125,18 @@ html.phone .clue-item .list-cell.list-cursor.composing {
    phone layout. */
 
 /* Everything the phone layout shows has moved out of .puzzle-body. What's left includes
-   Crushword's sticky, opaque .puzzle-center, which would otherwise float empty over the
-   page. #controls goes with it, holding only the desktop toggle by now. */
+   the grid's box (Marching Bands' sticky, opaque .puzzle-center), which would otherwise
+   float empty over the page. #controls goes with it, holding only the desktop toggle by
+   now. */
 html.phone .puzzle-body,
 html.phone #keys-btn { display: none; }
 
 html.phone body.has-clue-bar { padding-top: 0; }
+
+/* The phone view is one screen high however tall its frame is. setupEmbedResize reads
+   this marker (fillsView) to ask an embedding host for a screen-high frame
+   (docs/CROSS_TOOL_SPEC.md → "Embedding — auto-sizing"). */
+html.phone { --fills-view: 1; }
 
 /* The view and its keyboard run edge to edge, with nothing above them on screen: the
    top bar and the Clues screen show the header and instructions (setupPhoneLayout).
@@ -1535,6 +1591,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
   #help-btn,
   #help-panel,
   #done-wrong,
+  .switch-tip,
   #direction-chevron,
   .solve-top,
   #solve-bar,
@@ -3583,7 +3640,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
   function setupCellClicks(svg, handler) {
     svg.addEventListener("click", (e) => {
       const cell = e.target.closest(".cell");
-      if (cell) handler(Number(cell.id.slice("cell-".length)));
+      if (cell) handler(Number(cell.id.slice("cell-".length)), cell);
     });
   }
   function formatMs(ms) {
@@ -3955,19 +4012,126 @@ html.phone .kb-spacer { flex: 7 1 0; }
       helpMenu
     };
   }
+  function fillsView(win = window, root = win.document.documentElement) {
+    return win.getComputedStyle(root).getPropertyValue("--fills-view").trim() === "1";
+  }
   function setupEmbedResize({ win = window, root = document.documentElement, RO = win.ResizeObserver } = {}) {
     if (!win.parent || win.parent === win || !RO) return null;
-    let last = -1;
+    let last = -1, lastFill = false;
     const ro = new RO(() => {
       const height = Math.ceil(root.getBoundingClientRect().height);
-      if (height === last) return;
+      const fill = fillsView(win, root);
+      if (height === last && fill === lastFill) return;
       last = height;
+      lastFill = fill;
       const msg = { type: "varietypack:resize", height };
-      if (root.classList.contains(PHONE_CLASS)) msg.fill = true;
+      if (fill) msg.fill = true;
       win.parent.postMessage(msg, "*");
     });
     ro.observe(root);
     return ro;
+  }
+  var SWITCH_TIP_PREF = "vp:pref:usedSwitchKey";
+  var SWITCH_TIP_GAP = 8;
+  var SWITCH_TIP_MARGIN = 8;
+  var SWITCH_TIP_MS = 3e3;
+  var SWITCH_TIP_FADE_MS = 200;
+  function makeSwitchTipGate(storage) {
+    const pref = boolPref(SWITCH_TIP_PREF, false, storage);
+    let done = pref.load();
+    return {
+      claim() {
+        if (done) return false;
+        done = true;
+        return true;
+      },
+      noteKey(e) {
+        if (!e.isTrusted) return;
+        done = true;
+        pref.save(true);
+      }
+    };
+  }
+  function switchTipPlacement({ target, board, tip, viewport }) {
+    const cx = target.left + target.width / 2;
+    const half = tip.width / 2;
+    const center = Math.min(Math.max(cx, SWITCH_TIP_MARGIN + half), viewport.width - SWITCH_TIP_MARGIN - half);
+    const left = center - half;
+    const belowTop = target.top + target.height + SWITCH_TIP_GAP;
+    const aboveTop = target.top - SWITCH_TIP_GAP - tip.height;
+    const fitsBelow = belowTop + tip.height <= viewport.bottom - SWITCH_TIP_MARGIN;
+    const fitsAbove = aboveTop >= viewport.top + SWITCH_TIP_MARGIN;
+    let above = !!board && target.top + target.height / 2 > board.top + board.height / 2;
+    if (above ? !fitsAbove && fitsBelow : !fitsBelow && fitsAbove) above = !above;
+    return { left, top: above ? aboveTop : belowTop, arrowX: cx - left, above };
+  }
+  function setupSwitchTip(what, { isSolved }) {
+    const gate = makeSwitchTipGate();
+    let tip = null, timer = null;
+    function hide() {
+      if (!tip) return;
+      const el = tip;
+      tip = null;
+      clearTimeout(timer);
+      el.classList.remove("shown");
+      setTimeout(() => el.remove(), SWITCH_TIP_FADE_MS);
+    }
+    let pointer = null;
+    document.addEventListener("keydown", () => {
+      pointer = null;
+      hide();
+    }, true);
+    document.addEventListener("pointerdown", (e) => {
+      pointer = e.pointerType;
+      hide();
+    }, true);
+    function holderOf(target) {
+      let el = (target.ownerSVGElement || target).parentElement;
+      for (; el && el !== document.body; el = el.parentElement) {
+        if (getComputedStyle(el).position !== "static") {
+          const r2 = el.getBoundingClientRect();
+          return { el, x: r2.left + el.clientLeft - el.scrollLeft, y: r2.top + el.clientTop - el.scrollTop };
+        }
+      }
+      const r = document.documentElement.getBoundingClientRect();
+      return { el: document.body, x: r.left, y: r.top };
+    }
+    function show(target, board) {
+      if (pointer !== "mouse" || isSolved() || document.documentElement.classList.contains(PHONE_CLASS)) return;
+      if (!gate.claim()) return;
+      const el = htmlEl(
+        "div",
+        { class: "switch-tip", "aria-hidden": "true" },
+        "Tip: press ",
+        htmlEl("b", {}, "."),
+        ` (period) to switch ${what}`
+      );
+      const holder = holderOf(target);
+      holder.el.append(el);
+      const clueBar = document.getElementById("active-clue-bar");
+      const p = switchTipPlacement({
+        target: target.getBoundingClientRect(),
+        board: board ? board.getBoundingClientRect() : null,
+        tip: { width: el.offsetWidth, height: el.offsetHeight },
+        viewport: {
+          width: document.documentElement.clientWidth,
+          top: clueBar ? Math.max(0, clueBar.getBoundingClientRect().bottom) : 0,
+          bottom: document.documentElement.clientHeight
+        }
+      });
+      el.style.left = p.left - holder.x + "px";
+      el.style.top = p.top - holder.y + "px";
+      el.style.setProperty("--arrow-x", p.arrowX + "px");
+      el.classList.toggle("above", p.above);
+      el.classList.add("shown");
+      tip = el;
+      timer = setTimeout(hide, SWITCH_TIP_MS);
+    }
+    return {
+      atCell: (cell) => show(cell, cell.ownerSVGElement),
+      atToggle: (toggle) => show(toggle, null),
+      noteKey: (e) => gate.noteKey(e)
+    };
   }
 
   // shared/svg-zoom-gestures.mjs
@@ -4753,6 +4917,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       }
     });
     const barRow = htmlEl("div", { id: "solve-bar" });
+    clueBar.el.hidden = false;
     if (ownSteps) {
       barRow.append(clueBar.el);
     } else {
@@ -5372,10 +5537,13 @@ html.phone .kb-spacer { flex: 7 1 0; }
       refocus
     });
     setupEmbedResize();
+    const switchTip = setupSwitchTip("inward / outward", { isSolved: () => latch.solved });
     directionBtns.forEach((btn) => {
       btn.addEventListener("click", () => {
+        const switched = btn.dataset.dir !== direction;
         direction = btn.dataset.dir;
         focusCell(activeCell);
+        if (switched) switchTip.atToggle(btn.parentElement);
       });
     });
     const keysOverlay = setupKeysOverlay(
@@ -5397,6 +5565,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
         e.preventDefault();
         direction = DIRS[direction].opposite;
         focusCell(activeCell);
+        switchTip.noteKey(e);
         return;
       }
       if (e.key === "Tab") {
@@ -5467,9 +5636,11 @@ html.phone .kb-spacer { flex: 7 1 0; }
       checker.checkIfFilled();
       saveState();
     });
-    setupCellClicks(svg, (n) => {
-      if (n === activeCell) direction = DIRS[direction].opposite;
+    setupCellClicks(svg, (n, cell) => {
+      const again = n === activeCell;
+      if (again) direction = DIRS[direction].opposite;
       focusCell(n);
+      if (again) switchTip.atCell(cell);
     });
     svg.addEventListener("click", (e) => {
       if (e.target === svg) refocus();

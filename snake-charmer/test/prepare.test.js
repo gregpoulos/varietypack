@@ -39,7 +39,7 @@ test('preparePuzzle: boardHash equals sha256hex of the ring string', () => {
   assert.equal(result.boardHash, sha256hex(joinCells(['a','b','c','d','e','f'])));
 });
 
-test('preparePuzzle: defaults loops to 2 and hashed to false', () => {
+test('preparePuzzle: defaults hashed to false', () => {
   const puzzle = {
     kind: 'snake-charmer', title: 'T',
     entries: [
@@ -49,7 +49,6 @@ test('preparePuzzle: defaults loops to 2 and hashed to false', () => {
     ],
   };
   const result = preparePuzzle(puzzle);
-  assert.equal(result.loops, 2);
   assert.equal(result.hashed, false);
 });
 

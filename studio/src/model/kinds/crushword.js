@@ -318,7 +318,7 @@ const commands = {
 
   setClue: (model, key, text) => (hasSlot(model, key) ? withClue(model, key, e => ({ ...e, clue: text })) : model),
 
-  setDisplayAnswer: (model, key, text) => (hasSlot(model, key) ? withClue(model, key, e => displayPatch(e, text)) : model),
+  setDisplayText: (model, key, text) => (hasSlot(model, key) ? withClue(model, key, e => displayPatch(e, text)) : model),
 
   toggleCircle(model, r, c) {
     if (!inGrid(model, r, c) || model.blocks[cellIndex(model, r, c)]) return model;

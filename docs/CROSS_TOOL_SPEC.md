@@ -46,10 +46,22 @@ and composing cell, the active clue, the help rows' disabled state, and the solv
 The active-entry highlight covers every cell of the entry whatever its correctness: it
 shows where the cursor is, not what is left to solve.
 
-Marching Bands and Crushword scroll the active clue into view on the desktop, and only
-when it changes, so typing within a clue never moves the page. Spiral and Snake Charmer
-don't scroll their clue lists. Pinned by "the clue list scrolls only when the active clue
+Marching Bands scrolls the active clue into view on the desktop, and only when it
+changes, so typing within a clue never moves the page. Spiral and Snake Charmer don't
+scroll their clue lists. Pinned by "the clue list scrolls only when the active clue
 changes" in `e2e/shared.spec.js`.
+
+Crushword's desktop clue lists each scroll in their own pane, and each pane follows one
+item (its active clue, else its crossing clue) to its middle, again only when that item
+changes, so typing within a cell moves neither pane. That holds in the fill layout only; in
+the stacked fallback nothing follows the active clue, since carrying the grid off screen
+while the solver types is worse than a clue out of view. Acting on the grid there (a click
+on a clue, a key) scrolls it back into view if it had scrolled away. Pinned by "typing within a cell
+never scrolls a pane" in `e2e/crushword.spec.js`.
+
+For the same reason, Crushword's PageUp, PageDown and arrow keys at the grid's edge do
+nothing in the fill layout, where the page doesn't move while solving; in the stacked
+fallback they scroll the page, as they do in the other tools.
 
 ## Focus management
 
@@ -84,6 +96,13 @@ explicit-commit typing".
 active cell or the toggle does: Marching Bands' row and band modes, Snake Charmer's two
 loops, Spiral's inward and outward, Crushword's across and down. In Crushword it does
 nothing on a cell with no entry in the other direction.
+
+A switch made with the mouse also shows, once, a tip that `.` does it too; when it shows
+and where is `setupSwitchTip`'s (`shared/engine-chrome.mjs`). Each engine reports its own
+switches to it: `atCell` after a click on the active cell that switched, `atToggle` after
+a click on the other toggle option, and `noteKey` after a `.` that switched, which stops
+the tip on every puzzle (see "localStorage key format"). Pinned by "a second click on the
+active cell shows the period tip at the cell, once" in `e2e/shared.spec.js`.
 
 ## Tab / Shift+Tab entry navigation
 
@@ -170,7 +189,9 @@ as complete only once something commits it. Accepted as a cost of the model.
 
 A tool shows a fixed `#active-clue-bar` with the active cell's clues **when, and only
 when, those clues are known from the cell alone**, that is, when entry boundaries are
-given rather than solved for. Snake Charmer, Spiral and Crushword qualify. Marching Bands
+given rather than solved for. Snake Charmer, Spiral and Crushword qualify, though
+Crushword shows the bar only in the phone layout: on the desktop its crossings panel
+already shows the active clue and every crossing clue, so a bar would repeat it. Marching Bands
 does not: finding where one entry ends and the next begins is its puzzle, so a banner
 would have to guess. The same rule shapes everything else Marching Bands does differently:
 
@@ -362,8 +383,16 @@ doesn't fire it again; Clear and Play again re-arm it.
 
 A framed page posts `{ type: 'varietypack:resize', height }` to its parent, to `'*'`,
 whenever its height changes. `height` is the page's own box height, so it can shrink.
-A page in the phone layout adds `fill: true`: its view is one screen of the frame high, so
-the host should make the frame one screen (`100svh`) high instead.
+A page whose layout fills its view, the phone layout or Crushword's desktop fill layout,
+adds `fill: true`: its view is one screen of the frame high, so the host should make the
+frame one screen (`100svh`) high instead. Such a layout publishes that as the custom
+property `--fills-view: 1`, which `setupEmbedResize` reads, so CSS decides and script
+follows. A message is posted when the height or `fill` changes, since a resize can switch
+layouts at the same height.
+
+A layout that fills its view must switch on width only, never height: a framed page's
+height comes from its own messages, so a height condition can loop. The reasoning is in
+the comment beside the media query in `crushword/src/template/base.css`.
 
 ## localStorage key format
 
@@ -371,6 +400,7 @@ the host should make the frame one screen (`100svh`) high instead.
 |---|---|
 | `vp:sc:<boardHash>`, `vp:sp:…`, `vp:mb:…`, `vp:cw:…` | One puzzle's progress (Snake Charmer, Spiral, Marching Bands, Crushword) |
 | `vp:pref:listWrap`, `vp:pref:keyboardLeft` | A solver's phone preferences, for every puzzle |
+| `vp:pref:usedSwitchKey` | That the solver has switched with `.`, so no puzzle shows the switch tip again |
 
 A republished puzzle with new answers has a new hash, so it starts fresh. The tool prefix
 keeps two formats with the same answers apart. Clear empties a puzzle's key and leaves the

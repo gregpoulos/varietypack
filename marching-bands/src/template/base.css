@@ -47,8 +47,9 @@
 }
 
 /* Stacked, the sticky grid pins over the clues as they scroll rather than beside them,
-   as Crushword's always does — see crushword/src/template/base.css (.puzzle-center) for
-   why it sticks flush with the gap as padding-top. */
+   so its opaque background (theme-components.css) hides the clues behind it, and the gap
+   above the grid is padding inside that background rather than `top`, which would let
+   scrolled clue text show through. */
 @media (max-width: 880px) {
   .puzzle-body { display: block; }
   .puzzle-center { align-items: stretch; top: 0; padding-top: 16px; z-index: 1; }

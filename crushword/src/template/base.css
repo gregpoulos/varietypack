@@ -1,7 +1,21 @@
-/* Grid on top, clues below — a flanking left/right layout doesn't work once
-   cell width scales with maxCellLetters: a puzzle with any rebus capacity
-   produces a grid too wide to sit beside two clue columns without one side
-   getting squeezed. */
+/* Two layouts, switched by width alone (the media query below):
+
+   Fill layout (a wide window): .puzzle-body is one window high. The grid sits on top
+   and below it three columns share the rest: the crossings panel, Across and Down, each
+   scrolling its own list, so nothing on the page moves while solving. The engine scrolls
+   the page once, when solving starts, to put .puzzle-body at the top of the window, and
+   follows the active clue in each pane (centerWithin).
+
+   Stacked fallback (a narrow window): grid, crossings panel, Across, Down in a normal
+   page, nothing sticky, and nothing scrolls the page to follow a clue: following a clue
+   far down a stacked list would carry the grid off screen while the solver types.
+
+   A grid cap (44dvh) leaves the clue panes a usable height; the minimum body height
+   (560px) keeps that true in a short window, which scrolls by the difference rather
+   than squeezing the panes. The phone layout (shared/phone.css) hides .puzzle-body and
+   shows the clue bar instead. */
+
+/* Stacked fallback, and the base the fill layout overrides. */
 .puzzle-body {
   display: flex;
   flex-direction: column;
@@ -9,23 +23,51 @@
   gap: 24px;
 }
 
-/* Sticky, like Marching Bands' grid column when wide, but over the clues rather
-   than beside them — hence the opaque background (theme-components.css). It sticks
-   flush below the active-clue bar, with the breathing room as padding-top
-   rather than extra `top`: a gap outside the box would let scrolled clue text
-   show through. */
 .puzzle-center {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  position: sticky;
-  top: var(--active-clue-bar-space);
   padding-top: 16px;
-  z-index: 1;
 }
 
 #puzzle-svg { display: block; overflow: visible; max-width: 100%; height: auto; }
+
+/* The crossings panel. Theme tokens only, and no type styles: those belong in shared/
+   (toolTemplates.test.js), so the headings take the browser's own weights. */
+#crossings {
+  width: 100%;
+  max-width: 700px;
+  border-radius: var(--theme-clue-radius);
+  background: color-mix(in srgb, var(--theme-color-active-clue) 28%, var(--theme-color-bg));
+}
+.cx-head { padding: 10px 12px 4px; }
+.cx-pattern { display: flex; flex-wrap: wrap; gap: 3px; margin: 6px 0; }
+.cx-box {
+  box-sizing: border-box;
+  min-width: 1.7em;
+  height: 1.7em;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--theme-color-cell-stroke);
+  background: var(--theme-color-cell-bg);
+  color: var(--theme-color-cell-text);
+}
+.cx-box.cx-here { border-color: var(--theme-color-active-stroke); outline: 1px solid var(--theme-color-active-stroke); }
+#crossings h3 { margin: 8px 0 2px; }
+.cx-rows { list-style: none; margin: 0; padding: 0 6px 6px; }
+.cx-row { padding: 6px; border-radius: var(--theme-clue-radius); cursor: pointer; }
+.cx-row:hover { background: var(--theme-color-clue-hover); }
+.cx-row.secondary-entry { background: var(--theme-color-secondary-entry); }
+.cx-row.filled .clue-text {
+  text-decoration: var(--theme-clue-filled-decoration);
+  opacity: var(--theme-clue-filled-opacity);
+}
+.cx-row.cx-none { cursor: default; opacity: 0.55; }
+.cx-row.cx-none:hover { background: none; }
+.cx-row.cx-cursor.cx-none { outline: 1px solid var(--theme-color-soft-border); }
 
 .cell-num    { font-size: 8px; }
 .cell-letter { font-size: 14px; dominant-baseline: central; }
@@ -40,4 +82,77 @@
 
 @media (max-width: 600px) {
   .clue-columns { grid-template-columns: 1fr; }
+}
+
+/* The stacked fallback is an ordinary scrolling page, so the fixed ☰ and help buttons
+   would float over the grid's top-right cells once it scrolls to the top of the window.
+   They scroll with the page instead (the Escape route still brings them into view). The
+   fill layout, where the page holds still, puts them back and leaves room for them. */
+html:not(.phone) #menu-btn,
+html:not(.phone) #help-btn { position: absolute; }
+
+/* The fill layout switches on width only, never height: a framed page's height comes
+   from its own resize messages, so a height condition would loop (a short frame gets the
+   fallback and posts a tall height, the host grows the frame, the fill layout posts
+   `fill: true`, the host shrinks the frame to one screen, and the fallback returns).
+   Width depends on nothing the page reports, so the choice is stable in a frame. `screen`
+   keeps it out of print, where landscape Letter is wider than 900 CSS px
+   (docs/CROSS_TOOL_SPEC.md → "Embedding — auto-sizing"). `--fills-view` tells the
+   engine and setupEmbedResize which layout is showing (fillsView), so CSS and script
+   share this one threshold. */
+@media screen and (min-width: 900px) {
+  html:not(.phone) { --fills-view: 1; }
+  html:not(.phone) #menu-btn,
+  html:not(.phone) #help-btn { position: fixed; }
+
+  html:not(.phone) .puzzle-body {
+    box-sizing: border-box;
+    height: max(100dvh, 560px);
+    padding-top: 12px;
+    display: grid;
+    grid-template-columns: minmax(300px, 1.2fr) 2fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "grid grid" "crossings clues";
+    gap: 12px 32px;
+    align-items: stretch;
+  }
+
+  /* Left and right room for the fixed ☰ and help buttons, which float over the page's
+     top-right corner, so they never cover a cell. The SVG is capped by height while
+     keeping its aspect ratio: it carries width/height attributes, so a bare max-height
+     would cap only the height and letterbox the drawing in a full-width box. */
+  html:not(.phone) .puzzle-center {
+    grid-area: grid;
+    align-items: stretch;
+    padding-top: 0;
+    padding-inline: calc(var(--corner-btn-2) + var(--corner-btn));
+  }
+  html:not(.phone) #puzzle-svg {
+    width: min(100%, calc(44dvh * var(--grid-aspect)));
+    height: auto;
+    max-width: none;
+    margin-inline: auto;
+  }
+
+  html:not(.phone) #crossings {
+    grid-area: crossings;
+    max-width: none;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  html:not(.phone) .cx-rows { flex: 1; min-height: 0; overflow-y: auto; }
+
+  html:not(.phone) .clue-columns {
+    grid-area: clues;
+    max-width: none;
+    min-height: 0;
+  }
+  /* The list scrolls, not the section, so the shared heading stays put above it. */
+  html:not(.phone) .clue-section { min-height: 0; display: flex; flex-direction: column; }
+  html:not(.phone) .clue-section ul { flex: 1; min-height: 0; overflow-y: auto; }
+  /* Room under the last item for the fixed ? button, which the page can't scroll
+     clear of. */
+  html:not(.phone) .clue-section ul,
+  html:not(.phone) .cx-rows { padding-bottom: calc(var(--corner-btn) + var(--corner-inset)); }
 }

@@ -67,9 +67,9 @@ test('isModelBase: header, circles, orphans and nextId', () => {
   assert.equal(common.isModelBase(null, 'k'), false);
 });
 
-test('displayPatch: a blank text deletes the display answer', () => {
-  assert.deepEqual(common.displayPatch({ id: 'e1', clue: 'c', displayAnswer: 'A B' }, ''), { id: 'e1', clue: 'c' });
-  assert.deepEqual(common.displayPatch({ id: 'e1', clue: 'c' }, 'A B'), { id: 'e1', clue: 'c', displayAnswer: 'A B' });
+test('displayPatch: a blank text deletes the display text', () => {
+  assert.deepEqual(common.displayPatch({ id: 'e1', clue: 'c', displayText: 'A B' }, ''), { id: 'e1', clue: 'c' });
+  assert.deepEqual(common.displayPatch({ id: 'e1', clue: 'c' }, 'A B'), { id: 'e1', clue: 'c', displayText: 'A B' });
 });
 
 test('isCut: starts strictly increasing from 0 and below the total, one sound entry each', () => {

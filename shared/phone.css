@@ -5,12 +5,18 @@
    phone layout. */
 
 /* Everything the phone layout shows has moved out of .puzzle-body. What's left includes
-   Crushword's sticky, opaque .puzzle-center, which would otherwise float empty over the
-   page. #controls goes with it, holding only the desktop toggle by now. */
+   the grid's box (Marching Bands' sticky, opaque .puzzle-center), which would otherwise
+   float empty over the page. #controls goes with it, holding only the desktop toggle by
+   now. */
 html.phone .puzzle-body,
 html.phone #keys-btn { display: none; }
 
 html.phone body.has-clue-bar { padding-top: 0; }
+
+/* The phone view is one screen high however tall its frame is. setupEmbedResize reads
+   this marker (fillsView) to ask an embedding host for a screen-high frame
+   (docs/CROSS_TOOL_SPEC.md → "Embedding — auto-sizing"). */
+html.phone { --fills-view: 1; }
 
 /* The view and its keyboard run edge to edge, with nothing above them on screen: the
    top bar and the Clues screen show the header and instructions (setupPhoneLayout).

@@ -208,12 +208,12 @@ test('toggleBreak: index 0 and out-of-range indexes do nothing', () => {
   assert.equal(run(model, 'toggleBreak', 'inward', 9).cuts.inward.starts.length, 2);
 });
 
-test('setClue, setDisplayAnswer, toggleCircle and setHeader', () => {
+test('setClue, setDisplayText, toggleCircle and setHeader', () => {
   const { model } = imp();
   assert.equal(run(model, 'setClue', 'outward', 1, 'new').cuts.outward.entries[1].clue, 'new');
-  const shown = run(model, 'setDisplayAnswer', 'inward', 0, 'RO-TI');
-  assert.equal(shown.cuts.inward.entries[0].displayAnswer, 'RO-TI');
-  assert.ok(!('displayAnswer' in run(shown, 'setDisplayAnswer', 'inward', 0, '').cuts.inward.entries[0]));
+  const shown = run(model, 'setDisplayText', 'inward', 0, 'RO-TI');
+  assert.equal(shown.cuts.inward.entries[0].displayText, 'RO-TI');
+  assert.ok(!('displayText' in run(shown, 'setDisplayText', 'inward', 0, '').cuts.inward.entries[0]));
   assert.deepEqual(run(model, 'toggleCircle', 3).circles, [3]);
   assert.deepEqual(run(run(model, 'toggleCircle', 3), 'toggleCircle', 3).circles, []);
   assert.equal(run(model, 'setHeader', 'author', '').header.author, undefined);
@@ -221,12 +221,12 @@ test('setClue, setDisplayAnswer, toggleCircle and setHeader', () => {
 
 // Identity, not equality: history.commit records a step for any result that isn't the
 // very same model, so a stale index or cut name must hand the model back untouched.
-test('setClue and setDisplayAnswer return the model itself for an entry that does not exist', () => {
+test('setClue and setDisplayText return the model itself for an entry that does not exist', () => {
   const { model } = imp();
   const missing = [['inward', -1], ['inward', model.cuts.inward.entries.length], ['inward', 99], ['sideways', 0]];
   for (const [cutName, j] of missing) {
     assert.equal(spiral.commands.setClue(model, cutName, j, 'x'), model);
-    assert.equal(spiral.commands.setDisplayAnswer(model, cutName, j, 'X'), model);
+    assert.equal(spiral.commands.setDisplayText(model, cutName, j, 'X'), model);
   }
 });
 

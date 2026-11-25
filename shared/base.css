@@ -27,10 +27,9 @@ body { line-height: 1.4; }
 
 /* Tools with a fixed active-clue bar reserve its height as body padding, and expose it
    as --active-clue-bar-space for anything positioned against the bar (#menu-btn and
-   #menu-panel in theme-components.css, Crushword's sticky grid). The bar's min-height
-   fills that space, and its clue text can never wrap (nowrap + ellipsis), so this is an
-   exact height, not a floor — which is what makes calc()-only positioning against it
-   exact. */
+   #menu-panel in theme-components.css). The bar's min-height fills that space, and its
+   clue text can never wrap (nowrap + ellipsis), so this is an exact height, not a
+   floor — which is what makes calc()-only positioning against it exact. */
 body.has-clue-bar {
   --active-clue-bar-space: 56px;
   padding-top: var(--active-clue-bar-space);
@@ -86,6 +85,13 @@ body.has-clue-bar {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 6px;
+}
+
+/* Crushword's crossings panel heading, a small label like the list headings above. */
+#crossings h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .clue-section :is(ul, ol) { list-style: none; }
@@ -178,6 +184,33 @@ button:disabled { opacity: 0.4; cursor: default; }
 .puzzle-toggle { display: flex; overflow: hidden; }
 .puzzle-toggle .toggle-opt { border: none; flex: 1; white-space: nowrap; }
 .toggle-opt { user-select: none; }
+
+/* The switch tip (setupSwitchTip, shared/engine-chrome.mjs), placed by script. Its arrow
+   sits --arrow-x from its left edge, on the side facing what it points at: the top, or
+   the bottom when .above. Below the fixed corner buttons. */
+.switch-tip {
+  position: absolute;
+  z-index: 40;
+  white-space: nowrap;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;   /* SWITCH_TIP_FADE_MS */
+}
+.switch-tip.shown { opacity: 1; }
+.switch-tip::before {
+  content: '';
+  position: absolute;
+  left: var(--arrow-x);
+  bottom: 100%;
+  margin-left: -6px;
+  border: 6px solid transparent;
+}
+.switch-tip.above::before { bottom: auto; top: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .switch-tip { transition: none; }
+}
 
 #keys-btn,
 #menu-btn {

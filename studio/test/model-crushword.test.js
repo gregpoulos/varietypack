@@ -191,11 +191,11 @@ test('resize ignores a size outside 3–25 or the size it already is', () => {
   for (const [r, c] of [[5, 5], [2, 5], [5, 26], [5.5, 5], [5, 'x']]) assert.deepEqual(run(m, 'resize', r, c), m);
 });
 
-test('setClue, setDisplayAnswer, toggleCircle, setMaxCellLetters, setHeader, orphans', () => {
+test('setClue, setDisplayText, toggleCircle, setMaxCellLetters, setHeader, orphans', () => {
   const { model } = imp();
   assert.equal(run(model, 'setClue', 'A 0,0', 'new').clues['A 0,0'].clue, 'new');
   assert.deepEqual(run(model, 'setClue', 'A 9,9', 'new'), model);
-  assert.equal(run(model, 'setDisplayAnswer', 'A 0,0', 'C A T').clues['A 0,0'].displayAnswer, 'C A T');
+  assert.equal(run(model, 'setDisplayText', 'A 0,0', 'C A T').clues['A 0,0'].displayText, 'C A T');
   assert.deepEqual(run(model, 'toggleCircle', 1, 1).circles, ['1,1']);
   assert.deepEqual(run(run(model, 'toggleCircle', 1, 1), 'toggleCircle', 1, 1).circles, []);
   const two = run(run(model, 'toggleCircle', 2, 0), 'toggleCircle', 0, 2);

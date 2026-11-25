@@ -136,7 +136,7 @@ for (const row of KINDS) {
 
 // ── kind-specific round trips ────────────────────────────────────────────────
 
-test('[snake-charmer] round trip: the example\'s display answers survive verbatim', () => {
+test('[snake-charmer] round trip: the example\'s display texts survive verbatim', () => {
   const sc = KINDS[0].mod;
   const out = sc.toYaml(sc.fromYaml(load('examples/snake-charmer.yaml')).model);
   assert.ok(out.entries.some(e => e.answer === 'LIE TO'));

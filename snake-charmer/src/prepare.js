@@ -1,7 +1,7 @@
 'use strict';
 
 const { processEntries, prepareCommon } = require('../../shared/build/prepare');
-const { LOOPS } = require('./ringConstants');
+const { LOOPS } = require('./entryMaps.mjs');
 
 function preparePuzzle(puzzle) {
 
@@ -17,7 +17,6 @@ function preparePuzzle(puzzle) {
       const ring     = cells.slice(0, ringSize);
       return { boardCells: ring, letters: ring };
     }),
-    loops: LOOPS,
     entries,
   };
 }

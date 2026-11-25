@@ -1,7 +1,8 @@
 'use strict';
 
-// Browser-engine behavior specific to Crushword — what node:test can't cover: sticky
-// active-clue bar/grid geometry, entry-based Tab navigation, direction auto-flip, and
+// Browser-engine behavior specific to Crushword — what node:test can't cover: the
+// window-high desktop layout (per-list panes, no clue bar, the stacked fallback and the
+// switch between them), entry-based Tab navigation, direction auto-flip, and
 // cursor movement and editing inside multi-letter cells (every cell composes on its own
 // keystrokes, so there is no rebus button). Behavior it shares with the other engines
 // lives in e2e/shared.spec.js; its menu-button test stays here because it starts from a
@@ -13,6 +14,7 @@ const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
 const { buildPuzzleFile } = require('../test/helpers');
+const { startServer } = require('./studio-server');
 const { cellLetterPairs, clickHelpRow, fillCrushwordCell, solveCrushwordBoard } = require('./helpers');
 const { sha256hex } = require('../shared/sha256hex.mjs');
 
@@ -165,54 +167,6 @@ test('clicking a link inside a clue opens it in a new tab without also selecting
   expect(after).toBe(before);
 });
 
-test('the active-clue bar and sticky grid leave no gap for scrolled content to show through', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-  const reservedSpace = await page.evaluate(() =>
-    getComputedStyle(document.body).getPropertyValue('--active-clue-bar-space').trim());
-
-  // The bar's content is shorter than its reserved space; its box must still fill it.
-  const bar = await page.locator('#active-clue-bar').boundingBox();
-  expect(bar.height + 'px').toBe(reservedSpace);
-
-  // The grid sits over the clues, so it needs an opaque background, and its
-  // breathing room must be padding inside that background, not a gap outside it.
-  const style = await page.locator('.puzzle-center').evaluate(el => {
-    const s = getComputedStyle(el);
-    return { position: s.position, paddingTop: s.paddingTop, backgroundColor: s.backgroundColor };
-  });
-  expect(style.position).toBe('sticky');
-  expect(style.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
-  expect(style.paddingTop).toBe('16px');
-
-  // Once stuck, the grid's box starts exactly at the bar's bottom edge.
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  const top = await page.locator('.puzzle-center').evaluate(el => el.getBoundingClientRect().top);
-  expect(top + 'px').toBe(reservedSpace);
-});
-
-test('clicking a clue scrolled off the top of the view lands it below the sticky grid, not behind it', async ({ page }) => {
-  await page.setViewportSize({ width: 900, height: 500 });
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-
-  // { force: true } bypasses Playwright's own pre-click auto-scroll-into-view, which
-  // would otherwise land the clue in view on its own and mask the engine's scrollIntoView
-  // call entirely — the same reason a naive click-based test never caught this bug.
-  const downItems = page.locator('#down-clues .clue-item');
-  await downItems.nth(await downItems.count() - 1).click({ force: true });
-  await page.locator('#across-clues .clue-item').first().click({ force: true });
-
-  const rects = await page.evaluate(() => ({
-    clue:   document.querySelectorAll('#across-clues .clue-item')[0].getBoundingClientRect(),
-    sticky: document.querySelector('.puzzle-center').getBoundingClientRect(),
-  }));
-  // The sticky grid+controls box paints over [0, sticky.bottom); native scrollIntoView
-  // has no notion of that occlusion, so the fix must reserve that band itself
-  // (scroll-padding-top) rather than rely on scrollIntoView alone.
-  expect(rects.clue.top).toBeGreaterThanOrEqual(rects.sticky.bottom - 1);
-});
-
 test('Tab walks the across entries, then the down entries, then wraps; Shift+Tab reverses', async ({ page }) => {
   await page.goto('file://' + htmlPath);
   await ready(page);
@@ -280,56 +234,6 @@ test('clicking a Down clue sets direction to down and focuses its first cell', a
     return Number(li.textContent.replace('.', ''));
   });
   expect(activeClueNum).toBe(firstDownNum);
-});
-
-test('the active-clue banner shows the primary (and, when present, crossing) clue for the active cell', async ({ page }) => {
-  await page.goto('file://' + htmlPath);
-  await ready(page);
-
-  // The default active cell's across entry crosses a down entry — both
-  // rows should show, matching whichever clue items the clue list itself
-  // marks active/secondary.
-  const [acrossNum, acrossClue] = await page.evaluate(() => {
-    const li = document.querySelector('#across-clues .clue-item.active-clue');
-    return [li.querySelector('.clue-num').textContent, li.querySelector('.clue-text').textContent];
-  });
-  await expect(page.locator('#active-clue-primary .active-clue-dir')).toHaveText('Across');
-  await expect(page.locator('#active-clue-primary .active-clue-num')).toHaveText(acrossNum);
-  await expect(page.locator('#active-clue-primary .active-clue-text')).toHaveText(acrossClue);
-  await expect(page.locator('#active-clue-secondary')).toBeVisible();
-  const [downNum, downClue] = await page.evaluate(() => {
-    const li = document.querySelector('#down-clues .clue-item.secondary-entry');
-    return [li.querySelector('.clue-num').textContent, li.querySelector('.clue-text').textContent];
-  });
-  await expect(page.locator('#active-clue-secondary .active-clue-dir')).toHaveText('Down');
-  await expect(page.locator('#active-clue-secondary .active-clue-num')).toHaveText(downNum);
-  await expect(page.locator('#active-clue-secondary .active-clue-text')).toHaveText(downClue);
-
-  // Down[1]'s own first cell (idOf(0,1) = 2 in cw-9.yaml) has a down entry
-  // but a horizontal run of length 1 there — no crossing across entry, per
-  // the build warning "down[1]: cell (1, 2) has no crossing across entry".
-  // The banner's secondary row must not show a stale or wrong clue for it.
-  const firstDownNum = await page.evaluate(() =>
-    document.querySelector('#down-clues .clue-item .clue-num').textContent);
-  const firstDownClue = await page.evaluate(() =>
-    document.querySelector('#down-clues .clue-item .clue-text').textContent);
-  await page.locator('#down-clues .clue-item').first().click();
-  await expect(page.locator('#active-clue-primary .active-clue-dir')).toHaveText('Down');
-  await expect(page.locator('#active-clue-primary .active-clue-num')).toHaveText(firstDownNum);
-  await expect(page.locator('#active-clue-primary .active-clue-text')).toHaveText(firstDownClue);
-  await expect(page.locator('#active-clue-secondary')).toBeHidden();
-
-  // The menu button sits within the bar's own band, vertically centered
-  // against it (theme-components.css) — the bar's own min-height keeps its
-  // rendered height pinned to --active-clue-bar-space even with only the
-  // primary row shown here, so this holds regardless of row count.
-  const [btn, bar] = await Promise.all([
-    page.locator('#menu-btn').boundingBox(),
-    page.locator('#active-clue-bar').boundingBox(),
-  ]);
-  expect(btn.y).toBeGreaterThanOrEqual(bar.y);
-  expect(btn.y + btn.height).toBeLessThanOrEqual(bar.y + bar.height);
-  expect(btn.y - bar.y).toBeCloseTo((bar.y + bar.height) - (btn.y + btn.height), 1); // centered
 });
 
 test('Up/Down crossing into a new cell switches to Down; Left/Right crossing switches back to Across', async ({ page }) => {
@@ -929,28 +833,27 @@ test('a hashed puzzle solves end to end and its preimage matches boardHash', asy
 });
 
 test('the menu button does not overlap the grid on a narrow viewport', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 667 }); // a narrow window or embed
+  await page.setViewportSize({ width: 375, height: 667 }); // a narrow window or embed: the stacked fallback
   await page.goto('file://' + htmlPath); // cw-9.yaml: a 9-column grid, wide enough to reach the viewport edge here
   await ready(page);
-
-  // The overlap only happens once .puzzle-center is actually stuck at the
-  // top of the viewport — at its natural (unscrolled) position further down
-  // the page, it doesn't reach anywhere near the fixed #menu-btn.
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 
   const [btn, svg] = await Promise.all([
     page.locator('#menu-btn').boundingBox(),
     page.locator('#puzzle-svg').boundingBox(),
   ]);
-  // #menu-btn now lives within #active-clue-bar's own band (theme-components.css),
-  // confined to that band's vertical range; the grid starts right below it
-  // (--active-clue-bar-space), so the two can never share any vertical range
-  // regardless of viewport width. Checking for no rectangle intersection at
-  // all, rather than a specific gap size, keeps this robust to exact pixel
-  // tuning while still catching a regression of the originally reported overlap.
   const overlaps = btn.x < svg.x + svg.width && btn.x + btn.width > svg.x &&
                     btn.y < svg.y + svg.height && btn.y + btn.height > svg.y;
   expect(overlaps).toBe(false);
+
+  // Scrolled so the grid is at the top of the window, where a fixed button would cover
+  // its top-right cells: the buttons scroll away with the header instead.
+  await page.evaluate(() => document.getElementById('puzzle-svg').scrollIntoView());
+  const covered = await page.evaluate(() => {
+    const r = document.getElementById('puzzle-svg').getBoundingClientRect();
+    const hit = document.elementFromPoint(r.right - 36, r.top + 36); // where the fixed ☰ would sit
+    return hit && hit.closest('#menu-btn, #help-btn') !== null;
+  });
+  expect(covered).toBe(false);
 });
 
 // The options menu is shared code (setupOptionsMenu, via setupControls), so this one tool
@@ -1238,4 +1141,454 @@ test('Space that trims a cell into finishing the board paints the solve', async 
   await page.keyboard.press('Space');
   await expect(page.locator('#puzzle-svg')).toHaveClass(/\bsolved\b/);
   await expect(page.locator('.clue-item.correct').first()).toBeAttached();
+});
+
+// ---- The desktop layout: one window high, a pane per clue list, no clue bar -----------
+// docs/CROSS_TOOL_SPEC.md → "syncUI() contract". The fill layout is width-only
+// (crushword/src/template/base.css), so these set the viewport explicitly.
+
+const fillsView = page => page.evaluate(() =>
+  getComputedStyle(document.documentElement).getPropertyValue('--fills-view').trim());
+const scrollY = page => page.evaluate(() => window.scrollY);
+// Within a pixel of the window's top: WebKit leaves a sub-pixel scroll remainder.
+const bodyAtTop = page => page.locator('.puzzle-body').evaluate(el => Math.abs(el.getBoundingClientRect().top) <= 1);
+
+async function load(page, viewport, file = htmlPath) {
+  await page.setViewportSize(viewport);
+  await page.goto('file://' + file);
+  await ready(page);
+}
+
+// Whether `inner` lies within `outer`, both read from the live page.
+const within = (page, innerSel, outerSel) => page.evaluate(([i, o]) => {
+  const a = document.querySelector(i).getBoundingClientRect(), z = document.querySelector(o).getBoundingClientRect();
+  return a.top >= z.top - 1 && a.bottom <= z.bottom + 1;
+}, [innerSel, outerSel]);
+
+// Whether the active clue lies within its list's scrolling box.
+const activeInPane = page => page.evaluate(() => {
+  const li = document.querySelector('.clue-item.active-clue');
+  const a = li.getBoundingClientRect(), z = li.closest('ul').getBoundingClientRect();
+  return a.top >= z.top - 1 && a.bottom <= z.bottom + 1;
+});
+
+test('desktop has no clue bar, and the menu buttons never cover the grid', async ({ page }) => {
+  await load(page, { width: 900, height: 720 });
+  await page.locator('#cell-11').click();
+  await expect(page.locator('#active-clue-bar')).toBeHidden();
+  expect(await page.evaluate(() => document.body.classList.contains('has-clue-bar'))).toBe(false);
+  const svg = await page.locator('#puzzle-svg').boundingBox();
+  for (const id of ['#menu-btn', '#help-btn']) {
+    const b = await page.locator(id).boundingBox();
+    const overlaps = b.x < svg.x + svg.width && b.x + b.width > svg.x &&
+                      b.y < svg.y + svg.height && b.y + b.height > svg.y;
+    expect(overlaps, id).toBe(false);
+  }
+});
+
+test('the first click into the grid selects the clicked cell', async ({ page }) => {
+  await load(page, { width: 1280, height: 720 });
+  await page.locator('#cell-11').click();
+  await expect(page.locator('#cell-11')).toHaveClass(/active-cell/);
+  await expect.poll(() => bodyAtTop(page)).toBe(true);
+});
+
+test('a bare modifier key or Escape does not scroll the page; a letter does', async ({ page }) => {
+  await load(page, { width: 1280, height: 720 });
+  await page.keyboard.press('Shift');
+  await page.keyboard.press('Escape');
+  expect(await scrollY(page)).toBe(0);
+  await page.keyboard.press('Escape');   // back from the menus to the puzzle
+  await page.keyboard.press('a');
+  await expect.poll(() => bodyAtTop(page)).toBe(true);
+});
+
+test('the page holds still while solving in the fill layout', async ({ page }) => {
+  await load(page, { width: 1280, height: 720 });
+  await page.locator('#cell-11').click();   // (1,1): open cell below it
+  await expect.poll(() => bodyAtTop(page)).toBe(true);
+  const y = await scrollY(page);
+  await page.keyboard.press('ArrowDown');
+  for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
+  await page.locator('#hidden-input').fill('A');
+  await page.locator('#hidden-input').fill('B');
+  await page.keyboard.press('.');
+  expect(await scrollY(page)).toBe(y);
+  expect(await bodyAtTop(page)).toBe(true);
+});
+
+test('page-scroll keys do nothing in the fill layout', async ({ page }) => {
+  await load(page, { width: 1280, height: 720 });
+  await page.locator('#cell-2').click();    // a top-row cell
+  await expect.poll(() => bodyAtTop(page)).toBe(true);
+  const y = await scrollY(page);
+  for (const key of ['PageDown', 'PageUp', 'ArrowUp']) {
+    await page.keyboard.press(key);
+    expect(await scrollY(page), key).toBe(y);
+  }
+});
+
+test('each clue pane keeps its own clue in view', async ({ page }) => {
+  await load(page, { width: 1280, height: 560 }); // short enough that both lists overflow
+  for (const sel of ['.clue-section-across ul', '.clue-section-down ul']) {
+    const [h, c] = await page.locator(sel).evaluate(el => [el.scrollHeight, el.clientHeight]);
+    expect(h, sel + ' must overflow or this checks nothing').toBeGreaterThan(c);
+  }
+  // By keyboard, not by clicking the clue: Playwright scrolls a clicked element into view
+  // itself, which would pass the Across half without the engine.
+  await page.locator('#down-clues .clue-item').first().click();
+  await page.keyboard.press('Shift+Tab');   // the last Across entry
+  await expect.poll(() => activeInPane(page)).toBe(true);
+  expect(await page.locator('#across-clues .active-clue').count()).toBe(1);
+});
+
+test('the Down pane follows the crossing clue of an Across cell far down the board', async ({ page }) => {
+  await load(page, { width: 1280, height: 560 });
+  // The cell with both entries whose Down entry starts last in the grid, so its Down clue
+  // is deep in the list.
+  const id = await page.evaluate(() => {
+    const g = window.PUZZLE_DATA.grid, cols = g[0].length;
+    const open = (r, c) => g[r] !== undefined && g[r][c] === '.';
+    let best = null;
+    for (let r = 0; r < g.length; r++) for (let c = 0; c < cols; c++) {
+      if (!open(r, c) || !(open(r, c - 1) || open(r, c + 1)) || !(open(r - 1, c) || open(r + 1, c))) continue;
+      let top = r;
+      while (open(top - 1, c)) top--;
+      if (!best || top * cols + c > best.at) best = { at: top * cols + c, id: 'cell-' + (r * cols + c + 1) };
+    }
+    return best.id;
+  });
+  expect(await page.locator('#down-clues').evaluate(el => el.scrollTop)).toBe(0);
+  await page.locator('#' + id).click();
+  await expect(page.locator('#down-clues .secondary-entry, #down-clues .active-clue')).toHaveCount(1);
+  await expect.poll(() => page.locator('#down-clues').evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(() => within(page, '#down-clues .clue-item.secondary-entry, #down-clues .clue-item.active-clue', '#down-clues')).toBe(true);
+});
+
+test('typing within a cell never scrolls a pane', async ({ page }) => {
+  await load(page, { width: 1280, height: 720 });
+  await page.locator('#down-clues .clue-item').first().click();
+  await page.keyboard.press('Shift+Tab');
+  await expect.poll(() => activeInPane(page)).toBe(true);
+  await page.waitForTimeout(600);           // the smooth scroll settles
+  await page.evaluate(() => document.querySelectorAll('.clue-section ul').forEach(el => { el.scrollTop = 0; }));
+  await page.locator('#hidden-input').fill('A');
+  await page.locator('#hidden-input').fill('B');
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => [...document.querySelectorAll('.clue-section ul')].map(el => el.scrollTop)))
+    .toEqual([0, 0]);
+});
+
+test('a narrow window stacks the layout and never scrolls the page to follow a clue', async ({ page }) => {
+  await load(page, { width: 700, height: 700 });
+  expect(await fillsView(page)).toBe('');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  for (let i = 0; i < 8; i++) await page.keyboard.press('Tab');
+  expect(await scrollY(page)).toBe(0);
+});
+
+test('a narrow window brings the grid back into view when a far clue is clicked', async ({ page }) => {
+  await load(page, { width: 700, height: 700 });
+  expect(await fillsView(page)).toBe('');
+  await page.locator('#down-clues .clue-item').last().scrollIntoViewIfNeeded();
+  const gridVisible = () => page.locator('#puzzle-svg').evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return r.top >= -1 && r.bottom <= innerHeight + 1;
+  });
+  expect(await gridVisible()).toBe(false);
+  await page.locator('#down-clues .clue-item').last().click();
+  await expect.poll(gridVisible).toBe(true);
+});
+
+test('a short wide window keeps the fill layout', async ({ page }) => {
+  await load(page, { width: 1280, height: 480 });
+  expect(await fillsView(page)).toBe('1');
+  expect(await page.locator('.puzzle-body').evaluate(el => el.getBoundingClientRect().height))
+    .toBeGreaterThanOrEqual(560);
+});
+
+test('the layout follows a resize across the threshold, both ways', async ({ page }) => {
+  await load(page, { width: 1280, height: 720 });
+  await page.keyboard.press('Tab');
+  await page.setViewportSize({ width: 700, height: 720 });
+  expect(await fillsView(page)).toBe('');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  for (let i = 0; i < 8; i++) await page.keyboard.press('Tab');
+  expect(await scrollY(page)).toBe(0);
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  expect(await fillsView(page)).toBe('1');
+  await page.evaluate(() => document.querySelectorAll('.clue-section ul').forEach(el => { el.scrollTop = 0; }));
+  await page.keyboard.press('a');   // a solving keystroke that changes no clue
+  await expect.poll(() => activeInPane(page)).toBe(true);
+  await expect.poll(() => bodyAtTop(page)).toBe(true);
+});
+
+test('returning to the fill layout with no input between re-aligns at the next solving key', async ({ page }) => {
+  await load(page, { width: 1280, height: 720 });
+  await page.locator('#cell-11').click();
+  await expect.poll(() => bodyAtTop(page)).toBe(true);
+  await page.setViewportSize({ width: 700, height: 720 });
+  expect(await fillsView(page)).toBe('');
+  // The resize event fires on the next frame: let it run while the window is narrow.
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  expect(await fillsView(page)).toBe('1');
+  await page.evaluate(() => window.scrollTo(0, 0));   // the header showing again, as a solver left it
+  expect(await bodyAtTop(page)).toBe(false);
+  await page.keyboard.press('a');
+  await expect.poll(() => bodyAtTop(page)).toBe(true);
+});
+
+test.describe('framed', () => {
+  let host;
+  test.beforeAll(async () => {
+    fs.writeFileSync(path.join(tmpDir, 'host.html'), `<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<iframe id="puzzle" style="width:100%;height:600px;border:0;display:block"></iframe>
+<script>
+  var frame = document.getElementById('puzzle');
+  frame.src = new URLSearchParams(location.search).get('p');
+  window.__msgs = [];
+  addEventListener('message', function (e) {
+    if (!e.data || e.data.type !== 'varietypack:resize') return;
+    window.__msgs.push(e.data);
+    frame.style.height = e.data.fill ? '100svh' : e.data.height + 'px';
+  });
+</script>`);
+    host = await startServer(tmpDir);
+  });
+  test.afterAll(async () => { await host.close(); });
+
+  test('a framed desktop page asks to fill the screen only in the fill layout', async ({ page }) => {
+    const last = () => page.evaluate(() => window.__msgs[window.__msgs.length - 1]);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(`${host.url}host.html?p=puzzle.html`);
+    await expect.poll(async () => (await last())?.fill).toBe(true);
+
+    await page.setViewportSize({ width: 700, height: 720 });
+    await expect.poll(async () => (await last())?.fill).toBeUndefined();
+
+    // Only the frame's height changes: the layout is chosen by width, so it stays.
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect.poll(async () => (await last())?.fill).toBe(true);
+    await page.evaluate(() => { document.getElementById('puzzle').style.height = '300px'; });
+    const frame = page.frameLocator('#puzzle');
+    await expect(frame.locator('#puzzle-svg')).toBeVisible();
+    expect(await frame.locator('html').evaluate(el =>
+      getComputedStyle(el).getPropertyValue('--fills-view').trim())).toBe('1');
+  });
+});
+
+// ---- The crossings panel --------------------------------------------------------------
+// A model of the active entry and the clue crossing each of its cells (crossings.mjs),
+// drawn from the engine's entry maps. Fill-layout viewport unless a test says otherwise.
+
+const FILL = { width: 1280, height: 720 };
+const cxRows = page => page.locator('#crossings .cx-row');
+
+// A cell with an entry one way only, from the grid: [cell id, the direction it has].
+const oneWayCell = page => page.evaluate(() => {
+  const g = window.PUZZLE_DATA.grid;
+  const open = (r, c) => g[r] !== undefined && g[r][c] === '.';
+  for (let r = 0; r < g.length; r++) {
+    for (let c = 0; c < g[r].length; c++) {
+      if (!open(r, c)) continue;
+      const across = open(r, c - 1) || open(r, c + 1), down = open(r - 1, c) || open(r + 1, c);
+      if (across !== down) return ['cell-' + (r * g[r].length + c + 1), across ? 'across' : 'down'];
+    }
+  }
+  return null;
+});
+
+test('the panel lists the active entry\'s crossings in cell order', async ({ page }) => {
+  await load(page, FILL);
+  const entry = await page.evaluate(() => [...document.querySelectorAll('.cell.active-entry, .cell.active-cell')]
+    .map(el => Number(el.id.slice(5))).sort((a, b) => a - b));
+  await expect(cxRows(page)).toHaveCount(entry.length);
+  // The Down number at each cell, read from the drawn grid: walk up to the run's start
+  // and take the label drawn in its corner.
+  const downNums = await page.evaluate(ids => {
+    const cols = window.PUZZLE_DATA.grid[0].length;
+    const labelAt = id => {
+      const r = document.getElementById('cell-' + id);
+      const x = +r.getAttribute('x') + 6, y = +r.getAttribute('y') + 8;
+      const t = [...document.querySelectorAll('.cell-num')].find(e => +e.getAttribute('x') === x && +e.getAttribute('y') === y);
+      return t ? t.textContent : null;
+    };
+    return ids.map(id => {
+      let up = id;
+      if (!document.getElementById('cell-' + (id - cols)) && !document.getElementById('cell-' + (id + cols))) return null;
+      while (document.getElementById('cell-' + (up - cols))) up -= cols;
+      return labelAt(up);
+    });
+  }, entry);
+  const rows = await cxRows(page).evaluateAll(els => els.map(e => [e.dataset.num ?? null, e.classList.contains('cx-none')]));
+  rows.forEach(([num, none], i) => {
+    if (downNums[i] === null) expect(none, 'row ' + i).toBe(true);
+    else expect(num, 'row ' + i).toBe(downNums[i]);
+  });
+});
+
+test('typing updates the panel\'s letters without reordering it', async ({ page }) => {
+  await load(page, FILL);
+  const nums = () => cxRows(page).evaluateAll(els => els.map(e => e.dataset.num ?? ''));
+  const before = await nums();
+  await page.locator('#hidden-input').fill('A');
+  await page.locator('#hidden-input').fill('B');
+  expect(await nums()).toEqual(before);
+  await expect(page.locator('#crossings .cx-head .cx-here')).toHaveText('AB');
+  await expect(page.locator('#crossings .cx-row .cx-here').first()).toHaveText('AB');
+});
+
+test('the row under the cursor carries the crossing highlight', async ({ page }) => {
+  await load(page, FILL);
+  const cells = await page.locator('#crossings .cx-row').count();
+  expect(cells, 'the panel has rows').toBeGreaterThan(0);
+  for (let i = 0; i < cells; i++) {
+    await expect(page.locator('#crossings .cx-row.cx-cursor')).toHaveCount(1);
+    const crossing = await page.locator('#down-clues .clue-item.secondary-entry').count();
+    if (crossing) {
+      await expect(page.locator('#crossings .cx-row.secondary-entry')).toHaveCount(1);
+      await expect(page.locator('#crossings .cx-row.secondary-entry')).toHaveClass(/cx-cursor/);
+      expect(await page.locator('#crossings .cx-row.secondary-entry').getAttribute('data-num'))
+        .toBe(await page.locator('#down-clues .clue-item.secondary-entry .clue-num').textContent().then(t => t.replace('.', '')));
+    } else {
+      await expect(page.locator('#crossings .cx-row.secondary-entry')).toHaveCount(0);
+      await expect(page.locator('#crossings .cx-row.cx-cursor')).toHaveClass(/cx-none/);
+    }
+    await page.keyboard.press('ArrowRight');
+  }
+});
+
+test('a cell with no crossing entry shows a muted row', async ({ page }) => {
+  await load(page, FILL);
+  const [id, dir] = await oneWayCell(page);
+  await page.locator('#' + id).click();
+  const row = page.locator('#crossings .cx-row.cx-cursor');
+  await expect(row).toHaveClass(/cx-none/);
+  await expect(row).toHaveText(dir === 'across' ? 'no Down entry' : 'no Across entry');
+});
+
+test('clicking a panel row lands like clicking its clue', async ({ page }) => {
+  await load(page, FILL);
+  const state = () => page.evaluate(() => [
+    document.querySelector('.cell.active-cell').id,
+    document.querySelector('.clue-item.active-clue').closest('ul').id,
+  ]);
+  const row = page.locator('#crossings .cx-row[data-num]').nth(1);
+  const num = await row.getAttribute('data-num');
+  await row.click();
+  const viaRow = await state();
+  await page.locator('#across-clues .clue-item').first().click();   // elsewhere first
+  await page.locator('#down-clues .clue-item', { has: page.locator(`.clue-num:text-is("${num}.")`) }).click();
+  expect(await state()).toEqual(viaRow);
+});
+
+test('a filled crossing looks filled', async ({ page }) => {
+  await load(page, FILL);
+  const letters = await boardLetters(page);
+  // The first crossing's whole Down entry, from the grid: the column's run through the
+  // cell the first crossing row stands for.
+  const { num, ids } = await page.evaluate(() => {
+    const cols = window.PUZZLE_DATA.grid[0].length;
+    const entry = [...document.querySelectorAll('.cell.active-entry, .cell.active-cell')]
+      .map(el => Number(el.id.slice(5))).sort((a, b) => a - b);
+    const rows = [...document.querySelectorAll('#crossings .cx-row')];
+    const at = rows.findIndex(r => r.dataset.num !== undefined);
+    let id = entry[at];
+    while (document.getElementById('cell-' + (id - cols))) id -= cols;
+    const out = [];
+    for (; document.getElementById('cell-' + id); id += cols) out.push(id);
+    return { num: rows[at].dataset.num, ids: out };
+  });
+  for (const id of ids) await fillCrushwordCell(page, id, letters[id - 1]);
+  await page.locator('#across-clues .clue-item').first().click();
+  await expect(page.locator(`#crossings .cx-row.filled[data-num="${num}"]`)).toHaveCount(1);
+});
+
+test('the panel works the same in a muddled build', async ({ browser }) => {
+  // A context each: the plain and muddled builds of one board share a save.
+  const shapeOf = async file => {
+    const context = await browser.newContext({ viewport: FILL });
+    const page = await context.newPage();
+    await page.goto('file://' + file);
+    await ready(page);
+    await page.locator('#hidden-input').fill('Q');
+    const shape = await page.evaluate(() => ({
+      head: document.querySelector('#crossings .cx-title').textContent,
+      nums: [...document.querySelectorAll('#crossings .cx-row')].map(r => r.dataset.num ?? ''),
+      here: document.querySelector('#crossings .cx-head .cx-here').textContent,
+    }));
+    await context.close();
+    return shape;
+  };
+  const plain = await shapeOf(htmlPath);
+  expect(plain.nums.length, 'the plain build has rows').toBeGreaterThan(0);
+  expect(plain.here).toBe('Q');
+  expect(await shapeOf(hashedPath)).toEqual(plain);
+});
+
+test('a reload shows restored letters in the panel', async ({ page }) => {
+  await load(page, FILL);
+  await page.locator('#hidden-input').fill('Q');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+Enter');
+  await page.reload();
+  await ready(page);
+  await expect(page.locator('#crossings .cx-head .cx-box.cx-here')).toHaveText('Q');
+});
+
+test('a link in a panel clue opens it without jumping', async ({ page, context }) => {
+  const yamlPath = path.join(tmpDir, 'panel-link.yaml');
+  const linkPath = path.join(tmpDir, 'panel-link.html');
+  fs.writeFileSync(yamlPath, [
+    'kind: crushword', 'title: "Panel Link Test"', 'grid:', '  - "..."', '  - "..."', '  - "..."',
+    'across:', '  1:', '    clue: "a"', '    answer: "CAT"',
+    '  4:', '    clue: "See [reference](https://example.com) for background"', '    answer: "DOG"',
+    '  5:', '    clue: "c"', '    answer: "ANT"',
+    'down:', '  1:', '    clue: "d"', '    answer: "CDA"', '  2:', '    clue: "e"', '    answer: "AON"',
+    '  3:', '    clue: "f"', '    answer: "TGT"',
+  ].join('\n'));
+  buildPuzzleFile(yamlPath, linkPath);
+  await load(page, FILL, linkPath);
+  await page.locator('#down-clues .clue-item').first().click();   // the panel then lists Across 1, 4, 5
+  const before = await page.evaluate(() => document.querySelector('.cell.active-cell').id);
+  const [popup] = await Promise.all([
+    context.waitForEvent('page'),
+    page.locator('#crossings .cx-row[data-num="4"] .clue-text a').click(),
+  ]);
+  await popup.waitForLoadState();
+  expect(popup.url()).toBe('https://example.com/');
+  await popup.close();
+  expect(await page.evaluate(() => document.querySelector('.cell.active-cell').id)).toBe(before);
+  await expect(page.locator('#crossings .cx-head .cx-dir')).toHaveText('Down');
+});
+
+test('the cursor\'s row stays visible in a long entry', async ({ page }) => {
+  await load(page, { width: 1280, height: 560 });
+  // The longest Across entry, from the grid.
+  const start = await page.evaluate(() => {
+    const g = window.PUZZLE_DATA.grid, cols = g[0].length;
+    let best = null;
+    g.forEach((row, r) => { for (const m of row.matchAll(/\.+/g)) {
+      if (!best || m[0].length > best.len) best = { len: m[0].length, id: r * cols + m.index + 1 };
+    } });
+    return best;
+  });
+  await page.locator('#cell-' + start.id).click();
+  const overflow = await page.locator('#crossings .cx-rows').evaluate(el => [el.scrollHeight, el.clientHeight]);
+  expect(overflow[0], 'the rows must overflow or this checks nothing').toBeGreaterThan(overflow[1]);
+  const visible = () => page.evaluate(() => {
+    const rows = document.querySelector('#crossings .cx-rows').getBoundingClientRect();
+    const cur = document.querySelector('#crossings .cx-row.cx-cursor').getBoundingClientRect();
+    const head = document.querySelector('#crossings .cx-head').getBoundingClientRect();
+    const box = document.getElementById('crossings').getBoundingClientRect();
+    return cur.top >= rows.top - 1 && cur.bottom <= rows.bottom + 1 && head.top >= box.top - 1;
+  });
+  for (let i = 0; i < start.len; i++) {
+    await expect.poll(visible, { message: 'cell ' + i }).toBe(true);
+    await page.keyboard.press('ArrowRight');
+  }
 });

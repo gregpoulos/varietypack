@@ -173,7 +173,7 @@ function fromYaml(puzzle) {
     entries: g.entries.map((e, j) => entryFromYaml(e, `e${n++}`, lists[i][j])),
   }));
   // Each entry against the cells it covers in the model, so a band entry that spells a
-  // rebus backward keeps that spelling as its display answer.
+  // rebus backward keeps that spelling as its display text.
   const bandModel = bandLists.map((lists, k) => {
     const path = bandCells(k, N).map(id => cells[id - 1]);
     return lists.map((l, j) => path.slice(bandStarts[k][j], bandStarts[k][j] + l.length));
@@ -350,7 +350,7 @@ const commands = {
 
   setClue: (model, group, g, j, text) => (hasEntry(model, group, g, j) ? withEntry(model, group, g, j, e => ({ ...e, clue: text })) : model),
 
-  setDisplayAnswer: (model, group, g, j, text) => (hasEntry(model, group, g, j) ? withEntry(model, group, g, j, e => displayPatch(e, text)) : model),
+  setDisplayText: (model, group, g, j, text) => (hasEntry(model, group, g, j) ? withEntry(model, group, g, j, e => displayPatch(e, text)) : model),
 
   toggleCircle(model, id) {
     if (!(id >= 1 && id <= model.cells.length) || isCenter(model.size, id)) return model;

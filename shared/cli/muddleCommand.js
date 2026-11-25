@@ -8,7 +8,7 @@ const { hooksFor } = require('../build/tools');
 const { muddlePuzzle, ALREADY_MUDDLED, MUDDLED_DUMP_OPTIONS } = require('../build/muddleUtils');
 const { isSameFile }        = require('./puzzleFiles');
 const parseCliArgs          = require('./parseCliArgs');
-const { formatOptionsHelp, writeHelpIfRequested } = require('./globalHelp');
+const { HELP_OPTION, formatOptionsHelp, writeHelpIfRequested } = require('./globalHelp');
 
 const OPTIONS = {
   output: { type: 'string', short: 'o', arg: 'file',
@@ -23,7 +23,7 @@ Usage: varietypack muddle <file.yaml> [options]
   <file.yaml>  A valid puzzle YAML file to muddle
 
 Options:
-${formatOptionsHelp(OPTIONS)}
+${formatOptionsHelp({ ...OPTIONS, ...HELP_OPTION })}
 
 The muddled YAML adds boardHash: and replaces each entry's answer: with length: — a
 CELL count (a bracketed rebus group like [HAR] counts as one cell, not three letters). It

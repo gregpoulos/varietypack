@@ -36,7 +36,7 @@ function walk(value, only, found = { keys: new Set(), strings: [] }, key) {
 // forgets is missing here.
 const TOOL_FIELDS = {
   'snake-charmer': data => {
-    assert.equal(data.loops, 2);
+    assert.equal(data.loops, undefined);
     assert.ok(Number.isInteger(data.ring.N));
     assert.ok(SHAPE_NAMES.includes(data.shape), data.shape);
     assert.equal(data.letters.length, data.ring.N);

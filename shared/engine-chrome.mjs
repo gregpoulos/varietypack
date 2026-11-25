@@ -249,6 +249,20 @@ function scrollIntoViewBelow(clue, pinned) {
   clue.scrollIntoView({ block: 'nearest' });
 }
 
+// Smooth-scrolls `container` so `el` sits centered in it. Crushword's desktop clue panes
+// use this where the phone's lists use scrollWithin (shared/engine-phone.mjs): a pane
+// that follows the active clue keeps it in the middle with context on both sides, rather
+// than the least distance, which would park it at an edge. Jumps instead of gliding under
+// prefers-reduced-motion, read at each call so a mid-session change applies. Writes
+// nothing when already within 1px.
+function centerWithin(container, el, win = window) {
+  const box = container.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const top = container.scrollTop + (r.top - box.top) - (container.clientHeight - r.height) / 2;
+  if (Math.abs(top - container.scrollTop) <= 1) return;
+  const reduce = win.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  container.scrollTo({ top, behavior: reduce ? 'auto' : 'smooth' });
+}
+
 // The auto-save localStorage key: the tool's prefix and the puzzle's board hash, which
 // every page carries. A republished puzzle with new answers has a new hash and starts
 // fresh, where an old save would put letters and marks on cells that changed. The hash
@@ -416,15 +430,16 @@ function setupKeydown(handler, { keysOverlay, refocus }) {
   });
 }
 
-// Routes a click on any board cell to handler(n), where n is the cell's number from its
-// `cell-{n}` id (docs/CROSS_TOOL_SPEC.md → "Engine bootstrap & structure"). One listener
-// on the <svg> serves every cell, so building the board attaches no behavior. Letters,
-// numbers, circles and the chevron are `pointer-events: none`, so a click lands on the
-// .cell beneath them; anything else (the background, a black square) is ignored.
+// Routes a click on any board cell to handler(n, cell): the cell's number from its
+// `cell-{n}` id (docs/CROSS_TOOL_SPEC.md → "Engine bootstrap & structure"), and the cell
+// itself. One listener on the <svg> serves every cell, so building the board attaches no
+// behavior. Letters, numbers, circles and the chevron are `pointer-events: none`, so a
+// click lands on the .cell beneath them; anything else (the background, a black square)
+// is ignored.
 function setupCellClicks(svg, handler) {
   svg.addEventListener('click', e => {
     const cell = e.target.closest('.cell');
-    if (cell) handler(Number(cell.id.slice('cell-'.length)));
+    if (cell) handler(Number(cell.id.slice('cell-'.length)), cell);
   });
 }
 
@@ -830,35 +845,189 @@ function setupControls({
   };
 }
 
+// Whether the current layout is one view high rather than as tall as its content. The
+// layout CSS sets the custom property --fills-view: 1 (phone.css for the phone layout,
+// Crushword's base.css for its desktop fill layout), so CSS and script share one
+// definition and can't disagree about which layout is showing. Read live: it changes
+// when a resize crosses a layout's media query.
+function fillsView(win = window, root = win.document.documentElement) {
+  return win.getComputedStyle(root).getPropertyValue('--fills-view').trim() === '1';
+}
+
 // Posts the page height to an embedding parent whenever it changes
 // (docs/CROSS_TOOL_SPEC.md -> "Embedding — auto-sizing"); does nothing when the page
 // isn't framed or ResizeObserver is missing. Height isn't sensitive, so '*' is fine.
-// The phone layout adds `fill: true`: its view is one screen of the frame high, so the
-// frame can't take its height from the page and must be one screen of the host high.
-// DOM-coupled, tested via mocks.
+// A layout that fills its view (fillsView) adds `fill: true`: its view is one screen of
+// the frame high, so the frame can't take its height from the page and must be one
+// screen of the host high. Re-posts when `fill` changes even at the same height, since
+// a resize can switch layouts. DOM-coupled, tested via mocks.
 function setupEmbedResize({ win = window, root = document.documentElement, RO = win.ResizeObserver } = {}) {
   if (!win.parent || win.parent === win || !RO) return null;
-  let last = -1;
+  let last = -1, lastFill = false;
   const ro = new RO(() => {
     // The root's own box height, not scrollHeight: scrollHeight is never below the
     // iframe's viewport, so a page that shrank after the host sized the frame would read
     // as unchanged.
     const height = Math.ceil(root.getBoundingClientRect().height);
-    if (height === last) return;
+    const fill = fillsView(win, root);
+    if (height === last && fill === lastFill) return;
     last = height;
+    lastFill = fill;
     const msg = { type: 'varietypack:resize', height };
-    if (root.classList.contains(PHONE_CLASS)) msg.fill = true;
+    if (fill) msg.fill = true;
     win.parent.postMessage(msg, '*');
   });
   ro.observe(root);
   return ro;
 }
 
+// The switch tip: a solver who switches direction, mode or loop with the mouse is told
+// once that the period key does it too (docs/CROSS_TOOL_SPEC.md → "Period key —
+// direction/mode toggle").
+
+const SWITCH_TIP_PREF = 'vp:pref:usedSwitchKey';
+const SWITCH_TIP_GAP = 8;        // px between the tip and what it points at
+const SWITCH_TIP_MARGIN = 8;     // px between the tip and the window's edge
+const SWITCH_TIP_MS = 3000;      // how long it stays up
+const SWITCH_TIP_FADE_MS = 200;  // its fade out: .switch-tip's transition (shared/base.css)
+
+// Pure: decides whether a tip may show. claim() says yes at most once per page, and never
+// once the solver has switched with the "." key (noteKey, given that keydown), here or on
+// an earlier page: that is remembered in `storage` (boolPref), so unusable storage only
+// costs the memory. A keydown the page dispatched itself doesn't count: the phone view's
+// drawn switch key sends one, and pressing it teaches nothing about the "." key.
+function makeSwitchTipGate(storage) {
+  const pref = boolPref(SWITCH_TIP_PREF, false, storage);
+  let done = pref.load();
+  return {
+    claim() {
+      if (done) return false;
+      done = true;
+      return true;
+    },
+    noteKey(e) {
+      if (!e.isTrusted) return;
+      done = true;
+      pref.save(true);
+    },
+  };
+}
+
+// Pure: where the tip goes, in viewport coordinates, given the rects of its `target` and
+// of the `board` the target sits on (null for a target off the board, such as the
+// toggle), the tip's size, and the `viewport` it must stay in: its width, and the top and
+// bottom of the part nothing fixed covers. The tip goes below the target, or above it
+// when the target's center is in the board's bottom half, so it covers the board's
+// emptier side; it takes the other side when only that one fits. It is centered on the
+// target as far as the window allows; `arrowX`, from the tip's left edge, keeps the arrow
+// on the target's center either way.
+function switchTipPlacement({ target, board, tip, viewport }) {
+  const cx = target.left + target.width / 2;
+  const half = tip.width / 2;
+  const center = Math.min(Math.max(cx, SWITCH_TIP_MARGIN + half), viewport.width - SWITCH_TIP_MARGIN - half);
+  const left = center - half;
+
+  // Which side: the board's emptier one, unless only the other fits.
+  const belowTop = target.top + target.height + SWITCH_TIP_GAP;
+  const aboveTop = target.top - SWITCH_TIP_GAP - tip.height;
+  const fitsBelow = belowTop + tip.height <= viewport.bottom - SWITCH_TIP_MARGIN;
+  const fitsAbove = aboveTop >= viewport.top + SWITCH_TIP_MARGIN;
+  let above = !!board && target.top + target.height / 2 > board.top + board.height / 2;
+  if (above ? !fitsAbove && fitsBelow : !fitsBelow && fitsAbove) above = !above;
+
+  return { left, top: above ? aboveTop : belowTop, arrowX: cx - left, above };
+}
+
+// Browser-only: wires the switch tip. `what` ends its text ("… to switch inward /
+// outward"). Returns what an engine calls after a switch that changed something:
+// atCell(cell) after a click on the active cell, pointing at that cell; atToggle(toggle)
+// after a click on the other toggle option, beside the toggle; noteKey(e) with the "."
+// keydown that switched, which stops the tip as makeSwitchTipGate says. A tip shows only
+// for a click made with a mouse, as makeSwitchTipGate allows, never on a solved board
+// (`isSolved()`), where "." does nothing, and never in the phone view, whose drawn
+// keyboard has its own switch key. It leaves after SWITCH_TIP_MS, or at the next key or
+// press.
+//
+// The tip goes in the nearest positioned box around its target, so it scrolls with it
+// (Crushword's and Marching Bands' sticky grid box), or else in the page. It exists only
+// while it shows: no invisible node lingers over the board.
+function setupSwitchTip(what, { isSolved }) {
+  const gate = makeSwitchTipGate();
+  let tip = null, timer = null;
+
+  // Leaving: fade, then remove. A newer tip can't be one this removes.
+  function hide() {
+    if (!tip) return;
+    const el = tip;
+    tip = null;
+    clearTimeout(timer);
+    el.classList.remove('shown');
+    setTimeout(() => el.remove(), SWITCH_TIP_FADE_MS);
+  }
+
+  // What made the coming click: the pointer type of the press before it, or nothing
+  // after a key, since Space or Enter on a focused button clicks it too. A touch or pen
+  // user may have no "." key to learn.
+  let pointer = null;
+  document.addEventListener('keydown', () => { pointer = null; hide(); }, true);
+  document.addEventListener('pointerdown', e => { pointer = e.pointerType; hide(); }, true);
+
+  // The positioned box the tip goes in, and the viewport point its own origin is at. A
+  // cell's search starts above its <svg>, which can't hold HTML.
+  function holderOf(target) {
+    let el = (target.ownerSVGElement || target).parentElement;
+    for (; el && el !== document.body; el = el.parentElement) {
+      if (getComputedStyle(el).position !== 'static') {
+        const r = el.getBoundingClientRect();
+        return { el, x: r.left + el.clientLeft - el.scrollLeft, y: r.top + el.clientTop - el.scrollTop };
+      }
+    }
+    const r = document.documentElement.getBoundingClientRect();
+    return { el: document.body, x: r.left, y: r.top };
+  }
+
+  function show(target, board) {
+    if (pointer !== 'mouse' || isSolved() ||
+        document.documentElement.classList.contains(PHONE_CLASS)) return;
+    if (!gate.claim()) return;
+    const el = htmlEl('div', { class: 'switch-tip', 'aria-hidden': 'true' },
+      'Tip: press ', htmlEl('b', {}, '.'), ` (period) to switch ${what}`);
+    const holder = holderOf(target);
+    holder.el.append(el);
+    // The fixed active-clue bar, where a tool has one, covers the window's top.
+    const clueBar = document.getElementById('active-clue-bar');
+    const p = switchTipPlacement({
+      target: target.getBoundingClientRect(),
+      board: board ? board.getBoundingClientRect() : null,
+      tip: { width: el.offsetWidth, height: el.offsetHeight },
+      viewport: {
+        width: document.documentElement.clientWidth,
+        top: clueBar ? Math.max(0, clueBar.getBoundingClientRect().bottom) : 0,
+        bottom: document.documentElement.clientHeight,
+      },
+    });
+    el.style.left = (p.left - holder.x) + 'px';
+    el.style.top = (p.top - holder.y) + 'px';
+    el.style.setProperty('--arrow-x', p.arrowX + 'px');
+    el.classList.toggle('above', p.above);
+    el.classList.add('shown');   // after the layout read above, so the fade in runs
+    tip = el;
+    timer = setTimeout(hide, SWITCH_TIP_MS);
+  }
+
+  return {
+    atCell: cell => show(cell, cell.ownerSVGElement),
+    atToggle: toggle => show(toggle, null),
+    noteKey: e => gate.noteKey(e),
+  };
+}
+
 export {
   svgEl, htmlEl, setClueHtml, clueTextEl, onClueClick, renderByline, renderInstructions, setupArmedButton, setupRebusButton,
   setupPopupMenu, nextMenuItem, isKeyboardFocus, HELP_BTN_ID, MENU_BTN_ID,
-  scrollByKey, setupClueBar, scrollIntoViewBelow, storageKey, setupStorage, flashWrong, FLASH_WRONG_MS,
+  scrollByKey, setupClueBar, scrollIntoViewBelow, centerWithin, storageKey, setupStorage, flashWrong, FLASH_WRONG_MS,
   setupMarkLayer,
   setupKeydown, setupCellClicks, setupCongratsDialog, setupKeysOverlay, setupOptionsMenu,
-  menuToggle, boolPref, setupControls, setupHelpMenu, setupEmbedResize, PHONE_CLASS,
+  menuToggle, boolPref, setupControls, setupHelpMenu, setupEmbedResize, fillsView, PHONE_CLASS,
+  makeSwitchTipGate, switchTipPlacement, setupSwitchTip,
 };

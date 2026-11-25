@@ -32,7 +32,7 @@ function addBreak(cut, index, newEntry) {
 function orphanOf(entry, from) {
   if (!entry.clue.trim()) return null;   // a clue of only spaces is no clue (completeness agrees)
   const orphan = { id: entry.id, clue: entry.clue, from };
-  if (entry.displayAnswer !== undefined) orphan.displayAnswer = entry.displayAnswer;
+  if (entry.displayText !== undefined) orphan.displayText = entry.displayText;
   return orphan;
 }
 

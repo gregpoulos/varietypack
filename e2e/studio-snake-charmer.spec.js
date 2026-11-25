@@ -169,7 +169,7 @@ test('the selected and crossing clue rows are the two entries through the ring c
   await expect(page.locator('.clue-row.crossing')).toHaveAttribute('data-entry', '1');
 });
 
-test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacing field', async ({ page }) => {
+test('Tab walks clue to clue and the board follows; Shift+Tab reaches the display-text control', async ({ page, browserName }) => {
   await openFile(page, EXAMPLE);
   await showPhase(page, 'clues');
   const inputs = page.locator('.clue-row .clue-input');
@@ -178,8 +178,12 @@ test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacin
   await expect(inputs.nth(1)).toBeFocused();
   await expect(page.locator('.clue-row.on[data-entry="1"]')).toHaveCount(1);
   await page.keyboard.press('Shift+Tab');
-  await expect(page.locator('.clue-row.on[data-entry="1"] #entry-display')).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
+  // WebKit on macOS skips buttons when Tabbing (a system setting), so the closed
+  // "+ display text" is no stop there; WebKit on Linux stops on it.
+  if (!(browserName === 'webkit' && process.platform === 'darwin')) {
+    await expect(page.locator('.clue-row.on[data-entry="1"] [data-display-text]')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+  }
   await expect(inputs.nth(0)).toBeFocused();
   // The last clue's Tab leaves the list: no wrap, no trap.
   await expectTabLeavesClues(page, inputs.last());

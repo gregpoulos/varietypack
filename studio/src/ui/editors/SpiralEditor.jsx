@@ -2,7 +2,7 @@ import spiral from '../../model/kinds/spiral.js';
 import { formatCell } from '../../model/cells.js';
 import { useBoardEditing } from './useBoardEditing.js';
 import { boardHasFocus } from './useBoardInput.js';
-import { spacedAnswer } from './displayStatus.js';
+import { displayTextOf } from './displayStatus.js';
 import { SpiralBoard } from './SpiralBoard.jsx';
 import { ClueLists } from './ClueList.jsx';
 import { plural } from './plural.js';
@@ -69,7 +69,7 @@ export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillC
         active: mine && j === here,
         crossing: !mine && j === here,
       };
-      if (row.active) Object.assign(row, spacedAnswer(entry, idx.map(i => model.cells[i]), readsBackward(cutName)));
+      if (row.active) Object.assign(row, displayTextOf(entry, idx.map(i => model.cells[i]), readsBackward(cutName)));
       return row;
     });
   }
@@ -156,7 +156,7 @@ export function SpiralEditor({ dispatch, model, phase, focusRef, settings, fillC
             else select(ctx.cutName)(j, { focusBoard: false });
           }}
           onClue={(j, text, ctx) => exec('setClue', [ctx.cutName, j, text], `clue:${ctx.cutName}:${model.cuts[ctx.cutName].entries[j].id}`)}
-          onDisplay={(j, text, ctx) => exec('setDisplayAnswer', [ctx.cutName, j, text], `display:${ctx.cutName}:${model.cuts[ctx.cutName].entries[j].id}`)} />
+          onDisplay={(j, text, ctx) => exec('setDisplayText', [ctx.cutName, j, text], `display:${ctx.cutName}:${model.cuts[ctx.cutName].entries[j].id}`)} />
       )} />
   );
 }

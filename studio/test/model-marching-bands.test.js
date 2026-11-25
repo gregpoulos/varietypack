@@ -191,10 +191,10 @@ test('resize keeps circles still on the board and drops one on the new center', 
   assert.deepEqual(sevenCircled.circles, [2]);
 });
 
-test('other commands: setClue, setDisplayAnswer, toggleCircle, setHeader, attach and discard orphans', () => {
+test('other commands: setClue, setDisplayText, toggleCircle, setHeader, attach and discard orphans', () => {
   const { model } = imp();
   assert.equal(run(model, 'setClue', 'bands', 1, 3, 'new').bands[1].entries[3].clue, 'new');
-  assert.equal(run(model, 'setDisplayAnswer', 'rows', 0, 0, 'A-B').rows[0].entries[0].displayAnswer, 'A-B');
+  assert.equal(run(model, 'setDisplayText', 'rows', 0, 0, 'A-B').rows[0].entries[0].displayText, 'A-B');
   assert.deepEqual(run(run(model, 'toggleCircle', 6), 'toggleCircle', 6).circles, []);
   assert.deepEqual(run(model, 'toggleCircle', 13).circles, []);
   assert.equal(run(model, 'setHeader', 'author', 'Me').header.author, 'Me');

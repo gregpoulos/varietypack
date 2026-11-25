@@ -1,6 +1,11 @@
 // Snake Charmer's pure entry mapping and ring stepping. The engine imports it, and Node
 // requires it for tests.
 
+// The answers run round the ring twice, so their cells total LOOPS × the ring size. It
+// lives here, not in ringConstants.js, because the page engine imports this file and
+// every Node consumer can require it.
+const LOOPS = 2;
+
 // Derive the cell→entry mapping from entry lengths alone (sequential positional
 // assignment). entryAtCell[ringPos][loop] = entry index occupying that cell. The -1 fill
 // only marks a slot not yet written: entry lengths total loops × ring size (the validator
@@ -34,4 +39,4 @@ function prevRingPos(pos, total) {
   return (pos - 1 + total) % total;
 }
 
-export { buildEntryMaps, nextRingPos, prevRingPos };
+export { LOOPS, buildEntryMaps, nextRingPos, prevRingPos };

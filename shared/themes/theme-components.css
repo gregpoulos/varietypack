@@ -47,9 +47,10 @@ html.phone #clue-full {
 /* #menu-btn and #help-btn sit *within* #active-clue-bar's own band instead of floating
    below it as a separate row — no extra vertical space. Pure CSS calc() against the
    bar's min-height (base.css), not JS-measured: nothing has to re-measure it when the
-   bar or the viewport resizes. --corner-* are the buttons' measurements (base.css);
-   Marching Bands, with no bar, keeps the plain default `top`. The phone layout moves the
-   buttons into its top bar instead (phone.css). */
+   bar or the viewport resizes. --corner-* are the buttons' measurements (base.css). A
+   tool with no bar (Marching Bands, and Crushword outside the phone layout) keeps the
+   plain default `top`. The phone layout moves the buttons into its top bar instead
+   (phone.css). */
 .has-clue-bar #menu-btn,
 .has-clue-bar #help-btn { top: calc((var(--active-clue-bar-space) - var(--corner-btn)) / 2); }
 
@@ -61,7 +62,7 @@ html.phone #clue-full {
 
 /* Right gutter for the bar's own text now that #menu-btn shares its row: its width and
    inset, plus a gap to the text. Lives here rather than in base.css's shared
-   #active-clue-bar rule since only these three tools ever place the button there.
+   #active-clue-bar rule since only Snake Charmer and Spiral place the button there.
    A page with a help button (setupHelpMenu puts `has-help-btn` on <body>; a hashed
    build has none) also reserves its width and the gap between them. Same specificity as
    the rule above, so it follows it; the phone layer overrides both. */
@@ -98,6 +99,8 @@ a { color: var(--theme-color-link); }
 .clue-item.active-clue     { background: var(--theme-color-active-clue); }
 .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
 .clue-item.filled .clue-text { text-decoration: var(--theme-clue-filled-decoration); opacity: var(--theme-clue-filled-opacity); }
+
+#crossings h3 { color: var(--theme-color-muted); }
 
 .clue-section h2 {
   color:          var(--theme-color-text);
@@ -181,6 +184,21 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 .toggle-opt:not(:last-child)   { border-right: 1px solid var(--theme-color-btn2-border); }
 .toggle-opt.active             { background: var(--theme-color-btn-bg); color: var(--theme-color-btn-text); cursor: default; }
 .toggle-opt:not(.active):hover { background: var(--theme-color-btn2-hover); }
+
+/* Switch tip: the button colors, ringed (arrow included) in the page's color, so a tip
+   that crosses a block of the same dark color still stands apart from it. */
+.switch-tip {
+  --ring: var(--theme-color-bg);
+  background:    var(--theme-color-btn-bg);
+  color:         var(--theme-color-btn-text);
+  border-radius: var(--theme-control-radius);
+  filter: drop-shadow(2px 0 0 var(--ring)) drop-shadow(-2px 0 0 var(--ring))
+          drop-shadow(0 2px 0 var(--ring)) drop-shadow(0 -2px 0 var(--ring))
+          drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+.switch-tip::before       { border-bottom-color: var(--theme-color-btn-bg); }
+.switch-tip.above::before { border-bottom-color: transparent; border-top-color: var(--theme-color-btn-bg); }
+.switch-tip b             { font-size: 1.15em; }
 
 /* SVG cell states */
 .cell              { fill: var(--theme-color-cell-bg); stroke: var(--theme-color-cell-stroke); stroke-width: 0.5; }
@@ -505,12 +523,11 @@ html.phone .clue-item .list-cell.list-cursor.composing {
 /* Spiral */
 .tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
 .tool-spiral #direction-chevron { stroke-width: 0.9; }
-/* Crushword, and Marching Bands when stacked */
+/* Marching Bands when stacked */
 /* Opaque background is load-bearing, not cosmetic: .puzzle-center is
-   position:sticky over the clues (each tool's base.css), which scroll directly
+   position:sticky over the clues (its base.css), which scroll directly
    underneath it in the same horizontal space — without this, clue text
    would show through the sticky grid as it scrolls. */
-.tool-crushword .puzzle-center,
 .tool-marching-bands .puzzle-center { background: var(--theme-color-bg); }
 
 /* Crushword */

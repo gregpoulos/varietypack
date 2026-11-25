@@ -13,7 +13,7 @@
 //     orphans: [], nextId }
 const { findCoincidentStarts } = require('../../../../snake-charmer/src/validator');
 const { SHAPE_NAMES } = require('../../../../snake-charmer/src/layout');
-const { LOOPS } = require('../../../../snake-charmer/src/ringConstants');
+const { LOOPS } = require('../../../../snake-charmer/src/entryMaps.mjs');
 const { StructureError } = require('../errors');
 const { formatCell } = require('../cells');
 const { ranges, entryAt, addBreak, removeBreak, reanchor } = require('../starts');
@@ -253,7 +253,7 @@ const commands = {
 
   setClue: (model, j, text) => (hasEntry(model, j) ? withEntry(model, j, e => ({ ...e, clue: text })) : model),
 
-  setDisplayAnswer: (model, j, text) => (hasEntry(model, j) ? withEntry(model, j, e => displayPatch(e, text)) : model),
+  setDisplayText: (model, j, text) => (hasEntry(model, j) ? withEntry(model, j, e => displayPatch(e, text)) : model),
 
   toggleCircle(model, k) {
     if (!(k >= 0 && k < ringSize(model))) return model;

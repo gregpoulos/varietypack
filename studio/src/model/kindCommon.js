@@ -115,10 +115,10 @@ function commonCommands(mapEntries) {
   };
 }
 
-// Sets an entry's "answer with spacing"; a blank text removes it.
+// Sets an entry's "display text"; a blank text removes it.
 function displayPatch(entry, text) {
-  const { displayAnswer, ...rest } = entry;
-  return text === '' ? rest : { ...rest, displayAnswer: text };
+  const { displayText, ...rest } = entry;
+  return text === '' ? rest : { ...rest, displayText: text };
 }
 
 // One cut is sound when its starts are strictly increasing from 0 and below the total,

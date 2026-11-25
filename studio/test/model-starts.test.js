@@ -41,10 +41,10 @@ test('removeBreak: the left entry survives and a non-empty clue is orphaned', ()
   assert.deepEqual(orphan, { id: 'b', clue: 'B', from: 'inward 2' });
 });
 
-test('removeBreak: an empty clue leaves no orphan, and displayAnswer travels with the orphan', () => {
+test('removeBreak: an empty clue leaves no orphan, and displayText travels with the orphan', () => {
   assert.equal(removeBreak(cut([0, 3], ['a', 'b']), 3, 'x').orphan, null);
-  const c = { starts: [0, 3], entries: [E('a'), { id: 'b', clue: 'B', displayAnswer: 'LIE TO' }] };
-  assert.equal(removeBreak(c, 3, 'x').orphan.displayAnswer, 'LIE TO');
+  const c = { starts: [0, 3], entries: [E('a'), { id: 'b', clue: 'B', displayText: 'LIE TO' }] };
+  assert.equal(removeBreak(c, 3, 'x').orphan.displayText, 'LIE TO');
 });
 
 test('removeBreak: only an existing break above 0 can be removed', () => {

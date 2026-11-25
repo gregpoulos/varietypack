@@ -13,6 +13,10 @@
   .clue-columns  { display: grid; grid-template-columns: 1fr 1fr; max-width: none; }
   .clue-section  { break-inside: avoid; }
 
+  /* The crossings panel is a screen aid: the page prints the grid and two plain
+     columns. */
+  #crossings { display: none; }
+
   .cell-block { fill: #222; }
 
   .cell-caret { display: none; }

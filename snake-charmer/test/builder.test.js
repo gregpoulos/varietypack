@@ -14,12 +14,12 @@ const SAMPLE = path.join(__dirname, 'fixtures', 'double-turn-72.yaml');
 
 // ── buildHtml ─────────────────────────────────────────────────────────────────
 
-test('buildHtml: PUZZLE_DATA carries loops and ring, and omits cells (entry mapping derived at engine init)', () => {
+test('buildHtml: PUZZLE_DATA carries the ring and no loop count, and omits cells (entry mapping derived at engine init)', () => {
   const prepared = preparePuzzle(loadPuzzle(SAMPLE));
   const { ring } = ringFor(72, 'stadium');   // the fixture's ring size
   const data = puzzleDataOf(buildHtml(prepared, ring));
   assert.equal(data.cells, undefined);
-  assert.equal(data.loops, 2);
+  assert.equal(data.loops, undefined);
   assert.equal(data.ring.N, 72);
 });
 

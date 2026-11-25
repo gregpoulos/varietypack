@@ -226,7 +226,7 @@ test('Tab walks clue to clue, one stop per entry, and the board follows', async 
   await page.keyboard.press('Tab');
   await expect(inputs.nth(1)).toBeFocused();
   await expect(page.locator('.clue-row.on .clue-input')).toBeFocused();
-  // No spacing field in Crushword: Shift+Tab goes straight to the previous clue.
+  // No display-text field in Crushword: Shift+Tab goes straight to the previous clue.
   await page.keyboard.press('Shift+Tab');
   await expect(inputs.nth(0)).toBeFocused();
   await expect(page.locator('#entry-display')).toHaveCount(0);

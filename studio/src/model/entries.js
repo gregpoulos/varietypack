@@ -9,13 +9,13 @@ function newEntry(id) {
   return { id, clue: '', extra: {}, extraStyles: {} };
 }
 
-// → { id, clue, displayAnswer?, extra, extraStyles }
-//   displayAnswer: the author's text when it differs from the canonical form ('LIE TO')
+// → { id, clue, displayText?, extra, extraStyles }
+//   displayText: the author's text when it differs from the canonical form ('LIE TO')
 //   extra:         keys other than clue/answer/styles, in source order
 //   extraStyles:   styles that aren't cell-scoped (those become model.circles)
 function entryFromYaml(yamlEntry, id, cells) {
   const entry = { id, clue: yamlEntry.clue ?? '', extra: {}, extraStyles: {} };
-  if (yamlEntry.answer !== formatAnswer(cells)) entry.displayAnswer = yamlEntry.answer;
+  if (yamlEntry.answer !== formatAnswer(cells)) entry.displayText = yamlEntry.answer;
   for (const [k, v] of Object.entries(yamlEntry)) {
     if (k !== 'clue' && k !== 'answer' && k !== 'styles') entry.extra[k] = v;
   }
@@ -29,7 +29,7 @@ function entryFromYaml(yamlEntry, id, cells) {
 // completeness first).
 function entryToYaml(entry, cells, circled, readsBackward) {
   const canonical = formatAnswer(cells);
-  const shown = entry.displayAnswer;
+  const shown = entry.displayText;
   const answer = shown !== undefined && sameCells(parseAnswerCells(shown).cells || [], cells, readsBackward) ? shown : canonical;
   const out = { clue: entry.clue, answer };
   const styles = {};

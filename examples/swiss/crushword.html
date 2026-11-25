@@ -35,10 +35,9 @@ body { line-height: 1.4; }
 
 /* Tools with a fixed active-clue bar reserve its height as body padding, and expose it
    as --active-clue-bar-space for anything positioned against the bar (#menu-btn and
-   #menu-panel in theme-components.css, Crushword's sticky grid). The bar's min-height
-   fills that space, and its clue text can never wrap (nowrap + ellipsis), so this is an
-   exact height, not a floor — which is what makes calc()-only positioning against it
-   exact. */
+   #menu-panel in theme-components.css). The bar's min-height fills that space, and its
+   clue text can never wrap (nowrap + ellipsis), so this is an exact height, not a
+   floor — which is what makes calc()-only positioning against it exact. */
 body.has-clue-bar {
   --active-clue-bar-space: 56px;
   padding-top: var(--active-clue-bar-space);
@@ -94,6 +93,13 @@ body.has-clue-bar {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 6px;
+}
+
+/* Crushword's crossings panel heading, a small label like the list headings above. */
+#crossings h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .clue-section :is(ul, ol) { list-style: none; }
@@ -186,6 +192,33 @@ button:disabled { opacity: 0.4; cursor: default; }
 .puzzle-toggle { display: flex; overflow: hidden; }
 .puzzle-toggle .toggle-opt { border: none; flex: 1; white-space: nowrap; }
 .toggle-opt { user-select: none; }
+
+/* The switch tip (setupSwitchTip, shared/engine-chrome.mjs), placed by script. Its arrow
+   sits --arrow-x from its left edge, on the side facing what it points at: the top, or
+   the bottom when .above. Below the fixed corner buttons. */
+.switch-tip {
+  position: absolute;
+  z-index: 40;
+  white-space: nowrap;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;   /* SWITCH_TIP_FADE_MS */
+}
+.switch-tip.shown { opacity: 1; }
+.switch-tip::before {
+  content: '';
+  position: absolute;
+  left: var(--arrow-x);
+  bottom: 100%;
+  margin-left: -6px;
+  border: 6px solid transparent;
+}
+.switch-tip.above::before { bottom: auto; top: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .switch-tip { transition: none; }
+}
 
 #keys-btn,
 #menu-btn {
@@ -306,10 +339,24 @@ html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wron
 
 }
 @layer tool {
-/* Grid on top, clues below — a flanking left/right layout doesn't work once
-   cell width scales with maxCellLetters: a puzzle with any rebus capacity
-   produces a grid too wide to sit beside two clue columns without one side
-   getting squeezed. */
+/* Two layouts, switched by width alone (the media query below):
+
+   Fill layout (a wide window): .puzzle-body is one window high. The grid sits on top
+   and below it three columns share the rest: the crossings panel, Across and Down, each
+   scrolling its own list, so nothing on the page moves while solving. The engine scrolls
+   the page once, when solving starts, to put .puzzle-body at the top of the window, and
+   follows the active clue in each pane (centerWithin).
+
+   Stacked fallback (a narrow window): grid, crossings panel, Across, Down in a normal
+   page, nothing sticky, and nothing scrolls the page to follow a clue: following a clue
+   far down a stacked list would carry the grid off screen while the solver types.
+
+   A grid cap (44dvh) leaves the clue panes a usable height; the minimum body height
+   (560px) keeps that true in a short window, which scrolls by the difference rather
+   than squeezing the panes. The phone layout (shared/phone.css) hides .puzzle-body and
+   shows the clue bar instead. */
+
+/* Stacked fallback, and the base the fill layout overrides. */
 .puzzle-body {
   display: flex;
   flex-direction: column;
@@ -317,23 +364,51 @@ html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wron
   gap: 24px;
 }
 
-/* Sticky, like Marching Bands' grid column when wide, but over the clues rather
-   than beside them — hence the opaque background (theme-components.css). It sticks
-   flush below the active-clue bar, with the breathing room as padding-top
-   rather than extra `top`: a gap outside the box would let scrolled clue text
-   show through. */
 .puzzle-center {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  position: sticky;
-  top: var(--active-clue-bar-space);
   padding-top: 16px;
-  z-index: 1;
 }
 
 #puzzle-svg { display: block; overflow: visible; max-width: 100%; height: auto; }
+
+/* The crossings panel. Theme tokens only, and no type styles: those belong in shared/
+   (toolTemplates.test.js), so the headings take the browser's own weights. */
+#crossings {
+  width: 100%;
+  max-width: 700px;
+  border-radius: var(--theme-clue-radius);
+  background: color-mix(in srgb, var(--theme-color-active-clue) 28%, var(--theme-color-bg));
+}
+.cx-head { padding: 10px 12px 4px; }
+.cx-pattern { display: flex; flex-wrap: wrap; gap: 3px; margin: 6px 0; }
+.cx-box {
+  box-sizing: border-box;
+  min-width: 1.7em;
+  height: 1.7em;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--theme-color-cell-stroke);
+  background: var(--theme-color-cell-bg);
+  color: var(--theme-color-cell-text);
+}
+.cx-box.cx-here { border-color: var(--theme-color-active-stroke); outline: 1px solid var(--theme-color-active-stroke); }
+#crossings h3 { margin: 8px 0 2px; }
+.cx-rows { list-style: none; margin: 0; padding: 0 6px 6px; }
+.cx-row { padding: 6px; border-radius: var(--theme-clue-radius); cursor: pointer; }
+.cx-row:hover { background: var(--theme-color-clue-hover); }
+.cx-row.secondary-entry { background: var(--theme-color-secondary-entry); }
+.cx-row.filled .clue-text {
+  text-decoration: var(--theme-clue-filled-decoration);
+  opacity: var(--theme-clue-filled-opacity);
+}
+.cx-row.cx-none { cursor: default; opacity: 0.55; }
+.cx-row.cx-none:hover { background: none; }
+.cx-row.cx-cursor.cx-none { outline: 1px solid var(--theme-color-soft-border); }
 
 .cell-num    { font-size: 8px; }
 .cell-letter { font-size: 14px; dominant-baseline: central; }
@@ -348,6 +423,79 @@ html.phone .list-cell.flash-wrong { animation: flash-wrong-cell var(--flash-wron
 
 @media (max-width: 600px) {
   .clue-columns { grid-template-columns: 1fr; }
+}
+
+/* The stacked fallback is an ordinary scrolling page, so the fixed ☰ and help buttons
+   would float over the grid's top-right cells once it scrolls to the top of the window.
+   They scroll with the page instead (the Escape route still brings them into view). The
+   fill layout, where the page holds still, puts them back and leaves room for them. */
+html:not(.phone) #menu-btn,
+html:not(.phone) #help-btn { position: absolute; }
+
+/* The fill layout switches on width only, never height: a framed page's height comes
+   from its own resize messages, so a height condition would loop (a short frame gets the
+   fallback and posts a tall height, the host grows the frame, the fill layout posts
+   `fill: true`, the host shrinks the frame to one screen, and the fallback returns).
+   Width depends on nothing the page reports, so the choice is stable in a frame. `screen`
+   keeps it out of print, where landscape Letter is wider than 900 CSS px
+   (docs/CROSS_TOOL_SPEC.md → "Embedding — auto-sizing"). `--fills-view` tells the
+   engine and setupEmbedResize which layout is showing (fillsView), so CSS and script
+   share this one threshold. */
+@media screen and (min-width: 900px) {
+  html:not(.phone) { --fills-view: 1; }
+  html:not(.phone) #menu-btn,
+  html:not(.phone) #help-btn { position: fixed; }
+
+  html:not(.phone) .puzzle-body {
+    box-sizing: border-box;
+    height: max(100dvh, 560px);
+    padding-top: 12px;
+    display: grid;
+    grid-template-columns: minmax(300px, 1.2fr) 2fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "grid grid" "crossings clues";
+    gap: 12px 32px;
+    align-items: stretch;
+  }
+
+  /* Left and right room for the fixed ☰ and help buttons, which float over the page's
+     top-right corner, so they never cover a cell. The SVG is capped by height while
+     keeping its aspect ratio: it carries width/height attributes, so a bare max-height
+     would cap only the height and letterbox the drawing in a full-width box. */
+  html:not(.phone) .puzzle-center {
+    grid-area: grid;
+    align-items: stretch;
+    padding-top: 0;
+    padding-inline: calc(var(--corner-btn-2) + var(--corner-btn));
+  }
+  html:not(.phone) #puzzle-svg {
+    width: min(100%, calc(44dvh * var(--grid-aspect)));
+    height: auto;
+    max-width: none;
+    margin-inline: auto;
+  }
+
+  html:not(.phone) #crossings {
+    grid-area: crossings;
+    max-width: none;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  html:not(.phone) .cx-rows { flex: 1; min-height: 0; overflow-y: auto; }
+
+  html:not(.phone) .clue-columns {
+    grid-area: clues;
+    max-width: none;
+    min-height: 0;
+  }
+  /* The list scrolls, not the section, so the shared heading stays put above it. */
+  html:not(.phone) .clue-section { min-height: 0; display: flex; flex-direction: column; }
+  html:not(.phone) .clue-section ul { flex: 1; min-height: 0; overflow-y: auto; }
+  /* Room under the last item for the fixed ? button, which the page can't scroll
+     clear of. */
+  html:not(.phone) .clue-section ul,
+  html:not(.phone) .cx-rows { padding-bottom: calc(var(--corner-btn) + var(--corner-inset)); }
 }
 
 }
@@ -588,9 +736,10 @@ html.phone #clue-full {
 /* #menu-btn and #help-btn sit *within* #active-clue-bar's own band instead of floating
    below it as a separate row — no extra vertical space. Pure CSS calc() against the
    bar's min-height (base.css), not JS-measured: nothing has to re-measure it when the
-   bar or the viewport resizes. --corner-* are the buttons' measurements (base.css);
-   Marching Bands, with no bar, keeps the plain default `top`. The phone layout moves the
-   buttons into its top bar instead (phone.css). */
+   bar or the viewport resizes. --corner-* are the buttons' measurements (base.css). A
+   tool with no bar (Marching Bands, and Crushword outside the phone layout) keeps the
+   plain default `top`. The phone layout moves the buttons into its top bar instead
+   (phone.css). */
 .has-clue-bar #menu-btn,
 .has-clue-bar #help-btn { top: calc((var(--active-clue-bar-space) - var(--corner-btn)) / 2); }
 
@@ -602,7 +751,7 @@ html.phone #clue-full {
 
 /* Right gutter for the bar's own text now that #menu-btn shares its row: its width and
    inset, plus a gap to the text. Lives here rather than in base.css's shared
-   #active-clue-bar rule since only these three tools ever place the button there.
+   #active-clue-bar rule since only Snake Charmer and Spiral place the button there.
    A page with a help button (setupHelpMenu puts `has-help-btn` on <body>; a hashed
    build has none) also reserves its width and the gap between them. Same specificity as
    the rule above, so it follows it; the phone layer overrides both. */
@@ -639,6 +788,8 @@ a { color: var(--theme-color-link); }
 .clue-item.active-clue     { background: var(--theme-color-active-clue); }
 .clue-item.secondary-entry { background: var(--theme-color-secondary-entry); }
 .clue-item.filled .clue-text { text-decoration: var(--theme-clue-filled-decoration); opacity: var(--theme-clue-filled-opacity); }
+
+#crossings h3 { color: var(--theme-color-muted); }
 
 .clue-section h2 {
   color:          var(--theme-color-text);
@@ -722,6 +873,21 @@ html.phone #clear-btn.armed   { color: var(--theme-color-danger); }
 .toggle-opt:not(:last-child)   { border-right: 1px solid var(--theme-color-btn2-border); }
 .toggle-opt.active             { background: var(--theme-color-btn-bg); color: var(--theme-color-btn-text); cursor: default; }
 .toggle-opt:not(.active):hover { background: var(--theme-color-btn2-hover); }
+
+/* Switch tip: the button colors, ringed (arrow included) in the page's color, so a tip
+   that crosses a block of the same dark color still stands apart from it. */
+.switch-tip {
+  --ring: var(--theme-color-bg);
+  background:    var(--theme-color-btn-bg);
+  color:         var(--theme-color-btn-text);
+  border-radius: var(--theme-control-radius);
+  filter: drop-shadow(2px 0 0 var(--ring)) drop-shadow(-2px 0 0 var(--ring))
+          drop-shadow(0 2px 0 var(--ring)) drop-shadow(0 -2px 0 var(--ring))
+          drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+.switch-tip::before       { border-bottom-color: var(--theme-color-btn-bg); }
+.switch-tip.above::before { border-bottom-color: transparent; border-top-color: var(--theme-color-btn-bg); }
+.switch-tip b             { font-size: 1.15em; }
 
 /* SVG cell states */
 .cell              { fill: var(--theme-color-cell-bg); stroke: var(--theme-color-cell-stroke); stroke-width: 0.5; }
@@ -1046,12 +1212,11 @@ html.phone .clue-item .list-cell.list-cursor.composing {
 /* Spiral */
 .tool-spiral #center-curl       { fill: none; stroke: var(--theme-color-curl); stroke-width: 1.4; stroke-linecap: round; }
 .tool-spiral #direction-chevron { stroke-width: 0.9; }
-/* Crushword, and Marching Bands when stacked */
+/* Marching Bands when stacked */
 /* Opaque background is load-bearing, not cosmetic: .puzzle-center is
-   position:sticky over the clues (each tool's base.css), which scroll directly
+   position:sticky over the clues (its base.css), which scroll directly
    underneath it in the same horizontal space — without this, clue text
    would show through the sticky grid as it scrolls. */
-.tool-crushword .puzzle-center,
 .tool-marching-bands .puzzle-center { background: var(--theme-color-bg); }
 
 /* Crushword */
@@ -1071,12 +1236,18 @@ html.phone .clue-item .list-cell.list-cursor.composing {
    phone layout. */
 
 /* Everything the phone layout shows has moved out of .puzzle-body. What's left includes
-   Crushword's sticky, opaque .puzzle-center, which would otherwise float empty over the
-   page. #controls goes with it, holding only the desktop toggle by now. */
+   the grid's box (Marching Bands' sticky, opaque .puzzle-center), which would otherwise
+   float empty over the page. #controls goes with it, holding only the desktop toggle by
+   now. */
 html.phone .puzzle-body,
 html.phone #keys-btn { display: none; }
 
 html.phone body.has-clue-bar { padding-top: 0; }
+
+/* The phone view is one screen high however tall its frame is. setupEmbedResize reads
+   this marker (fillsView) to ask an embedding host for a screen-high frame
+   (docs/CROSS_TOOL_SPEC.md → "Embedding — auto-sizing"). */
+html.phone { --fills-view: 1; }
 
 /* The view and its keyboard run edge to edge, with nothing above them on screen: the
    top bar and the Clues screen show the header and instructions (setupPhoneLayout).
@@ -1531,6 +1702,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
   #help-btn,
   #help-panel,
   #done-wrong,
+  .switch-tip,
   #direction-chevron,
   .solve-top,
   #solve-bar,
@@ -1593,6 +1765,10 @@ html.phone .kb-spacer { flex: 7 1 0; }
   .clue-columns  { display: grid; grid-template-columns: 1fr 1fr; max-width: none; }
   .clue-section  { break-inside: avoid; }
 
+  /* The crossings panel is a screen aid: the page prints the grid and two plain
+     columns. */
+  #crossings { display: none; }
+
   .cell-block { fill: #222; }
 
   .cell-caret { display: none; }
@@ -1601,8 +1777,10 @@ html.phone .kb-spacer { flex: 7 1 0; }
 }
 </style>
 </head>
-<body class="tool-crushword has-clue-bar">
-  <div id="active-clue-bar">
+<body class="tool-crushword">
+  <!-- Shown only in the phone layout (setupPhoneLayout un-hides it); the desktop layout
+       has the crossings panel instead. -->
+  <div id="active-clue-bar" hidden>
     <div class="active-clue-row" id="active-clue-primary">
       <span class="active-clue-dir"></span>
       <span class="active-clue-num"></span>
@@ -1625,6 +1803,10 @@ html.phone .kb-spacer { flex: 7 1 0; }
         <svg id="puzzle-svg" xmlns="http://www.w3.org/2000/svg"></svg>
         <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
       </div>
+      <section id="crossings" aria-label="Crossing clues" hidden>
+        <div class="cx-head"></div>
+        <ol class="cx-rows"></ol>
+      </section>
       <div class="clue-columns">
         <div class="clue-section clue-section-across">
           <h2>Across</h2>
@@ -2896,12 +3078,12 @@ html.phone .kb-spacer { flex: 7 1 0; }
     };
   }
   var PHONE_CLASS = "phone";
-  function scrollIntoViewBelow(clue, pinned) {
-    if (document.documentElement.classList.contains(PHONE_CLASS)) return;
-    const box = pinned.getBoundingClientRect(), r = clue.getBoundingClientRect();
-    const over = box.left < r.right && r.left < box.right;
-    document.documentElement.style.scrollPaddingTop = over ? parseFloat(getComputedStyle(pinned).top) + box.height + "px" : "";
-    clue.scrollIntoView({ block: "nearest" });
+  function centerWithin(container, el, win = window) {
+    const box = container.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const top = container.scrollTop + (r.top - box.top) - (container.clientHeight - r.height) / 2;
+    if (Math.abs(top - container.scrollTop) <= 1) return;
+    const reduce = win.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    container.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
   }
   function storageKey(prefix, data) {
     return "vp:" + prefix + ":" + data.boardHash;
@@ -3022,7 +3204,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
   function setupCellClicks(svg, handler) {
     svg.addEventListener("click", (e) => {
       const cell = e.target.closest(".cell");
-      if (cell) handler(Number(cell.id.slice("cell-".length)));
+      if (cell) handler(Number(cell.id.slice("cell-".length)), cell);
     });
   }
   function formatMs(ms) {
@@ -3394,19 +3576,126 @@ html.phone .kb-spacer { flex: 7 1 0; }
       helpMenu
     };
   }
+  function fillsView(win = window, root = win.document.documentElement) {
+    return win.getComputedStyle(root).getPropertyValue("--fills-view").trim() === "1";
+  }
   function setupEmbedResize({ win = window, root = document.documentElement, RO = win.ResizeObserver } = {}) {
     if (!win.parent || win.parent === win || !RO) return null;
-    let last = -1;
+    let last = -1, lastFill = false;
     const ro = new RO(() => {
       const height = Math.ceil(root.getBoundingClientRect().height);
-      if (height === last) return;
+      const fill = fillsView(win, root);
+      if (height === last && fill === lastFill) return;
       last = height;
+      lastFill = fill;
       const msg = { type: "varietypack:resize", height };
-      if (root.classList.contains(PHONE_CLASS)) msg.fill = true;
+      if (fill) msg.fill = true;
       win.parent.postMessage(msg, "*");
     });
     ro.observe(root);
     return ro;
+  }
+  var SWITCH_TIP_PREF = "vp:pref:usedSwitchKey";
+  var SWITCH_TIP_GAP = 8;
+  var SWITCH_TIP_MARGIN = 8;
+  var SWITCH_TIP_MS = 3e3;
+  var SWITCH_TIP_FADE_MS = 200;
+  function makeSwitchTipGate(storage) {
+    const pref = boolPref(SWITCH_TIP_PREF, false, storage);
+    let done = pref.load();
+    return {
+      claim() {
+        if (done) return false;
+        done = true;
+        return true;
+      },
+      noteKey(e) {
+        if (!e.isTrusted) return;
+        done = true;
+        pref.save(true);
+      }
+    };
+  }
+  function switchTipPlacement({ target, board, tip, viewport }) {
+    const cx = target.left + target.width / 2;
+    const half = tip.width / 2;
+    const center = Math.min(Math.max(cx, SWITCH_TIP_MARGIN + half), viewport.width - SWITCH_TIP_MARGIN - half);
+    const left = center - half;
+    const belowTop = target.top + target.height + SWITCH_TIP_GAP;
+    const aboveTop = target.top - SWITCH_TIP_GAP - tip.height;
+    const fitsBelow = belowTop + tip.height <= viewport.bottom - SWITCH_TIP_MARGIN;
+    const fitsAbove = aboveTop >= viewport.top + SWITCH_TIP_MARGIN;
+    let above = !!board && target.top + target.height / 2 > board.top + board.height / 2;
+    if (above ? !fitsAbove && fitsBelow : !fitsBelow && fitsAbove) above = !above;
+    return { left, top: above ? aboveTop : belowTop, arrowX: cx - left, above };
+  }
+  function setupSwitchTip(what, { isSolved }) {
+    const gate = makeSwitchTipGate();
+    let tip = null, timer = null;
+    function hide() {
+      if (!tip) return;
+      const el = tip;
+      tip = null;
+      clearTimeout(timer);
+      el.classList.remove("shown");
+      setTimeout(() => el.remove(), SWITCH_TIP_FADE_MS);
+    }
+    let pointer = null;
+    document.addEventListener("keydown", () => {
+      pointer = null;
+      hide();
+    }, true);
+    document.addEventListener("pointerdown", (e) => {
+      pointer = e.pointerType;
+      hide();
+    }, true);
+    function holderOf(target) {
+      let el = (target.ownerSVGElement || target).parentElement;
+      for (; el && el !== document.body; el = el.parentElement) {
+        if (getComputedStyle(el).position !== "static") {
+          const r2 = el.getBoundingClientRect();
+          return { el, x: r2.left + el.clientLeft - el.scrollLeft, y: r2.top + el.clientTop - el.scrollTop };
+        }
+      }
+      const r = document.documentElement.getBoundingClientRect();
+      return { el: document.body, x: r.left, y: r.top };
+    }
+    function show(target, board) {
+      if (pointer !== "mouse" || isSolved() || document.documentElement.classList.contains(PHONE_CLASS)) return;
+      if (!gate.claim()) return;
+      const el = htmlEl(
+        "div",
+        { class: "switch-tip", "aria-hidden": "true" },
+        "Tip: press ",
+        htmlEl("b", {}, "."),
+        ` (period) to switch ${what}`
+      );
+      const holder = holderOf(target);
+      holder.el.append(el);
+      const clueBar = document.getElementById("active-clue-bar");
+      const p = switchTipPlacement({
+        target: target.getBoundingClientRect(),
+        board: board ? board.getBoundingClientRect() : null,
+        tip: { width: el.offsetWidth, height: el.offsetHeight },
+        viewport: {
+          width: document.documentElement.clientWidth,
+          top: clueBar ? Math.max(0, clueBar.getBoundingClientRect().bottom) : 0,
+          bottom: document.documentElement.clientHeight
+        }
+      });
+      el.style.left = p.left - holder.x + "px";
+      el.style.top = p.top - holder.y + "px";
+      el.style.setProperty("--arrow-x", p.arrowX + "px");
+      el.classList.toggle("above", p.above);
+      el.classList.add("shown");
+      tip = el;
+      timer = setTimeout(hide, SWITCH_TIP_MS);
+    }
+    return {
+      atCell: (cell) => show(cell, cell.ownerSVGElement),
+      atToggle: (toggle) => show(toggle, null),
+      noteKey: (e) => gate.noteKey(e)
+    };
   }
 
   // shared/svg-zoom-gestures.mjs
@@ -4192,6 +4481,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       }
     });
     const barRow = htmlEl("div", { id: "solve-bar" });
+    clueBar.el.hidden = false;
     if (ownSteps) {
       barRow.append(clueBar.el);
     } else {
@@ -4487,6 +4777,19 @@ html.phone .kb-spacer { flex: 7 1 0; }
     return numbering;
   }
 
+  // crushword/src/crossings.mjs
+  function crossingRows(maps, cell, dir) {
+    const here = maps[dir];
+    const other = maps[dir === "across" ? "down" : "across"];
+    const num = here.at[cell].num;
+    const cells = here.cellsOf[num];
+    const rows = cells.map((c) => {
+      const x = other.at[c];
+      return { cell: c, crossing: x ? { num: x.num, cells: other.cellsOf[x.num] } : null };
+    });
+    return { num, cells, rows };
+  }
+
   // crushword/src/typing.mjs
   function buildEntryMaps(grid) {
     const cols = grid[0].length;
@@ -4541,6 +4844,19 @@ html.phone .kb-spacer { flex: 7 1 0; }
   }
 
   // crushword/src/template/engine.js
+  var SOLVING_KEYS = /* @__PURE__ */ new Set([
+    ".",
+    "Tab",
+    "Enter",
+    "Backspace",
+    " ",
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowUp",
+    "ArrowDown",
+    "PageUp",
+    "PageDown"
+  ]);
   function init() {
     const data = window.PUZZLE_DATA;
     const grid = data.grid;
@@ -4648,10 +4964,10 @@ html.phone .kb-spacer { flex: 7 1 0; }
     }
     function toggleDirection() {
       const other = DIRS[direction].opposite;
-      if (entryInfo(activeCell, other)) {
-        direction = other;
-        focusCell(activeCell, cursorPos, true);
-      }
+      if (!entryInfo(activeCell, other)) return false;
+      direction = other;
+      focusCell(activeCell, cursorPos, true);
+      return true;
     }
     function focusCell(n, pos, keepDesiredCol) {
       composer.commitIfMoved(n);
@@ -4684,13 +5000,47 @@ html.phone .kb-spacer { flex: 7 1 0; }
     function moveVertical(dr, key) {
       const t = arrowTarget(grid, activeCell, dr, 0);
       if (!t) {
-        scrollByKey(key);
+        if (!fillLayout()) scrollByKey(key);
         return;
       }
       direction = "down";
       focusCell(t, Math.min(desiredCol, getCellLetter(t).length), true);
     }
-    let lastScrolled = null;
+    function fillLayout() {
+      return !phone && fillsView();
+    }
+    const followedItem = { across: null, down: null };
+    let pageAligned = false;
+    let cxCursorRow = null;
+    function forgetFillLayout() {
+      followedItem.across = followedItem.down = null;
+      pageAligned = false;
+      cxCursorRow = null;
+    }
+    window.addEventListener("resize", () => {
+      if (!fillLayout()) forgetFillLayout();
+    });
+    function followClues(activeItem, crossingItem) {
+      if (!fillLayout()) {
+        forgetFillLayout();
+        return;
+      }
+      for (const dir of Object.keys(DIRS)) {
+        const item = dir === direction ? activeItem : crossingItem;
+        if (!item || item === followedItem[dir]) continue;
+        followedItem[dir] = item;
+        centerWithin(item.parentElement, item);
+      }
+    }
+    function alignPageOnce() {
+      if (!phone && !fillLayout()) {
+        svg.scrollIntoView({ block: "nearest", behavior: "auto" });
+        return;
+      }
+      if (pageAligned || !fillLayout()) return;
+      pageAligned = true;
+      window.scrollBy({ top: document.querySelector(".puzzle-body").getBoundingClientRect().top, behavior: "auto" });
+    }
     function syncUI() {
       for (const n of CELL_IDS) {
         cellRects[n].classList.remove("active-entry", "active-cell");
@@ -4712,13 +5062,12 @@ html.phone .kb-spacer { flex: 7 1 0; }
       const activeItems = DIRS[direction].clueItems;
       const activeItem = activeItems[activeInfo.num];
       activeItem.classList.add("active-clue");
-      if (activeItem !== lastScrolled) {
-        lastScrolled = activeItem;
-        scrollIntoViewBelow(activeItem, puzzleCenter);
-      }
       const otherDir = DIRS[direction].opposite;
       const crossing = crossingInfo(activeCell);
-      if (crossing) DIRS[otherDir].clueItems[crossing.num].classList.add("secondary-entry");
+      const crossingItem = crossing ? DIRS[otherDir].clueItems[crossing.num] : null;
+      if (crossingItem) crossingItem.classList.add("secondary-entry");
+      followClues(activeItem, crossingItem);
+      renderCrossings();
       if (phone) phone.fillList.sync(activeCell, activeItem, cursorPos);
       if (phone) phone.follow(activeContextCells(), activeCell, getCellLetter(activeCell));
       clueBar.show(
@@ -4753,6 +5102,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     svg.setAttribute("width", svgWidth);
     svg.setAttribute("height", svgHeight);
     svg.setAttribute("viewBox", `0 0 ${svgWidth} ${svgHeight}`);
+    svg.style.setProperty("--grid-aspect", svgWidth / svgHeight);
     const cellsLayer = svgEl("g", { id: "cells-layer" });
     const circlesLayer = svgEl("g", { id: "circles-layer" });
     const flashLayer = svgEl("g", { id: "flash-layer" });
@@ -4837,10 +5187,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
           htmlEl("span", { class: "clue-num" }, num + "."),
           clueTextEl(entriesObj[num].clue)
         );
-        onClueClick(li, () => {
-          direction = dir;
-          focusCell(DIRS[dir].cellsOf[num][0]);
-        });
+        onClueClick(li, () => goToEntry(dir, num));
         listEl.appendChild(li);
         itemStore[num] = li;
         fillItems.push({ li, dir, cells: entryCellsOf(num, dir) });
@@ -4848,12 +5195,94 @@ html.phone .kb-spacer { flex: 7 1 0; }
     }
     buildClueList(data.across, maps.across.order, acrossCluesList, acrossClueItems, "across");
     buildClueList(data.down, maps.down.order, downCluesList, downClueItems, "down");
+    function goToEntry(dir, num) {
+      alignPageOnce();
+      direction = dir;
+      focusCell(DIRS[dir].cellsOf[num][0]);
+    }
+    const crossingsEl = document.getElementById("crossings");
+    const cxHead = crossingsEl.querySelector(".cx-head");
+    const cxRowsEl = crossingsEl.querySelector(".cx-rows");
+    let cx = null;
+    function cxPattern(cells2) {
+      const el = htmlEl("div", { class: "cx-pattern" });
+      const boxes = cells2.map((cell) => {
+        const box = htmlEl("span", { class: "cx-box" });
+        el.append(box);
+        return { cell, box };
+      });
+      return { el, boxes };
+    }
+    function buildCrossings(model, dir) {
+      const otherDir = DIRS[dir].opposite;
+      const headPattern = cxPattern(model.cells);
+      cxHead.replaceChildren(
+        htmlEl(
+          "div",
+          { class: "cx-title" },
+          htmlEl("strong", { class: "cx-dir" }, DIRS[dir].label),
+          " ",
+          htmlEl("strong", { class: "cx-num" }, model.num + "."),
+          " ",
+          clueTextEl(data[dir][model.num].clue)
+        ),
+        headPattern.el,
+        htmlEl("h3", {}, dir === "across" ? "Crossings, left to right" : "Crossings, top to bottom")
+      );
+      const rows = model.rows.map(({ cell, crossing }) => {
+        if (!crossing) {
+          const li2 = htmlEl("li", { class: "cx-row cx-none" }, `no ${DIRS[otherDir].label} entry`);
+          return { cell, crossing, li: li2, boxes: [] };
+        }
+        const pattern = cxPattern(crossing.cells);
+        const li = htmlEl(
+          "li",
+          { class: "cx-row", "data-num": crossing.num },
+          htmlEl("strong", { class: "cx-num" }, crossing.num + "."),
+          " ",
+          clueTextEl(data[otherDir][crossing.num].clue),
+          pattern.el
+        );
+        onClueClick(li, () => goToEntry(otherDir, crossing.num));
+        return { cell, crossing, li, boxes: pattern.boxes };
+      });
+      cxRowsEl.replaceChildren(...rows.map((r) => r.li));
+      cxRowsEl.scrollTop = 0;
+      cxCursorRow = null;
+      cx = { key: dir + model.num, headBoxes: headPattern.boxes, rows };
+    }
+    function updateCrossings() {
+      const show = (boxes, here) => boxes.forEach(({ cell, box }) => {
+        box.textContent = getCellLetter(cell).toUpperCase();
+        box.classList.toggle("cx-here", cell === here);
+      });
+      show(cx.headBoxes, activeCell);
+      for (const row of cx.rows) {
+        const atCursor = row.cell === activeCell;
+        row.li.classList.toggle("cx-cursor", atCursor);
+        if (!row.crossing) continue;
+        row.li.classList.toggle("secondary-entry", atCursor);
+        row.li.classList.toggle("filled", checker.isEntryFilled(row.crossing.cells));
+        show(row.boxes, row.cell);
+      }
+    }
+    function renderCrossings() {
+      if (phone) return;
+      const model = crossingRows(maps, activeCell, direction);
+      if (!cx || cx.key !== direction + model.num) buildCrossings(model, direction);
+      updateCrossings();
+      if (!fillLayout()) return;
+      const cursorRow = cx.rows.find((r) => r.cell === activeCell).li;
+      if (cursorRow === cxCursorRow) return;
+      cxCursorRow = cursorRow;
+      scrollWithin(cxRowsEl, cursorRow);
+    }
     const hiddenInput = document.getElementById("hidden-input");
     const refocus = () => hiddenInput.focus({ preventScroll: true });
     const clueBar = setupClueBar();
     const doneWrong = document.getElementById("done-wrong");
-    const puzzleCenter = document.querySelector(".puzzle-center");
     setupEmbedResize();
+    const switchTip = setupSwitchTip("across / down", { isSolved: () => latch.solved });
     const keysOverlay = setupKeysOverlay(
       [
         ["Tab", "Next entry"],
@@ -4874,9 +5303,10 @@ html.phone .kb-spacer { flex: 7 1 0; }
     );
     setupKeydown((e) => {
       if (latch.solved && e.key !== "Tab") return;
+      if (SOLVING_KEYS.has(e.key)) alignPageOnce();
       if (e.key === ".") {
         e.preventDefault();
-        toggleDirection();
+        if (toggleDirection()) switchTip.noteKey(e);
         return;
       }
       if (e.key === "Tab") {
@@ -4931,12 +5361,12 @@ html.phone .kb-spacer { flex: 7 1 0; }
       }
       if (e.key === "PageDown") {
         e.preventDefault();
-        scrollByKey("PageDown");
+        if (!fillLayout()) scrollByKey("PageDown");
         return;
       }
       if (e.key === "PageUp") {
         e.preventDefault();
-        scrollByKey("PageUp");
+        if (!fillLayout()) scrollByKey("PageUp");
         return;
       }
     }, { keysOverlay, refocus });
@@ -4944,6 +5374,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       const typed = normalize(hiddenInput.value);
       hiddenInput.value = "";
       if (latch.solved || !typed) return;
+      alignPageOnce();
       timer.onFirstInput();
       if (isLocked(activeCell)) {
         focusCell(nextCell(maps, activeCell, direction), 0);
@@ -4960,10 +5391,11 @@ html.phone .kb-spacer { flex: 7 1 0; }
       checker.checkIfFilled();
       saveState();
     });
-    setupCellClicks(svg, (n) => {
-      if (n === activeCell) toggleDirection();
-      else focusCell(n);
+    setupCellClicks(svg, (n, cell) => {
+      if (n !== activeCell) focusCell(n);
+      else if (toggleDirection()) switchTip.atCell(cell);
     });
+    svg.addEventListener("click", alignPageOnce);
     function resetBoard() {
       resetAndRefocus({
         composer,
@@ -5041,6 +5473,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
         { label: "Next\ncell", key: "Enter", ariaLabel: "Next cell" }
       ]
     });
+    crossingsEl.hidden = !!phone;
     const resumeCell = restoreAndSeal({ restoreState, checker, latch, composer });
     focusCell(resumeCell === null ? FIRST_CELL : resumeCell);
   }

@@ -20,6 +20,9 @@ function engineJs(tool) {
     const esbuild = require('esbuild');
     const { outputFiles } = esbuild.buildSync({
       entryPoints: [path.join(ROOT, tool, 'src/template/engine.js')],
+      // The bundle's per-module path comments are relative to this: the repo root, so a
+      // page doesn't depend on the directory the build ran from.
+      absWorkingDir: ROOT,
       bundle: true,
       platform: 'browser',
       format: 'iife',

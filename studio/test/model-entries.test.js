@@ -8,15 +8,15 @@ test('newEntry: an empty entry with the given id', () => {
   assert.deepEqual(newEntry('e7'), { id: 'e7', clue: '', extra: {}, extraStyles: {} });
 });
 
-test('entryFromYaml: keeps "LIE TO" as displayAnswer, and none for "LIETO"', () => {
+test('entryFromYaml: keeps "LIE TO" as displayText, and none for "LIETO"', () => {
   const cells = ['l', 'i', 'e', 't', 'o'];
-  assert.equal(entryFromYaml({ clue: 'c', answer: 'LIE TO' }, 'e1', cells).displayAnswer, 'LIE TO');
-  assert.ok(!('displayAnswer' in entryFromYaml({ clue: 'c', answer: 'LIETO' }, 'e1', cells)));
+  assert.equal(entryFromYaml({ clue: 'c', answer: 'LIE TO' }, 'e1', cells).displayText, 'LIE TO');
+  assert.ok(!('displayText' in entryFromYaml({ clue: 'c', answer: 'LIETO' }, 'e1', cells)));
 });
 
-test('entryFromYaml: a rebus answer in canonical form needs no displayAnswer', () => {
+test('entryFromYaml: a rebus answer in canonical form needs no displayText', () => {
   const e = entryFromYaml({ clue: 'c', answer: 'S[HAR]ON' }, 'e1', ['s', 'har', 'o', 'n']);
-  assert.ok(!('displayAnswer' in e));
+  assert.ok(!('displayText' in e));
 });
 
 test('entryFromYaml: unknown entry keys and non-cell styles are kept; circle is not', () => {
@@ -26,13 +26,13 @@ test('entryFromYaml: unknown entry keys and non-cell styles are kept; circle is 
   assert.equal(e.clue, 'c');
 });
 
-test('entryToYaml: uses displayAnswer when it still matches the cells', () => {
-  const e = { id: 'e1', clue: 'c', displayAnswer: 'LIE TO', extra: {}, extraStyles: {} };
+test('entryToYaml: uses displayText when it still matches the cells', () => {
+  const e = { id: 'e1', clue: 'c', displayText: 'LIE TO', extra: {}, extraStyles: {} };
   assert.equal(entryToYaml(e, ['l', 'i', 'e', 't', 'o'], []).answer, 'LIE TO');
 });
 
-test('entryToYaml: falls back to the canonical form when displayAnswer no longer matches', () => {
-  const e = { id: 'e1', clue: 'c', displayAnswer: 'LIE TO', extra: {}, extraStyles: {} };
+test('entryToYaml: falls back to the canonical form when displayText no longer matches', () => {
+  const e = { id: 'e1', clue: 'c', displayText: 'LIE TO', extra: {}, extraStyles: {} };
   assert.equal(entryToYaml(e, ['l', 'i', 'e', 'x', 'o'], []).answer, 'LIEXO');
 });
 

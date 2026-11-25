@@ -52,6 +52,11 @@ macOS. It passes Playwright flags through (a `--project` replaces its default
 projects) and needs Docker running. Running the whole matrix in one container
 overloads it, and WebKit tests then fail by timeout.
 
+Linux WebKit is the one pairing neither command runs; only the public repo's CI does.
+It differs from macOS WebKit where the OS decides behavior (Tabbing onto buttons is one).
+For a focus or keyboard change, also run
+`npm run test:e2e:linux -- --project=webkit -g "<test name>"`.
+
 `npm run test:e2e:tool` runs the tool's own specs plus its share of
 `e2e/shared.spec.js` (most of the desktop tests, run once per tool with the title
 prefixed `[<tool>]`). It passes other Playwright flags through.
@@ -201,7 +206,10 @@ to wording or values the new behavior alone emits (for example
 be there and absence of what shouldn't. Don't test only the non-default path. An
 absence assertion means something only if the fixture could produce what it
 rules out: "no uncrossed-cell warning" on a grid whose every cell is crossed
-passes whatever the code does.
+passes whatever the code does. For something that leaves on its own (a tip, a
+flash), read the absence once, right after the action that would cause it: a
+retrying `toHaveCount(0)` waits until it has gone and passes whatever the code
+does.
 
 **`engine.js` is browser-only.** No tool covers `engine.js` with `node:test`;
 only pure logic helpers (normalize, sha256hex, tool-specific cell and navigation

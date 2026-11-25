@@ -405,7 +405,7 @@ test('the word-list row at the caret scrolls into view in the side column', asyn
 
 // ---- the Clues phase --------------------------------------------------------
 
-test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacing field', async ({ page }) => {
+test('Tab walks clue to clue and the board follows; Shift+Tab reaches the display-text control', async ({ page, browserName }) => {
   await openFile(page, EXAMPLE);
   await showPhase(page, 'clues');
   const inward = page.locator('.clue-row[data-cut="inward"] .clue-input');
@@ -414,8 +414,12 @@ test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacin
   await expect(inward.nth(1)).toBeFocused();
   await expect(page.locator('.clue-row.on[data-entry="1"]')).toHaveCount(1);
   await page.keyboard.press('Shift+Tab');
-  await expect(page.locator('.clue-row.on[data-entry="1"] #entry-display')).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
+  // WebKit on macOS skips buttons when Tabbing (a system setting), so the closed
+  // "+ display text" is no stop there; WebKit on Linux stops on it.
+  if (!(browserName === 'webkit' && process.platform === 'darwin')) {
+    await expect(page.locator('.clue-row.on[data-entry="1"] [data-display-text]')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+  }
   await expect(inward.nth(0)).toBeFocused();
   // The last clue's Tab leaves the list: no wrap, no trap.
   await expectTabLeavesClues(page, page.locator('.clue-row[data-cut="outward"] .clue-input').last());
@@ -462,18 +466,28 @@ test('clicking a cell selects its row and tints the crossing one', async ({ page
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
 });
 
-test('the spaced answer is edited on the selected row and reports its match', async ({ page }) => {
+test('the display text is edited on the selected row and reports its match', async ({ page }) => {
   await openFile(page, EXAMPLE);
   await showPhase(page, 'clues');
   await page.locator('.clue-row[data-cut="inward"][data-entry="2"] .clue-input').focus();
   await expect(page.locator('#entry-display')).toHaveCount(1);
   await expect(page.locator('#entry-display')).toHaveValue('WAH-WAH');
-  await expect(page.locator('#entry-display-status')).toContainText('Matches the cells');
+  await expect(page.locator('#entry-display-status')).toHaveCount(0);
   await page.locator('#entry-display').fill('WAH WAHS');
   await expect(page.locator('#entry-display-status')).toContainText('Doesn’t match');
+  // Clearing the text to retype it keeps the field open and focused.
+  await page.locator('#entry-display').fill('');
+  await expect(page.locator('#entry-display')).toBeFocused();
+  await page.keyboard.type('WAH WAH');
+  await expect(page.locator('#entry-display')).toHaveValue('WAH WAH');
+  await expect(page.locator('#entry-display-status')).toHaveCount(0);
   await page.locator('.clue-row[data-cut="inward"][data-entry="3"] .clue-input').focus();
-  await expect(page.locator('#entry-display')).toHaveCount(1);
-  await expect(page.locator('.clue-row[data-entry="3"] #entry-display')).toBeVisible();
+  // An entry with no display text shows only the quiet control until it's opened.
+  await expect(page.locator('#entry-display')).toHaveCount(0);
+  await page.locator('.clue-row[data-entry="3"] .display-add').click();
+  await expect(page.locator('.clue-row[data-entry="3"] #entry-display')).toBeFocused();
+  await page.locator('#entry-display').blur();
+  await expect(page.locator('.clue-row[data-entry="3"] .display-add')).toBeVisible();
 });
 
 test('a Clues-phase board edit that orphans a clue scrolls the tray into view, and focus stays on the board', async ({ page }) => {

@@ -171,7 +171,7 @@ test('the Board phase shows Marching Bands\' word list and checks', async ({ pag
   await expect(page.locator('#checks #meter-rows')).toContainText('row entries');
 });
 
-test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacing field', async ({ page }) => {
+test('Tab walks clue to clue and the board follows; Shift+Tab reaches the display-text control', async ({ page, browserName }) => {
   await openFile(page, path.join(REPO, 'examples/marching-bands.yaml'));
   await showPhase(page, 'clues');
   const inputs = page.locator('.clue-row .clue-input');
@@ -181,8 +181,12 @@ test('Tab walks clue to clue and the board follows; Shift+Tab reaches the spacin
   await expect(page.locator('.clue-row.on')).toHaveCount(1);
   await expect(page.locator('.clue-row.on .clue-input')).toBeFocused();
   await page.keyboard.press('Shift+Tab');
-  await expect(page.locator('.clue-row.on #entry-display')).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
+  // WebKit on macOS skips buttons when Tabbing (a system setting), so the closed
+  // "+ display text" is no stop there; WebKit on Linux stops on it.
+  if (!(browserName === 'webkit' && process.platform === 'darwin')) {
+    await expect(page.locator('.clue-row.on [data-display-text]')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+  }
   await expect(inputs.nth(0)).toBeFocused();
   // The last clue's Tab leaves the list: no wrap, no trap.
   await expectTabLeavesClues(page, inputs.last());

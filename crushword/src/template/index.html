@@ -6,8 +6,10 @@
   <title>{{TITLE}}</title>
   <style>{{CSS}}</style>
 </head>
-<body class="tool-crushword has-clue-bar">
-  <div id="active-clue-bar">
+<body class="tool-crushword">
+  <!-- Shown only in the phone layout (setupPhoneLayout un-hides it); the desktop layout
+       has the crossings panel instead. -->
+  <div id="active-clue-bar" hidden>
     <div class="active-clue-row" id="active-clue-primary">
       <span class="active-clue-dir"></span>
       <span class="active-clue-num"></span>
@@ -30,6 +32,10 @@
         <svg id="puzzle-svg" xmlns="http://www.w3.org/2000/svg"></svg>
         <div id="done-wrong" hidden aria-live="polite">All cells filled — but something's not right yet.</div>
       </div>
+      <section id="crossings" aria-label="Crossing clues" hidden>
+        <div class="cx-head"></div>
+        <ol class="cx-rows"></ol>
+      </section>
       <div class="clue-columns">
         <div class="clue-section clue-section-across">
           <h2>Across</h2>

@@ -1,8 +1,7 @@
 'use strict';
 
 const { SHAPE_NAMES, ringFor } = require('./layout');
-const { buildEntryMaps } = require('./entryMaps.mjs');
-const { LOOPS } = require('./ringConstants');
+const { LOOPS, buildEntryMaps } = require('./entryMaps.mjs');
 const { HEADER_KEYS, validateCommonHeader } = require('../../shared/build/validation');
 const { validateEntry, checkMuddledGuard, checkCellStyles, warnUnknownKeys } = require('../../shared/build/validateEntry');
 

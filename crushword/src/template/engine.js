@@ -5,18 +5,27 @@ import {
   setLetterText, setupSolveTracking, makeSavePayload, stepToUnfilled, syncSolveState
 } from '../../../shared/engine-state.mjs';
 import {
-  clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
-  scrollByKey, scrollIntoViewBelow, setupCellClicks, setupClueBar, setupCongratsDialog,
+  centerWithin, clueTextEl, flashWrong, htmlEl, onClueClick, renderByline, renderInstructions,
+  fillsView, scrollByKey, setupCellClicks, setupClueBar, setupCongratsDialog,
   setupControls, setupEmbedResize, setupKeydown, setupKeysOverlay, setupStorage,
-  setupMarkLayer, storageKey, svgEl
+  setupMarkLayer, setupSwitchTip, storageKey, svgEl
 } from '../../../shared/engine-chrome.mjs';
-import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
+import { scrollWithin, setupPhoneLayout } from '../../../shared/engine-phone.mjs';
 import {
   cellCoords, cellDimensions, deriveNumbering, gridDimensions, svgSize
 } from '../layout.mjs';
+import { crossingRows } from '../crossings.mjs';
 import {
   arrowTarget, buildEntryMaps, deleteBefore, nextCell, prevCell, typeAt
 } from '../typing.mjs';
+
+// The keys the keydown handler acts on, which start solving (alignPageOnce). Listed
+// rather than excluding modifiers, since AltGraph, Fn, F1–F12 and others would slip past
+// any exclusion list; letters start solving from the input listener instead.
+const SOLVING_KEYS = new Set([
+  '.', 'Tab', 'Enter', 'Backspace', ' ',
+  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown',
+]);
 
 function init() {
   // ── Data & constants ─────────────────────────────────────────────────────
@@ -159,12 +168,14 @@ function init() {
     return entryInfo(n, DIRS[direction].opposite);
   }
 
+  // Switches to the other direction, if the active cell has an entry that way. Returns
+  // whether it did.
   function toggleDirection() {
     const other = DIRS[direction].opposite;
-    if (entryInfo(activeCell, other)) {
-      direction = other;
-      focusCell(activeCell, cursorPos, true); // the cursor hasn't moved
-    }
+    if (!entryInfo(activeCell, other)) return false;
+    direction = other;
+    focusCell(activeCell, cursorPos, true); // the cursor hasn't moved
+    return true;
   }
 
   // `pos` omitted lands at the end of n's content, recomputed even when n is
@@ -218,12 +229,60 @@ function init() {
   // ↑/↓ always change cells, landing at the sticky column.
   function moveVertical(dr, key) {
     const t = arrowTarget(grid, activeCell, dr, 0);
-    if (!t) { scrollByKey(key); return; }
+    if (!t) { if (!fillLayout()) scrollByKey(key); return; }
     direction = 'down'; // before focusCell, so its auto-flip can still override
     focusCell(t, Math.min(desiredCol, getCellLetter(t).length), true);
   }
 
-  let lastScrolled = null; // the clue element syncUI last scrolled into view
+  // Whether the desktop fill layout is showing: the CSS publishes it as --fills-view
+  // (base.css), read live so a resize across its width threshold takes effect at once.
+  // The phone layout also sets the property but has its own list, so it is excluded.
+  // `phone` is assigned once init has built the page, before any syncUI.
+  function fillLayout() { return !phone && fillsView(); }
+
+  // Each clue pane follows one item: its own .active-clue, else its .secondary-entry. The
+  // pane moves only when that item changes, so typing within a cell never scrolls it
+  // (docs/CROSS_TOOL_SPEC.md → "syncUI() contract"). Nothing follows outside the fill
+  // layout, and leaving it forgets both items so the next sync in the fill layout
+  // re-centers them; it also re-arms alignPageOnce.
+  const followedItem = { across: null, down: null };
+  let pageAligned = false; // set by alignPageOnce, cleared when the fill layout is left
+  let cxCursorRow = null;  // the crossings row the panel last kept in view
+
+  // Forgets everything the fill layout remembers, so the next sync after returning to it
+  // re-centers the panes and the panel and the next solving input re-aligns the page.
+  // Run from syncUI and from a resize, since a window can cross the threshold and come
+  // back with no input between.
+  function forgetFillLayout() {
+    followedItem.across = followedItem.down = null;
+    pageAligned = false;
+    cxCursorRow = null;
+  }
+  window.addEventListener('resize', () => { if (!fillLayout()) forgetFillLayout(); });
+
+  function followClues(activeItem, crossingItem) {
+    if (!fillLayout()) { forgetFillLayout(); return; }
+    for (const dir of Object.keys(DIRS)) {
+      const item = dir === direction ? activeItem : crossingItem;
+      if (!item || item === followedItem[dir]) continue;
+      followedItem[dir] = item;
+      centerWithin(item.parentElement, item);
+    }
+  }
+
+  // Puts the grid where the solver can see it when they act on it. In the fill layout,
+  // when solving starts, it puts .puzzle-body at the top of the window (the title and
+  // instructions scroll away) and then leaves the page alone until the layout leaves and
+  // re-enters the fill layout. Instant, not smooth, so it can't race the switch tip or a
+  // test's first keys. In the stacked fallback nothing is sticky and nothing follows the
+  // clue, so each action instead scrolls the grid into view if it has scrolled away (a
+  // click on a far clue or a key typed after scrolling down); a visible grid stays put.
+  function alignPageOnce() {
+    if (!phone && !fillLayout()) { svg.scrollIntoView({ block: 'nearest', behavior: 'auto' }); return; }
+    if (pageAligned || !fillLayout()) return;
+    pageAligned = true;
+    window.scrollBy({ top: document.querySelector('.puzzle-body').getBoundingClientRect().top, behavior: 'auto' });
+  }
 
   function syncUI() {
     // Cells: highlight the active entry and cell, and mark the composing one.
@@ -253,16 +312,13 @@ function init() {
     const activeItems = DIRS[direction].clueItems;
     const activeItem = activeItems[activeInfo.num];
     activeItem.classList.add('active-clue');
-    // Scrolled into view only when it changes (docs/CROSS_TOOL_SPEC.md → "syncUI()
-    // contract").
-    if (activeItem !== lastScrolled) {
-      lastScrolled = activeItem;
-      scrollIntoViewBelow(activeItem, puzzleCenter);
-    }
 
     const otherDir = DIRS[direction].opposite;
     const crossing = crossingInfo(activeCell);
-    if (crossing) DIRS[otherDir].clueItems[crossing.num].classList.add('secondary-entry');
+    const crossingItem = crossing ? DIRS[otherDir].clueItems[crossing.num] : null;
+    if (crossingItem) crossingItem.classList.add('secondary-entry');
+    followClues(activeItem, crossingItem);
+    renderCrossings();
     // Phone list view: every row's letters, the cursor, and the active clue in view.
     if (phone) phone.fillList.sync(activeCell, activeItem, cursorPos);
     if (phone) phone.follow(activeContextCells(), activeCell, getCellLetter(activeCell));
@@ -304,6 +360,8 @@ function init() {
   svg.setAttribute('width', svgWidth);
   svg.setAttribute('height', svgHeight);
   svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+  // The fill layout sizes the SVG by height (base.css), which needs its aspect ratio.
+  svg.style.setProperty('--grid-aspect', svgWidth / svgHeight);
 
   // Layer groups, painted bottom to top in the order svg.append lists them.
   // flashLayer holds wrong-guess flash overlays (see flashWrong) above the cells.
@@ -408,7 +466,7 @@ function init() {
       const li = htmlEl('li', { class: 'clue-item' },
         htmlEl('span', { class: 'clue-num' }, num + '.'),
         clueTextEl(entriesObj[num].clue));
-      onClueClick(li, () => { direction = dir; focusCell(DIRS[dir].cellsOf[num][0]); });
+      onClueClick(li, () => goToEntry(dir, num));
       listEl.appendChild(li);
       itemStore[num] = li;
       fillItems.push({ li, dir, cells: entryCellsOf(num, dir) });
@@ -416,6 +474,94 @@ function init() {
   }
   buildClueList(data.across, maps.across.order, acrossCluesList, acrossClueItems, 'across');
   buildClueList(data.down,   maps.down.order,   downCluesList,   downClueItems,   'down');
+
+  // What clicking an entry's clue does, whether in its list or in the crossings panel.
+  function goToEntry(dir, num) {
+    alignPageOnce();
+    direction = dir;
+    focusCell(DIRS[dir].cellsOf[num][0]);
+  }
+
+  // ── Crossings panel ───────────────────────────────────────────────────────
+  // The active entry and the clue crossing each of its cells (crossingRows, built on
+  // `maps`). The rows are rebuilt only when the entry changes; otherwise syncUI updates
+  // letters and highlights in place, so the panel never reorders or jumps while the
+  // solver works within one entry.
+  const crossingsEl = document.getElementById('crossings');
+  const cxHead = crossingsEl.querySelector('.cx-head');
+  const cxRowsEl = crossingsEl.querySelector('.cx-rows');
+  let cx = null;          // the drawn entry: { key, headBoxes, rows }
+
+  // A row of boxes, one per cell, whose letters updateCrossings keeps current.
+  function cxPattern(cells) {
+    const el = htmlEl('div', { class: 'cx-pattern' });
+    const boxes = cells.map(cell => {
+      const box = htmlEl('span', { class: 'cx-box' });
+      el.append(box);
+      return { cell, box };
+    });
+    return { el, boxes };
+  }
+
+  function buildCrossings(model, dir) {
+    const otherDir = DIRS[dir].opposite;
+    const headPattern = cxPattern(model.cells);
+    cxHead.replaceChildren(
+      htmlEl('div', { class: 'cx-title' },
+        htmlEl('strong', { class: 'cx-dir' }, DIRS[dir].label), ' ',
+        htmlEl('strong', { class: 'cx-num' }, model.num + '.'), ' ',
+        clueTextEl(data[dir][model.num].clue)),
+      headPattern.el,
+      htmlEl('h3', {}, dir === 'across' ? 'Crossings, left to right' : 'Crossings, top to bottom'));
+    const rows = model.rows.map(({ cell, crossing }) => {
+      if (!crossing) {
+        const li = htmlEl('li', { class: 'cx-row cx-none' }, `no ${DIRS[otherDir].label} entry`);
+        return { cell, crossing, li, boxes: [] };
+      }
+      const pattern = cxPattern(crossing.cells);
+      const li = htmlEl('li', { class: 'cx-row', 'data-num': crossing.num },
+        htmlEl('strong', { class: 'cx-num' }, crossing.num + '.'), ' ',
+        clueTextEl(data[otherDir][crossing.num].clue), pattern.el);
+      onClueClick(li, () => goToEntry(otherDir, crossing.num));
+      return { cell, crossing, li, boxes: pattern.boxes };
+    });
+    cxRowsEl.replaceChildren(...rows.map(r => r.li));
+    cxRowsEl.scrollTop = 0;
+    cxCursorRow = null;
+    cx = { key: dir + model.num, headBoxes: headPattern.boxes, rows };
+  }
+
+  function updateCrossings() {
+    const show = (boxes, here) => boxes.forEach(({ cell, box }) => {
+      box.textContent = getCellLetter(cell).toUpperCase(); // as the grid shows it (setLetterText)
+      box.classList.toggle('cx-here', cell === here);
+    });
+    show(cx.headBoxes, activeCell);
+    for (const row of cx.rows) {
+      const atCursor = row.cell === activeCell;
+      row.li.classList.toggle('cx-cursor', atCursor);
+      if (!row.crossing) continue;
+      row.li.classList.toggle('secondary-entry', atCursor);
+      row.li.classList.toggle('filled', checker.isEntryFilled(row.crossing.cells));
+      show(row.boxes, row.cell);
+    }
+  }
+
+  // Redrawn from syncUI. Nothing to do on the phone, where the panel stays hidden. In the
+  // fill layout the rows are a scroll pane, which keeps the cursor's row in view the
+  // least distance, not centered: the rows are a fixed map of the entry. It follows the
+  // cursor's row rather than the crossing's, so an uncrossed cell is kept in view too.
+  function renderCrossings() {
+    if (phone) return;
+    const model = crossingRows(maps, activeCell, direction);
+    if (!cx || cx.key !== direction + model.num) buildCrossings(model, direction);
+    updateCrossings();
+    if (!fillLayout()) return;
+    const cursorRow = cx.rows.find(r => r.cell === activeCell).li;
+    if (cursorRow === cxCursorRow) return;
+    cxCursorRow = cursorRow;
+    scrollWithin(cxRowsEl, cursorRow);
+  }
 
   // ── Event wiring ──────────────────────────────────────────────────────────
   // The page's static elements, which logic functions above read once they run.
@@ -425,9 +571,9 @@ function init() {
   const clueBar = setupClueBar();
 
   const doneWrong = document.getElementById('done-wrong');
-  const puzzleCenter = document.querySelector('.puzzle-center'); // the sticky grid box
 
   setupEmbedResize();
+  const switchTip = setupSwitchTip('across / down', { isSolved: () => latch.solved });
   const keysOverlay = setupKeysOverlay(
     [
       ['Tab',       'Next entry'],
@@ -451,7 +597,13 @@ function init() {
     // A solved board takes no edits, but Tab still steps between entries.
     if (latch.solved && e.key !== 'Tab') return;
 
-    if (e.key === '.') { e.preventDefault(); toggleDirection(); return; }
+    if (SOLVING_KEYS.has(e.key)) alignPageOnce();
+
+    if (e.key === '.') {
+      e.preventDefault();
+      if (toggleDirection()) switchTip.noteKey(e);
+      return;
+    }
 
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -518,14 +670,18 @@ function init() {
       return;
     }
 
-    if (e.key === 'PageDown') { e.preventDefault(); scrollByKey('PageDown'); return; }
-    if (e.key === 'PageUp')   { e.preventDefault(); scrollByKey('PageUp'); return; }
+    // The page doesn't move while solving in the fill layout, so these do nothing there.
+    if (e.key === 'PageDown') { e.preventDefault(); if (!fillLayout()) scrollByKey('PageDown'); return; }
+    if (e.key === 'PageUp')   { e.preventDefault(); if (!fillLayout()) scrollByKey('PageUp'); return; }
   }, { keysOverlay, refocus });
 
   hiddenInput.addEventListener('input', () => {
     const typed = normalize(hiddenInput.value);
     hiddenInput.value = '';
     if (latch.solved || !typed) return;
+    // Here, not on keydown, so text with no keydown (a context-menu paste, dictation)
+    // also starts solving.
+    alignPageOnce();
     timer.onFirstInput();
     // A locked cell takes no letters: they are dropped, and the cursor steps to the next
     // cell (docs/CROSS_TOOL_SPEC.md → "Locked cells" says why Crushword needs this).
@@ -551,10 +707,14 @@ function init() {
 
   // A click on a cell moves there; a second click on the active cell switches
   // direction.
-  setupCellClicks(svg, n => {
-    if (n === activeCell) toggleDirection();
-    else focusCell(n);
+  setupCellClicks(svg, (n, cell) => {
+    if (n !== activeCell) focusCell(n);
+    else if (toggleDirection()) switchTip.atCell(cell);
   });
+  // After setupCellClicks, so the click chooses its cell before the page moves. On
+  // `click`, not `pointerdown`: an instant scroll between press and release would move
+  // the grid from under the pointer and the release would land elsewhere.
+  svg.addEventListener('click', alignPageOnce);
 
   function resetBoard() {
     resetAndRefocus({
@@ -623,6 +783,9 @@ function init() {
       { label: 'Next\ncell', key: 'Enter', ariaLabel: 'Next cell' },
     ],
   });
+
+  // The crossings panel is for the desktop layouts; the phone has the clue bar.
+  crossingsEl.hidden = !!phone;
 
   // ── Restore & focus ───────────────────────────────────────────────────────
   const resumeCell = restoreAndSeal({ restoreState, checker, latch, composer });

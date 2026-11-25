@@ -142,12 +142,14 @@ All tools share one set of themes. A theme controls colors, fonts, and decorativ
 
 The studio is a browser page for composing puzzles without the command line. Open or create a puzzle of any kind, edit it on a board with live problem checking (or as YAML with the *Edit as YAML* button, which is also where a file the editor can't represent opens), test-solve the built puzzle page, and export it. It runs the same build path as the CLI, in the page, so what it builds is byte-identical to what `varietypack build` writes; nothing is sent anywhere.
 
-Build it once, then open it from disk or host the single file anywhere:
+Build it and open it in your browser with one command:
 
 ```fish
 npm install
-npm run build:studio    # writes studio/build/index.html
+varietypack studio      # builds studio/build/index.html, then opens it
 ```
+
+`-o <file>` writes the page elsewhere (`-f` to replace an existing file), and `--no-open` only builds. The page is one self-contained file, so it also opens from disk or hosts anywhere; `npm run build:studio` builds it without opening.
 
 The public repo hosts it, with every example in every theme, on GitHub Pages; `npm run build:site` builds that site locally.
 

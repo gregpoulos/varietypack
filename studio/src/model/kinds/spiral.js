@@ -132,7 +132,7 @@ function fromYaml(puzzle) {
   }
 
   // Each entry against the cells it covers in the model, so an outward entry that spells
-  // a rebus backward keeps that spelling as its display answer.
+  // a rebus backward keeps that spelling as its display text.
   const outCells = [...cells].reverse();
   const outModel = outLists.map((l, j) => outCells.slice(outward.starts[j], outward.starts[j] + l.length));
   const cuts = {
@@ -295,7 +295,7 @@ const commands = {
 
   setClue: (model, cutName, j, text) => (hasEntry(model, cutName, j) ? withEntry(model, cutName, j, e => ({ ...e, clue: text })) : model),
 
-  setDisplayAnswer: (model, cutName, j, text) => (hasEntry(model, cutName, j) ? withEntry(model, cutName, j, e => displayPatch(e, text)) : model),
+  setDisplayText: (model, cutName, j, text) => (hasEntry(model, cutName, j) ? withEntry(model, cutName, j, e => displayPatch(e, text)) : model),
 
   toggleCircle(model, i) {
     if (!(i >= 0 && i < total(model))) return model;

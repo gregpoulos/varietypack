@@ -299,6 +299,9 @@ function setupPhoneLayout({
   // Bar row: the bar between ‹ › steps (Shift+Tab, Tab), where a tap on the clue
   // switches direction as `.` does — or the bar alone when it brings its own steps.
   const barRow = htmlEl('div', { id: 'solve-bar' });
+  // A tool may ship its bar hidden for its desktop layout (Crushword does); the phone
+  // layout always shows it.
+  clueBar.el.hidden = false;
   if (ownSteps) {
     barRow.append(clueBar.el);
   } else {
