@@ -51,6 +51,25 @@ function typeLetter(model, ui, ch) {
   return done(next, [{ name: 'setCell', args: [ui.r, ui.c, res.content], typing: true }]);
 }
 
+// A pasted or autofilled string: one cell's worth, as on the puzzle page. The letters go
+// in until the cell is full or the caret has moved on; the rest is dropped, so a paste
+// can't write over the cells after it.
+function typeText(model, ui, letters) {
+  const cap = cw.capOf(model);
+  let m = model, u = ui;
+  const calls = [];
+  for (const ch of letters) {
+    const res = typeLetter(m, u, ch);
+    if (res.message) return calls.length ? done(u, calls) : res;
+    calls.push(...res.calls);
+    m = apply(m, res);
+    const moved = res.ui.r !== u.r || res.ui.c !== u.c;
+    u = res.ui;
+    if (moved || u.pos >= cap) break;
+  }
+  return done(u, calls);
+}
+
 // The first open cell after (r, c) in reading order, wrapping; (r, c) itself if none
 // other.
 function nextOpen(model, r, c) {
@@ -108,6 +127,13 @@ function pressKey(model, ui, e) {
       }
       return done(cur, calls);
     }
+    case 'Delete': {
+      // Clears the whole cell, as Marching Bands' Delete does. Its own undo step, not
+      // joined to the typing run around it, so no `typing` flag.
+      if (isBlock) return done(ui, [], { message: BLOCK_MESSAGE });
+      const calls = text === '' ? [] : [{ name: 'setCell', args: [ui.r, ui.c, ''] }];
+      return done({ ...ui, pos: 0, col: 0 }, calls);
+    }
     case 'ArrowLeft':
     case 'ArrowRight': {
       const dc = e.key === 'ArrowRight' ? 1 : -1;
@@ -133,11 +159,15 @@ function pressKey(model, ui, e) {
       const d = here ? ui.dir : isBlock ? null : OTHER[ui.dir];
       const info = d && entryAt(maps, id, d);
       if (!info) return { handled: false, calls: [], ui };   // a block: the browser moves focus on
-      const { order, cellsOf } = maps[NAME[d]];
-      const step = order.indexOf(info.num) + (e.shiftKey ? -1 : 1);
-      if (step < 0 || step >= order.length) return { handled: false, calls: [], ui };   // past the last (first) entry: the browser moves focus on
-      const num = order[step];
-      return done(land(model, maps, { ...ui, dir: d }, cellsOf[num][0]));
+      // The page's order (docs/CROSS_TOOL_SPEC.md → "Tab / Shift+Tab entry navigation"):
+      // across then down is one list, so the last across entry leads into the first down.
+      // Unlike the page, Tab doesn't skip complete entries, so an author can Tab to a
+      // full entry to revise it, as in the other editors; and the list's ends leave the
+      // board rather than wrapping, so focus can reach the toolbar.
+      const loop = ['A', 'D'].flatMap(dir => maps[NAME[dir]].order.map(num => ({ dir, num })));
+      const to = loop[loop.findIndex(en => en.dir === d && en.num === info.num) + (e.shiftKey ? -1 : 1)];
+      if (!to) return { handled: false, calls: [], ui };   // past the last (first) entry: the browser moves focus on
+      return done(land(model, maps, { ...ui, dir: to.dir }, maps[NAME[to.dir]].cellsOf[to.num][0]));
     }
     case '#':
       return toggleBlockAt(model, ui);
@@ -184,4 +214,4 @@ function repair(model, ui) {
   return land(model, cw.entryMaps(model), ui, id, { pos, keepCol: true });
 }
 
-module.exports = { apply, typeLetter, pressKey, switchDirection, toggleBlockAt, clickCell, selectSlot, initialUi, repair };
+module.exports = { apply, typeLetter, typeText, pressKey, switchDirection, toggleBlockAt, clickCell, selectSlot, initialUi, repair };

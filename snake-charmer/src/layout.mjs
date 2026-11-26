@@ -1,8 +1,6 @@
-'use strict';
-
-const { computeRing: computeStadiumRing } = require('./layoutStadium');
-const { computeRing: computeTurnRing }    = require('./layoutTurn');
-const { computeRing: computeDoubleTurnRing } = require('./layoutDoubleTurn');
+import { computeRing as computeStadiumRing } from './layoutStadium.mjs';
+import { computeRing as computeTurnRing } from './layoutTurn.mjs';
+import { computeRing as computeDoubleTurnRing } from './layoutDoubleTurn.mjs';
 
 const STADIUM_FIELDS = ['N', 'nCurve', 'nStraight', 'L', 'rCenter', 'rOuter', 'rInner', 'svgWidth', 'svgHeight', 'cx', 'cy', 'wCell', 'hCell'];
 
@@ -52,4 +50,4 @@ function ringFor(N, shape) {
   return { shape: 'double-turn', ring, fellBack: false };
 }
 
-module.exports = { ringFor, assertRingFields, autoShape, SHAPES, SHAPE_NAMES };
+export { ringFor, assertRingFields, autoShape, SHAPES, SHAPE_NAMES };

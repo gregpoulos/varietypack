@@ -151,7 +151,8 @@ test('validate: error when an explicit shape cannot lay out the ring', () => {
 });
 
 // build passes its options (the --shape flag) to the validator, which then checks the
-// shape the build will use. The flag wins over the YAML's shape, as in buildHtml.
+// shape the build will use. The flag wins over the YAML's shape, as in the builder's
+// buildHtmlFn.
 test('validate: the --shape option replaces the YAML shape in the fit check', () => {
   const yamlTurn = ringPuzzle(42); yamlTurn.shape = 'turn';
   assert.deepEqual(validate(yamlTurn, { shape: 'stadium' }), { errors: [], warnings: [] });

@@ -101,8 +101,8 @@ export function SnakeCharmerEditor({ dispatch, model, phase, focusRef, settings,
   return (
     <PhaseLayout phase={phase} settings={settings} fillClues={fillClues} header={header}
       toggle={(
-        <Latch id="lap-toggle" label="Lap" value={lapNow}
-          options={[1, 2].map(n => ({ value: n, text: `Lap ${n}`, led: n === 1 ? 'ch1' : 'ch2', attrs: { 'data-lap': n } }))}
+        <Latch id="cut-toggle" label="Lap" value={lapNow}
+          options={[1, 2].map(n => ({ value: n, text: `Lap ${n}`, led: n === 1 ? 'ch1' : 'ch2', attrs: { 'data-cut': n } }))}
           onChange={n => { if (n !== lapNow) moveTo({ caret: twin(model, caret), composing: false }); focus(); }} />
       )}
       tools={(

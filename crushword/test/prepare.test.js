@@ -111,3 +111,11 @@ test('letters carries one entry per cell for a rebus crossing', () => {
   const r = preparePuzzle(p);
   assert.equal(r.letters[1], 'ha'); // (0,1) flat index 1
 });
+
+// Validation rejects a crossing whose two entries disagree, so a build never gets here;
+// this pins the order that keeps prepare in step with the studio, which keeps across.
+test('preparePuzzle: where across and down disagree on a cell, across wins', () => {
+  const puzzle = minimalPuzzle();
+  puzzle.down[1].answer = 'XDA';   // cell (0, 0): across has C, down has X
+  assert.equal(preparePuzzle(puzzle).letters[0], 'c');
+});

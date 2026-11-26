@@ -1,6 +1,6 @@
 // Double-turn (S-shape) renderer: three horizontal arms joined by a left body arc
 // system at (cx_L, cy_L) and a right one at (cx_R, cy_R). Traversal order is
-// documented in src/layoutDoubleTurn.js.
+// documented in src/layoutDoubleTurn.mjs.
 // getDoubleTurnRenderer(ring) → { cellPath, letterCenter, labelPos, sectionOf }
 
 import { makeRingRenderer, trackSection, arcSection } from './ring.mjs';

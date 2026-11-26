@@ -7,7 +7,7 @@ const { muddlePuzzle, MUDDLED_DUMP_OPTIONS } = require('../../../shared/build/mu
 
 const { hooksFor, kindError } = require('../../../shared/build/tools');
 
-const { SHAPES, SHAPE_NAMES, autoShape } = require('../../../snake-charmer/src/layout');
+const { SHAPES, SHAPE_NAMES, autoShape } = require('../../../snake-charmer/src/layout.mjs');
 
 /**
  * Shapes whose geometry exists for a ring of N cells (some fail only when the layout

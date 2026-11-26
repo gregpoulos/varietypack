@@ -42,13 +42,15 @@ export function focusBoardOnOpen() {
 // { inputProps, focus }; render
 // <input id="board-input" aria-label="Board input" {...inputProps}>.
 //   onLetter(ch): once per letter typed (a–z or 0–9), normalized as the build path does (é → e)
+//   onLetters(letters): instead of onLetter, once per input event with all its letters (a
+//     paste arrives as several), for an editor whose cells take a whole string at once
 //   onKey(event): for the keys above. Space reaches it from keydown and also from a space typed on
 //     a soft keyboard, which arrives as input with no usable keydown (then `event` is a bare
 //     { key: ' ' } with no modifiers). Only a space that is the whole input counts: one inside
 //     longer text (a pasted "LIE TO") is part of the text, skipped as the puzzle page skips it.
 // `focus()` is the author's own focus (the #board click handler, toolbar buttons), so it
 // ends the open-focus state: a click on a gap in the board keeps focus without a blur.
-export function useBoardInput({ onLetter, onKey }) {
+export function useBoardInput({ onLetter, onLetters, onKey }) {
   const ref = useRef(null);
   useEffect(() => () => { focusedByOpen = false; }, []);
   const inputProps = {
@@ -66,7 +68,9 @@ export function useBoardInput({ onLetter, onKey }) {
         onKey({ key: ' ', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, preventDefault() {} });
         return;
       }
-      for (const ch of text) for (const letter of normalize(ch)) onLetter(letter);
+      const letters = [...text].flatMap(ch => [...normalize(ch)]);
+      if (onLetters) onLetters(letters);
+      else letters.forEach(onLetter);
     },
     onKeyDown(e) {
       focusedByOpen = false;

@@ -1,6 +1,4 @@
-'use strict';
-
-const { W_CELL, H_CELL, SVG_PAD_V } = require('./ringConstants');
+import { W_CELL, H_CELL, SVG_PAD_V } from './ringConstants.mjs';
 
 const SVG_PAD_H = 20;
 
@@ -21,4 +19,4 @@ function computeRing(N, shape) {
            wCell: W_CELL, hCell: H_CELL };
 }
 
-module.exports = { computeRing, SVG_PAD_H, SVG_PAD_V };
+export { computeRing, SVG_PAD_H, SVG_PAD_V };

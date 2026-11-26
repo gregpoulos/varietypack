@@ -19,13 +19,13 @@ import {
   arrowTarget, buildEntryMaps, deleteBefore, nextCell, prevCell, typeAt
 } from '../typing.mjs';
 
-// The keys the keydown handler acts on, which start solving (alignPageOnce). Listed
-// rather than excluding modifiers, since AltGraph, Fn, F1–F12 and others would slip past
-// any exclusion list; letters start solving from the input listener instead.
-const SOLVING_KEYS = new Set([
-  '.', 'Tab', 'Enter', 'Backspace', ' ',
-  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown',
-]);
+// The keys that always act on the grid, which bring it into view (bringGridIntoView).
+// Listed rather than excluding modifiers, since AltGraph, Fn, F1–F12 and others would
+// slip past any exclusion list; letters do it from the input listener instead. Not ↑/↓,
+// which do it only when they move the cursor (moveVertical), nor PageUp/PageDown: a key
+// that scrolls the page is the solver moving it, and pulling the grid back first would
+// stall the page a screen below the grid.
+const GRID_KEYS = new Set(['.', 'Tab', 'Enter', 'Backspace', ' ', 'ArrowLeft', 'ArrowRight']);
 
 function init() {
   // ── Data & constants ─────────────────────────────────────────────────────
@@ -230,6 +230,7 @@ function init() {
   function moveVertical(dr, key) {
     const t = arrowTarget(grid, activeCell, dr, 0);
     if (!t) { if (!fillLayout()) scrollByKey(key); return; }
+    bringGridIntoView();
     direction = 'down'; // before focusCell, so its auto-flip can still override
     focusCell(t, Math.min(desiredCol, getCellLetter(t).length), true);
   }
@@ -244,9 +245,9 @@ function init() {
   // pane moves only when that item changes, so typing within a cell never scrolls it
   // (docs/CROSS_TOOL_SPEC.md → "syncUI() contract"). Nothing follows outside the fill
   // layout, and leaving it forgets both items so the next sync in the fill layout
-  // re-centers them; it also re-arms alignPageOnce.
+  // re-centers them; it also re-arms bringGridIntoView's one alignment.
   const followedItem = { across: null, down: null };
-  let pageAligned = false; // set by alignPageOnce, cleared when the fill layout is left
+  let pageAligned = false; // set by bringGridIntoView, cleared when the fill layout is left
   let cxCursorRow = null;  // the crossings row the panel last kept in view
 
   // Forgets everything the fill layout remembers, so the next sync after returning to it
@@ -277,7 +278,7 @@ function init() {
   // test's first keys. In the stacked fallback nothing is sticky and nothing follows the
   // clue, so each action instead scrolls the grid into view if it has scrolled away (a
   // click on a far clue or a key typed after scrolling down); a visible grid stays put.
-  function alignPageOnce() {
+  function bringGridIntoView() {
     if (!phone && !fillLayout()) { svg.scrollIntoView({ block: 'nearest', behavior: 'auto' }); return; }
     if (pageAligned || !fillLayout()) return;
     pageAligned = true;
@@ -477,7 +478,7 @@ function init() {
 
   // What clicking an entry's clue does, whether in its list or in the crossings panel.
   function goToEntry(dir, num) {
-    alignPageOnce();
+    bringGridIntoView();
     direction = dir;
     focusCell(DIRS[dir].cellsOf[num][0]);
   }
@@ -597,7 +598,7 @@ function init() {
     // A solved board takes no edits, but Tab still steps between entries.
     if (latch.solved && e.key !== 'Tab') return;
 
-    if (SOLVING_KEYS.has(e.key)) alignPageOnce();
+    if (GRID_KEYS.has(e.key)) bringGridIntoView();
 
     if (e.key === '.') {
       e.preventDefault();
@@ -681,7 +682,7 @@ function init() {
     if (latch.solved || !typed) return;
     // Here, not on keydown, so text with no keydown (a context-menu paste, dictation)
     // also starts solving.
-    alignPageOnce();
+    bringGridIntoView();
     timer.onFirstInput();
     // A locked cell takes no letters: they are dropped, and the cursor steps to the next
     // cell (docs/CROSS_TOOL_SPEC.md → "Locked cells" says why Crushword needs this).
@@ -714,7 +715,7 @@ function init() {
   // After setupCellClicks, so the click chooses its cell before the page moves. On
   // `click`, not `pointerdown`: an instant scroll between press and release would move
   // the grid from under the pointer and the release would land elsewhere.
-  svg.addEventListener('click', alignPageOnce);
+  svg.addEventListener('click', bringGridIntoView);
 
   function resetBoard() {
     resetAndRefocus({

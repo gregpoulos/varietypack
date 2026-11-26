@@ -53,6 +53,26 @@ async function fillCrushwordCell(page, id, letter, toTyped = ch => ch.toUpperCas
   await page.keyboard.press('Enter');
 }
 
+// The first Crushword cell, in reading order, with both an across and a down entry
+// (`'crossed'`) or with only one (`'oneWay'`), read from the page's grid. → { id, dir },
+// where `dir` is the direction a one-way cell has; null when the grid has none.
+function findCrushwordCell(page, kind) {
+  return page.evaluate(kind => {
+    const g = window.PUZZLE_DATA.grid;
+    const open = (r, c) => g[r] !== undefined && g[r][c] === '.';
+    for (let r = 0; r < g.length; r++) {
+      for (let c = 0; c < g[r].length; c++) {
+        if (!open(r, c)) continue;
+        const across = open(r, c - 1) || open(r, c + 1), down = open(r - 1, c) || open(r + 1, c);
+        if (kind === 'crossed' ? across && down : across !== down) {
+          return { id: 'cell-' + (r * g[r].length + c + 1), dir: across ? 'across' : 'down' };
+        }
+      }
+    }
+    return null;
+  }, kind);
+}
+
 // Fills every Crushword cell: with `letters` (a hashed page ships none, so its caller
 // supplies them), or else the page's own PUZZLE_DATA.letters.
 async function solveCrushwordBoard(page, { letters, toTyped } = {}) {
@@ -195,4 +215,4 @@ async function cellMenuItem(page, id) {
   await page.locator(`#cell-menu #${id}`).click();
 }
 
-module.exports = { cellMenuItem, expectGridFits, expectTabLeavesClues, showPhase, openGrid, openStudio, openStudioFile, downloadText, typeBoard, buildVariant, rewriteSaveOnNextLoad, clickGapLine, clickHelpRow, typeCell, cellLetterPairs, fillCrushwordCell, solveCrushwordBoard, solveRingBoard };
+module.exports = { cellMenuItem, expectGridFits, expectTabLeavesClues, showPhase, openGrid, openStudio, openStudioFile, downloadText, typeBoard, buildVariant, rewriteSaveOnNextLoad, clickGapLine, clickHelpRow, typeCell, cellLetterPairs, fillCrushwordCell, findCrushwordCell, solveCrushwordBoard, solveRingBoard };

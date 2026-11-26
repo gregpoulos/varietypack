@@ -16,8 +16,7 @@ function nTurnsFor(totalCells) {
 }
 
 // The geometry a spiral of totalCells gets: LAYOUT_BASE's radii and nTurnsFor's turn
-// count. The one recipe the builder (for PUZZLE_DATA.geometry) and the studio's board
-// both use.
+// count. The one recipe the page engine and the studio's board both use.
 function geometryFor(totalCells) {
   return { ...LAYOUT_BASE, N_TURNS: nTurnsFor(totalCells) };
 }

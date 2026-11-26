@@ -655,6 +655,20 @@ test('opening one editor popover closes another', async ({ page }) => {
   await expect(page.locator('#keys')).toHaveCount(0);
 });
 
+// By keyboard, the focus moving to another popover's button is the "outside", as there
+// is no press to close the first one.
+test('opening one editor popover by keyboard closes another', async ({ page }) => {
+  await start(page);
+  await openTemplate(page);
+  await page.locator('#btn-cell').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#cell-menu')).toBeVisible();
+  await page.locator('#btn-keys').focus();
+  await expect(page.locator('#cell-menu')).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#keys')).toBeVisible();
+});
+
 test('Grid… sits in the Board toolbar only, for kinds with settings', async ({ page }) => {
   await start(page);
   await openTemplate(page, 'crushword');

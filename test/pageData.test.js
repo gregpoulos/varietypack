@@ -12,8 +12,8 @@ const { loadPuzzle } = require('../shared/cli/puzzleFiles');
 const { buildFromObject } = require('../shared/build/buildFromObject');
 const { KINDS, hooksFor } = require('../shared/build/tools');
 const { normalize } = require('../shared/normalize.mjs');
-const { SHAPE_NAMES } = require('../snake-charmer/src/layout');
-const { geometryFor } = require('../spiral/src/layout.mjs');
+const { SHAPE_NAMES } = require('../snake-charmer/src/layout.mjs');
+const { LOOPS } = require('../snake-charmer/src/entryMaps.mjs');
 const { puzzleDataOf } = require('./helpers');
 
 const EXAMPLES = path.join(__dirname, '..', 'examples');
@@ -37,15 +37,16 @@ function walk(value, only, found = { keys: new Set(), strings: [] }, key) {
 const TOOL_FIELDS = {
   'snake-charmer': data => {
     assert.equal(data.loops, undefined);
-    assert.ok(Number.isInteger(data.ring.N));
+    assert.equal(data.ring, undefined);   // the engine derives it from the shape
+    assert.equal(data.cells, undefined);
     assert.ok(SHAPE_NAMES.includes(data.shape), data.shape);
-    assert.equal(data.letters.length, data.ring.N);
+    assert.equal(data.letters.length, data.entries.reduce((sum, e) => sum + e.length, 0) / LOOPS);
   },
   'spiral': data => {
     const total = data.inward.reduce((sum, e) => sum + e.length, 0);
-    assert.equal(data.cells.length, total);
-    assert.deepEqual(data.geometry, geometryFor(data.cells.length));
-    assert.equal(data.letters.length, data.cells.length);
+    assert.equal(data.cells, undefined);   // the engine derives the geometry from the lengths
+    assert.equal(data.geometry, undefined);
+    assert.equal(data.letters.length, total);
   },
   'marching-bands': data => {
     assert.equal(data.rows.length, data.size);

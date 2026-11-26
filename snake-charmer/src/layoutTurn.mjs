@@ -1,5 +1,3 @@
-'use strict';
-
 // Traversal order — 8 sections, clockwise:
 //  0  Top arm upper track       left → right
 //  1  Top arm right curve (CW)  top → bottom
@@ -10,7 +8,7 @@
 //  6  Bottom arm lower track    right → left
 //  7  Body outer arc (CW)       bottom → top
 
-const { W_CELL, H_CELL, SVG_PAD_V } = require('./ringConstants');
+import { W_CELL, H_CELL, SVG_PAD_V } from './ringConstants.mjs';
 
 const SVG_PAD_H = 20;
 
@@ -42,4 +40,4 @@ function computeRing(N) {
   };
 }
 
-module.exports = { computeRing, SVG_PAD_H, SVG_PAD_V };
+export { computeRing, SVG_PAD_H, SVG_PAD_V };

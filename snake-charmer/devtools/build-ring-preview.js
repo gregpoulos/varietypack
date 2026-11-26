@@ -9,9 +9,9 @@ const root = path.join(__dirname, '..');
 // globals. esbuild bundles them from the same modules the engine and builder use, so the
 // preview draws what the puzzle page draws.
 const modules = `
-  import { computeRing as computeStadiumRing } from './src/layoutStadium.js';
-  import { computeRing as computeTurnRing } from './src/layoutTurn.js';
-  import { computeRing as computeDoubleTurnRing } from './src/layoutDoubleTurn.js';
+  import { computeRing as computeStadiumRing } from './src/layoutStadium.mjs';
+  import { computeRing as computeTurnRing } from './src/layoutTurn.mjs';
+  import { computeRing as computeDoubleTurnRing } from './src/layoutDoubleTurn.mjs';
   import { getStadiumRenderer } from './src/template/shapes/stadium.mjs';
   import { getTurnRenderer } from './src/template/shapes/turn.mjs';
   import { getDoubleTurnRenderer } from './src/template/shapes/double-turn.mjs';

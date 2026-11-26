@@ -7,6 +7,7 @@ import { useBoardInput, boardHasFocus } from './useBoardInput.js';
 import { useFocusTarget, handleUndoRedo } from './useBoardEditing.js';
 import { GridBoard } from './GridBoard.jsx';
 import { ClueLists } from './ClueList.jsx';
+import { displayTextOf } from './displayStatus.js';
 import { plural } from './plural.js';
 import { PhaseLayout } from './PhaseLayout.jsx';
 import { WordList } from './WordList.jsx';
@@ -35,8 +36,8 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
   const { r, c } = ui;
   const isBlock = model.blocks[cellIndex(model, r, c)];
 
-  // Handlers read the latest model and ui from here: a pasted string reaches onLetter
-  // several times in one event, before Preact re-renders.
+  // Handlers read the latest model and ui from here, which can be newer than the last
+  // render when several events arrive before Preact re-renders.
   const live = useRef(null);
   live.current = { model, ui };
   const typeRun = useRef(0);
@@ -60,9 +61,9 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
   }
 
   const { inputProps, focus } = useBoardInput({
-    onLetter(ch) {
+    onLetters(letters) {
       const { model: m, ui: u } = live.current;
-      runResult(E.typeLetter(m, u, ch));
+      runResult(E.typeText(m, u, letters));
     },
     onKey(e) {
       const { model: m, ui: u } = live.current;
@@ -159,10 +160,14 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
   gridItem('conn', checks.connected ? 'Connected' : 'Has a separate part', checks.connected ? { ok: true } : WARN);
 
   // ── clues ────────────────────────────────────────────────────────────────
-  const listRows = (dir) => all.filter(s => s.dir === dir).map(s => ({
-    id: entryId(s), j: s.key, n: s.num, label: `${s.num}.`, answer: answerOf(s), clue: model.clues[s.key].clue,
-    active: s === main, crossing: s === cross, attrs: { 'data-dir': dir, 'data-key': s.key },
-  }));
+  const listRows = (dir) => all.filter(s => s.dir === dir).map(s => {
+    const row = {
+      id: entryId(s), j: s.key, n: s.num, label: `${s.num}.`, answer: answerOf(s), clue: model.clues[s.key].clue,
+      active: s === main, crossing: s === cross, attrs: { 'data-key': s.key },
+    };
+    if (row.active) Object.assign(row, displayTextOf(model.clues[s.key], s.cells.map(letterOf)));
+    return row;
+  });
   const targets = all.map(s => ({ value: s.key, label: `${entryName(s)} · ${answerOf(s)}` }));
   const entries = all.length;
   const blocks = model.blocks.filter(Boolean).length;
@@ -176,8 +181,8 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
   return (
     <PhaseLayout phase={phase} settings={settings} fillClues={fillClues} header={header}
       toggle={(
-        <Latch id="direction-toggle" label="Direction" value={ui.dir}
-          options={DIRS.map(d => ({ value: d, text: WORD[d], led: d === 'A' ? 'ch1' : 'ch2', attrs: { 'data-dir': d } }))}
+        <Latch id="cut-toggle" label="Direction" value={ui.dir}
+          options={DIRS.map(d => ({ value: d, text: WORD[d], led: d === 'A' ? 'ch1' : 'ch2', attrs: { 'data-cut': CUT[d] } }))}
           onChange={setDir} />
       )}
       tools={(
@@ -204,7 +209,8 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
               [<kbd>.</kbd>, 'switch Across/Down (or click the cell again)'],
               [<kbd>Tab</kbd>, 'next entry'],
               [<kbd>Arrows</kbd>, 'move; hold Alt to jump to a cell’s edge'],
-              [<kbd>Backspace</kbd>, 'delete'],
+              [<kbd>Backspace</kbd>, 'delete a letter'],
+              [<kbd>Delete</kbd>, 'clear the cell'],
             ]} />} />
       )}
       checks={(
@@ -234,7 +240,8 @@ export function CrushwordEditor({ dispatch, model, phase, focusRef, settings, fi
             if (main?.key === slotKey) moveTo(ui);
             else select(slotKey, { focusBoard: false });
           }}
-          onClue={(slotKey, text) => exec('setClue', [slotKey, text], `clue:${model.clues[slotKey].id}`)} />
+          onClue={(slotKey, text) => exec('setClue', [slotKey, text], `clue:${model.clues[slotKey].id}`)}
+          onDisplay={(slotKey, text) => exec('setDisplayText', [slotKey, text], `display:${model.clues[slotKey].id}`)} />
       )} />
   );
 }

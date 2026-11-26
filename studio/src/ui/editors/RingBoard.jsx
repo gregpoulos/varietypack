@@ -1,14 +1,13 @@
 import { useMemo } from 'preact/hooks';
-import layout from '../../../../snake-charmer/src/layout.js';
+import { ringFor } from '../../../../snake-charmer/src/layout.mjs';
 import * as ringMod from '../../../../snake-charmer/src/template/shapes/ring.mjs';
 import * as stadium from '../../../../snake-charmer/src/template/shapes/stadium.mjs';
 import * as turn from '../../../../snake-charmer/src/template/shapes/turn.mjs';
 import * as doubleTurn from '../../../../snake-charmer/src/template/shapes/double-turn.mjs';
-import constants from '../../../../snake-charmer/src/ringConstants.js';
+import { W_CELL, H_CELL } from '../../../../snake-charmer/src/ringConstants.mjs';
 import { entryAt } from '../../model/starts.js';
 import { SHAPE_LABEL } from './shapeLabels.js';
 
-const { ringFor } = layout;
 const { makeRingRenderer, arcSection } = ringMod;
 const RENDERERS = {
   circle: stadium.getStadiumRenderer,
@@ -21,7 +20,6 @@ const fmt = (n) => n.toFixed(3);
 // A plain circle of N cells, for when no shape fits: the editing carries on, drawn
 // simply.
 function plainCircle(N) {
-  const { W_CELL, H_CELL } = constants;
   const R = Math.max(N * W_CELL / (2 * Math.PI), H_CELL);
   const pad = 20;
   const c = R + H_CELL / 2 + pad;
@@ -34,7 +32,7 @@ function plainCircle(N) {
   };
 }
 
-// The ring to draw for N cells: the builder's own choice (layout.js's ringFor), or a
+// The ring to draw for N cells: the builder's own choice (layout.mjs's ringFor), or a
 // plain circle when that shape's geometry doesn't exist for N. Exported for the size
 // preview.
 export function resolveRing(N, shape) {

@@ -181,7 +181,7 @@ addEventListener('message', function (e) {
 </script>
 ```
 
-The page posts `varietypack:resize` whenever its height changes, so the frame fits it. On a phone the puzzle fills the screen, so it asks for a frame one screen high (`fill`) instead. When the solver finishes, it posts one `varietypack:complete` message, with the `solution`, to the origin you named and to nobody else. The message also carries `checks` and `reveals`: how many times the solver used Check and Reveal.
+The page posts `varietypack:resize` whenever its height changes, so the frame fits it. On a phone, and for Crushword in any wide frame, the puzzle fills the screen, so it asks for a frame one screen high (`fill`) instead; the snippet above handles both. A resize can switch a Crushword between the two, so honor `fill` on every message. When the solver finishes, it posts one `varietypack:complete` message, with the `solution`, to the origin you named and to nobody else. The message also carries `checks` and `reveals`: how many times the solver used Check and Reveal.
 
 To verify a solve on the host's server: check that `e.origin` is the puzzle's origin, then check `sha256hex(solution) === boardHash`, using the `boardHash` from the puzzle's muddled YAML. The server never needs the answers. Only the answers-hidden (`--muddle`) page gives a verifiable solve: a plain page ships its answers, so a posted solution proves nothing. Whether a solver's progress is kept inside a cross-origin iframe depends on the browser, and hasn't been checked. A puzzle can also override theme tokens to match the host site: see [docs/AUTHORING.md](docs/AUTHORING.md) → "Theme overrides".
 

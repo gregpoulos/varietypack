@@ -11,6 +11,7 @@ import {
 } from '../../../shared/engine-chrome.mjs';
 import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
 import { LOOPS, buildEntryMaps, nextRingPos, prevRingPos } from '../entryMaps.mjs';
+import { ringFor } from '../layout.mjs';
 import { getStadiumRenderer } from './shapes/stadium.mjs';
 import { getTurnRenderer } from './shapes/turn.mjs';
 import { getDoubleTurnRenderer } from './shapes/double-turn.mjs';
@@ -24,11 +25,12 @@ function getShapeRenderer(shape) {
 function init() {
   // ── Data & constants ──────────────────────────────────────────────────────
   const data = window.PUZZLE_DATA;
-  const { svgWidth, svgHeight } = data.ring;
-  const ringSize = data.ring.N;
+  const ringSize = data.entries.reduce((sum, e) => sum + e.length, 0) / LOOPS;
+  const { ring } = ringFor(ringSize, data.shape);
+  const { svgWidth, svgHeight } = ring;
 
   // ── Geometry & index maps ─────────────────────────────────────────────────
-  const { cellPath, letterCenter, labelPos } = getShapeRenderer(data.shape)(data.ring);
+  const { cellPath, letterCenter, labelPos } = getShapeRenderer(data.shape)(ring);
   const { entryAtCell, ringPosByEntry, canonicalStart } = buildEntryMaps(data.entries, LOOPS);
 
   // Entry indices that start (posInEntry 0) at each ring position, for number labels

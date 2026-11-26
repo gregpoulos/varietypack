@@ -1694,6 +1694,15 @@ html.phone .kb-spacer { flex: 7 1 0; }
   .clue-item.secondary-entry { background: transparent; }
   .clue-item.filled .clue-text { opacity: 1; text-decoration: none; }
 
+  /* Ink on paper: a dark theme's light text and dark page would otherwise print as
+     near-white on white (backgrounds don't print by default) or, with them on, as a
+     dark page. The text elements a theme colors individually inherit the body's. */
+  body { background: #fff; color: #000; }
+  h1.title,
+  .byline,
+  .instructions,
+  .clue-section h2 { color: inherit; }
+
   /* A link prints in the color of the text around it: a theme's link color is chosen
      against its screen background, which paper doesn't have. */
   a { color: inherit; }
@@ -4800,19 +4809,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
   }
 
   // crushword/src/template/engine.js
-  var SOLVING_KEYS = /* @__PURE__ */ new Set([
-    ".",
-    "Tab",
-    "Enter",
-    "Backspace",
-    " ",
-    "ArrowLeft",
-    "ArrowRight",
-    "ArrowUp",
-    "ArrowDown",
-    "PageUp",
-    "PageDown"
-  ]);
+  var GRID_KEYS = /* @__PURE__ */ new Set([".", "Tab", "Enter", "Backspace", " ", "ArrowLeft", "ArrowRight"]);
   function init() {
     const data = window.PUZZLE_DATA;
     const grid = data.grid;
@@ -4959,6 +4956,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
         if (!fillLayout()) scrollByKey(key);
         return;
       }
+      bringGridIntoView();
       direction = "down";
       focusCell(t, Math.min(desiredCol, getCellLetter(t).length), true);
     }
@@ -4988,7 +4986,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
         centerWithin(item.parentElement, item);
       }
     }
-    function alignPageOnce() {
+    function bringGridIntoView() {
       if (!phone && !fillLayout()) {
         svg.scrollIntoView({ block: "nearest", behavior: "auto" });
         return;
@@ -5152,7 +5150,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     buildClueList(data.across, maps.across.order, acrossCluesList, acrossClueItems, "across");
     buildClueList(data.down, maps.down.order, downCluesList, downClueItems, "down");
     function goToEntry(dir, num) {
-      alignPageOnce();
+      bringGridIntoView();
       direction = dir;
       focusCell(DIRS[dir].cellsOf[num][0]);
     }
@@ -5259,7 +5257,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
     );
     setupKeydown((e) => {
       if (latch.solved && e.key !== "Tab") return;
-      if (SOLVING_KEYS.has(e.key)) alignPageOnce();
+      if (GRID_KEYS.has(e.key)) bringGridIntoView();
       if (e.key === ".") {
         e.preventDefault();
         if (toggleDirection()) switchTip.noteKey(e);
@@ -5330,7 +5328,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       const typed = normalize(hiddenInput.value);
       hiddenInput.value = "";
       if (latch.solved || !typed) return;
-      alignPageOnce();
+      bringGridIntoView();
       timer.onFirstInput();
       if (isLocked(activeCell)) {
         focusCell(nextCell(maps, activeCell, direction), 0);
@@ -5351,7 +5349,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       if (n !== activeCell) focusCell(n);
       else if (toggleDirection()) switchTip.atCell(cell);
     });
-    svg.addEventListener("click", alignPageOnce);
+    svg.addEventListener("click", bringGridIntoView);
     function resetBoard() {
       resetAndRefocus({
         composer,

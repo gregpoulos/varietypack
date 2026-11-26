@@ -8,7 +8,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { SHAPES: RING_SHAPES, SHAPE_NAMES } = require('../src/layout');
+const { SHAPES: RING_SHAPES, SHAPE_NAMES } = require('../src/layout.mjs');
 const { getStadiumRenderer }    = require('../src/template/shapes/stadium.mjs');
 const { getTurnRenderer }       = require('../src/template/shapes/turn.mjs');
 const { getDoubleTurnRenderer } = require('../src/template/shapes/double-turn.mjs');

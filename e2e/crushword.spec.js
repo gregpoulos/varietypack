@@ -15,7 +15,7 @@ const os   = require('os');
 const fs   = require('fs');
 const { buildPuzzleFile } = require('../test/helpers');
 const { startServer } = require('./studio-server');
-const { cellLetterPairs, clickHelpRow, fillCrushwordCell, solveCrushwordBoard } = require('./helpers');
+const { cellLetterPairs, clickHelpRow, fillCrushwordCell, findCrushwordCell, solveCrushwordBoard } = require('./helpers');
 const { sha256hex } = require('../shared/sha256hex.mjs');
 
 const FIX = path.join(__dirname, '..', 'crushword', 'test', 'fixtures');
@@ -1266,18 +1266,25 @@ test('the Down pane follows the crossing clue of an Across cell far down the boa
 });
 
 test('typing within a cell never scrolls a pane', async ({ page }) => {
-  await load(page, { width: 1280, height: 720 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });   // panes jump: no glide to wait out
+  await load(page, { width: 1280, height: 560 });         // short enough that both lists overflow
   await page.locator('#down-clues .clue-item').first().click();
-  await page.keyboard.press('Shift+Tab');
-  await expect.poll(() => activeInPane(page)).toBe(true);
-  await page.waitForTimeout(600);           // the smooth scroll settles
-  await page.evaluate(() => document.querySelectorAll('.clue-section ul').forEach(el => { el.scrollTop = 0; }));
+  await page.keyboard.press('Shift+Tab');   // the last Across entry
+  // Each pane follows a clue (the Across one its active clue, the Down one its crossing).
+  await expect(page.locator('#across-clues .active-clue, #down-clues .secondary-entry')).toHaveCount(2);
+  // Move each pane far from where its clue sits centered, so a re-center would show.
+  const panes = await page.evaluate(() => [...document.querySelectorAll('.clue-section ul')].map(ul => {
+    const max = ul.scrollHeight - ul.clientHeight;
+    ul.scrollTop = ul.scrollTop > max / 2 ? 0 : max;
+    return { max, parked: ul.scrollTop };
+  }));
+  for (const { max } of panes) expect(max, 'each pane must overflow or this checks nothing').toBeGreaterThan(40);
+  const parked = panes.map(p => p.parked);
   await page.locator('#hidden-input').fill('A');
   await page.locator('#hidden-input').fill('B');
   await page.keyboard.press('ArrowLeft');
-  await page.waitForTimeout(600);
   expect(await page.evaluate(() => [...document.querySelectorAll('.clue-section ul')].map(el => el.scrollTop)))
-    .toEqual([0, 0]);
+    .toEqual(parked);
 });
 
 test('a narrow window stacks the layout and never scrolls the page to follow a clue', async ({ page }) => {
@@ -1299,6 +1306,34 @@ test('a narrow window brings the grid back into view when a far clue is clicked'
   expect(await gridVisible()).toBe(false);
   await page.locator('#down-clues .clue-item').last().click();
   await expect.poll(gridVisible).toBe(true);
+});
+
+// A key that scrolls the page is the solver moving it, so it must not first pull the
+// grid back into view: each press would then restart from the grid and the page would
+// stall a screen below it.
+test('a narrow window scrolls all the way with PageDown, and with ↓ from the bottom row', async ({ page }) => {
+  await load(page, { width: 700, height: 500 });
+  expect(await fillsView(page)).toBe('');
+  // Presses `key` until the page stops moving, and returns how far short of the bottom
+  // it stopped (read then, since the crossings panel fills in once a cell is chosen).
+  const shortOfBottom = async key => {
+    for (let y = -1; y !== await scrollY(page);) {
+      y = await scrollY(page);
+      await page.keyboard.press(key);
+    }
+    return page.evaluate(() => document.documentElement.scrollHeight - innerHeight - scrollY);
+  };
+
+  await page.locator('#cell-2').click();   // a top-row cell
+  expect(await shortOfBottom('PageDown')).toBeLessThanOrEqual(1);
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const lastRow = await page.evaluate(() => {
+    const g = window.PUZZLE_DATA.grid, r = g.length - 1;
+    return 'cell-' + (r * g[r].length + g[r].indexOf('.') + 1);
+  });
+  await page.locator('#' + lastRow).click();
+  expect(await shortOfBottom('ArrowDown')).toBeLessThanOrEqual(1);
 });
 
 test('a short wide window keeps the fill layout', async ({ page }) => {
@@ -1388,49 +1423,6 @@ test.describe('framed', () => {
 const FILL = { width: 1280, height: 720 };
 const cxRows = page => page.locator('#crossings .cx-row');
 
-// A cell with an entry one way only, from the grid: [cell id, the direction it has].
-const oneWayCell = page => page.evaluate(() => {
-  const g = window.PUZZLE_DATA.grid;
-  const open = (r, c) => g[r] !== undefined && g[r][c] === '.';
-  for (let r = 0; r < g.length; r++) {
-    for (let c = 0; c < g[r].length; c++) {
-      if (!open(r, c)) continue;
-      const across = open(r, c - 1) || open(r, c + 1), down = open(r - 1, c) || open(r + 1, c);
-      if (across !== down) return ['cell-' + (r * g[r].length + c + 1), across ? 'across' : 'down'];
-    }
-  }
-  return null;
-});
-
-test('the panel lists the active entry\'s crossings in cell order', async ({ page }) => {
-  await load(page, FILL);
-  const entry = await page.evaluate(() => [...document.querySelectorAll('.cell.active-entry, .cell.active-cell')]
-    .map(el => Number(el.id.slice(5))).sort((a, b) => a - b));
-  await expect(cxRows(page)).toHaveCount(entry.length);
-  // The Down number at each cell, read from the drawn grid: walk up to the run's start
-  // and take the label drawn in its corner.
-  const downNums = await page.evaluate(ids => {
-    const cols = window.PUZZLE_DATA.grid[0].length;
-    const labelAt = id => {
-      const r = document.getElementById('cell-' + id);
-      const x = +r.getAttribute('x') + 6, y = +r.getAttribute('y') + 8;
-      const t = [...document.querySelectorAll('.cell-num')].find(e => +e.getAttribute('x') === x && +e.getAttribute('y') === y);
-      return t ? t.textContent : null;
-    };
-    return ids.map(id => {
-      let up = id;
-      if (!document.getElementById('cell-' + (id - cols)) && !document.getElementById('cell-' + (id + cols))) return null;
-      while (document.getElementById('cell-' + (up - cols))) up -= cols;
-      return labelAt(up);
-    });
-  }, entry);
-  const rows = await cxRows(page).evaluateAll(els => els.map(e => [e.dataset.num ?? null, e.classList.contains('cx-none')]));
-  rows.forEach(([num, none], i) => {
-    if (downNums[i] === null) expect(none, 'row ' + i).toBe(true);
-    else expect(num, 'row ' + i).toBe(downNums[i]);
-  });
-});
-
 test('typing updates the panel\'s letters without reordering it', async ({ page }) => {
   await load(page, FILL);
   const nums = () => cxRows(page).evaluateAll(els => els.map(e => e.dataset.num ?? ''));
@@ -1442,12 +1434,16 @@ test('typing updates the panel\'s letters without reordering it', async ({ page 
   await expect(page.locator('#crossings .cx-row .cx-here').first()).toHaveText('AB');
 });
 
-test('the row under the cursor carries the crossing highlight', async ({ page }) => {
+// The clue lists say which Down entry crosses the cursor's cell. Walking the entry cell
+// by cell, the panel's row for that cell must name it, and the rows come in cell order.
+test('the panel has a row per cell, in order, each naming the clue that crosses it', async ({ page }) => {
   await load(page, FILL);
-  const cells = await page.locator('#crossings .cx-row').count();
-  expect(cells, 'the panel has rows').toBeGreaterThan(0);
+  await page.locator('#across-clues .clue-item').first().click();   // the entry's first cell
+  const cells = await page.locator('.cell.active-entry, .cell.active-cell').count();
+  await expect(cxRows(page)).toHaveCount(cells);
   for (let i = 0; i < cells; i++) {
     await expect(page.locator('#crossings .cx-row.cx-cursor')).toHaveCount(1);
+    await expect(cxRows(page).nth(i), 'row ' + i).toHaveClass(/cx-cursor/);
     const crossing = await page.locator('#down-clues .clue-item.secondary-entry').count();
     if (crossing) {
       await expect(page.locator('#crossings .cx-row.secondary-entry')).toHaveCount(1);
@@ -1464,7 +1460,7 @@ test('the row under the cursor carries the crossing highlight', async ({ page })
 
 test('a cell with no crossing entry shows a muted row', async ({ page }) => {
   await load(page, FILL);
-  const [id, dir] = await oneWayCell(page);
+  const { id, dir } = await findCrushwordCell(page, 'oneWay');
   await page.locator('#' + id).click();
   const row = page.locator('#crossings .cx-row.cx-cursor');
   await expect(row).toHaveClass(/cx-none/);

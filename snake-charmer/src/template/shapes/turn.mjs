@@ -1,5 +1,5 @@
 // Turn (C-shape) renderer: two horizontal arms joined on the left by a body arc system
-// centered on (cx, cy). Traversal order is documented in src/layoutTurn.js.
+// centered on (cx, cy). Traversal order is documented in src/layoutTurn.mjs.
 // getTurnRenderer(ring) → { cellPath, letterCenter, labelPos, sectionOf }
 
 import { makeRingRenderer, trackSection, arcSection } from './ring.mjs';

@@ -1625,6 +1625,15 @@ html.phone .kb-spacer { flex: 7 1 0; }
   .clue-item.secondary-entry { background: transparent; }
   .clue-item.filled .clue-text { opacity: 1; text-decoration: none; }
 
+  /* Ink on paper: a dark theme's light text and dark page would otherwise print as
+     near-white on white (backgrounds don't print by default) or, with them on, as a
+     dark page. The text elements a theme colors individually inherit the body's. */
+  body { background: #fff; color: #000; }
+  h1.title,
+  .byline,
+  .instructions,
+  .clue-section h2 { color: inherit; }
+
   /* A link prints in the color of the text around it: a theme's link color is chosen
      against its screen background, which paper doesn't have. */
   a { color: inherit; }
@@ -1963,716 +1972,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
         ]
       }
     }
-  ],
-  "cells": [
-    {
-      "cell_number": 1,
-      "theta_start": -1.5707963267948966,
-      "theta_end": -1.3769327520441699,
-      "r_inner_start": 217,
-      "r_outer_start": 265,
-      "r_inner_end": 215.51899138206193,
-      "r_outer_end": 263.5189913820619
-    },
-    {
-      "cell_number": 2,
-      "theta_start": -1.3769327520441699,
-      "theta_end": -1.1818704680668661,
-      "r_inner_start": 215.51899138206193,
-      "r_outer_start": 263.5189913820619,
-      "r_inner_end": 214.02882530018434,
-      "r_outer_end": 262.02882530018434
-    },
-    {
-      "cell_number": 3,
-      "theta_start": -1.1818704680668661,
-      "theta_end": -0.9855870076246113,
-      "r_inner_start": 214.02882530018434,
-      "r_outer_start": 262.02882530018434,
-      "r_inner_end": 212.52933011730912,
-      "r_outer_end": 260.5293301173091
-    },
-    {
-      "cell_number": 4,
-      "theta_start": -0.9855870076246113,
-      "theta_end": -0.7880591936670216,
-      "r_inner_start": 212.52933011730912,
-      "r_outer_start": 260.5293301173091,
-      "r_inner_end": 211.02032877381376,
-      "r_outer_end": 259.02032877381373
-    },
-    {
-      "cell_number": 5,
-      "theta_start": -0.7880591936670216,
-      "theta_end": -0.589263107563806,
-      "r_inner_start": 211.02032877381376,
-      "r_outer_start": 259.02032877381373,
-      "r_inner_end": 209.5016385448226,
-      "r_outer_end": 257.50163854482264
-    },
-    {
-      "cell_number": 6,
-      "theta_start": -0.589263107563806,
-      "theta_end": -0.3891740554865264,
-      "r_inner_start": 209.5016385448226,
-      "r_outer_start": 257.50163854482264,
-      "r_inner_end": 207.9730707833824,
-      "r_outer_end": 255.9730707833824
-    },
-    {
-      "cell_number": 7,
-      "theta_start": -0.3891740554865264,
-      "theta_end": -0.187766532806648,
-      "r_inner_start": 207.9730707833824,
-      "r_outer_start": 255.9730707833824,
-      "r_inner_end": 206.4344306484834,
-      "r_outer_end": 254.4344306484834
-    },
-    {
-      "cell_number": 8,
-      "theta_start": -0.187766532806648,
-      "theta_end": 0.014985813634999623,
-      "r_inner_start": 206.4344306484834,
-      "r_outer_start": 254.4344306484834,
-      "r_inner_end": 204.88551681681932,
-      "r_outer_end": 252.88551681681932
-    },
-    {
-      "cell_number": 9,
-      "theta_start": 0.014985813634999623,
-      "theta_end": 0.21911022554489246,
-      "r_inner_start": 204.88551681681932,
-      "r_outer_start": 252.88551681681932,
-      "r_inner_end": 203.32612117708243,
-      "r_outer_end": 251.32612117708243
-    },
-    {
-      "cell_number": 10,
-      "theta_start": 0.21911022554489246,
-      "theta_end": 0.42463487565111735,
-      "r_inner_start": 203.32612117708243,
-      "r_outer_start": 251.32612117708243,
-      "r_inner_end": 201.75602850548378,
-      "r_outer_end": 249.75602850548378
-    },
-    {
-      "cell_number": 11,
-      "theta_start": 0.42463487565111735,
-      "theta_end": 0.6315889128222234,
-      "r_inner_start": 201.75602850548378,
-      "r_outer_start": 249.75602850548378,
-      "r_inner_end": 200.17501612107074,
-      "r_outer_end": 248.17501612107074
-    },
-    {
-      "cell_number": 12,
-      "theta_start": 0.6315889128222234,
-      "theta_end": 0.8400025100345565,
-      "r_inner_start": 200.17501612107074,
-      "r_outer_start": 248.17501612107074,
-      "r_inner_end": 198.58285351928325,
-      "r_outer_end": 246.58285351928325
-    },
-    {
-      "cell_number": 13,
-      "theta_start": 0.8400025100345565,
-      "theta_end": 1.049906915410856,
-      "r_inner_start": 198.58285351928325,
-      "r_outer_start": 246.58285351928325,
-      "r_inner_end": 196.9793019820479,
-      "r_outer_end": 244.9793019820479
-    },
-    {
-      "cell_number": 14,
-      "theta_start": 1.049906915410856,
-      "theta_end": 1.2613345065737636,
-      "r_inner_start": 196.9793019820479,
-      "r_outer_start": 244.9793019820479,
-      "r_inner_end": 195.36411416254762,
-      "r_outer_end": 243.36411416254762
-    },
-    {
-      "cell_number": 15,
-      "theta_start": 1.2613345065737636,
-      "theta_end": 1.4743188485810665,
-      "r_inner_start": 195.36411416254762,
-      "r_outer_start": 243.36411416254762,
-      "r_inner_end": 193.73703364262906,
-      "r_outer_end": 241.73703364262906
-    },
-    {
-      "cell_number": 16,
-      "theta_start": 1.4743188485810665,
-      "theta_end": 1.6888947557352365,
-      "r_inner_start": 193.73703364262906,
-      "r_outer_start": 241.73703364262906,
-      "r_inner_end": 192.0977944606124,
-      "r_outer_end": 240.0977944606124
-    },
-    {
-      "cell_number": 17,
-      "theta_start": 1.6888947557352365,
-      "theta_end": 1.9050983575884746,
-      "r_inner_start": 192.0977944606124,
-      "r_outer_start": 240.0977944606124,
-      "r_inner_end": 190.44612060705006,
-      "r_outer_end": 238.44612060705006
-    },
-    {
-      "cell_number": 18,
-      "theta_start": 1.9050983575884746,
-      "theta_end": 2.122967169496416,
-      "r_inner_start": 190.44612060705006,
-      "r_outer_start": 238.44612060705006,
-      "r_inner_end": 188.7817254857361,
-      "r_outer_end": 236.7817254857361
-    },
-    {
-      "cell_number": 19,
-      "theta_start": 2.122967169496416,
-      "theta_end": 2.342540168109293,
-      "r_inner_start": 188.7817254857361,
-      "r_outer_start": 236.7817254857361,
-      "r_inner_end": 187.10431133699615,
-      "r_outer_end": 235.10431133699615
-    },
-    {
-      "cell_number": 20,
-      "theta_start": 2.342540168109293,
-      "theta_end": 2.5638578722292342,
-      "r_inner_start": 187.10431133699615,
-      "r_outer_start": 235.10431133699615,
-      "r_inner_end": 185.41356861998312,
-      "r_outer_end": 233.41356861998312
-    },
-    {
-      "cell_number": 21,
-      "theta_start": 2.5638578722292342,
-      "theta_end": 2.7869624295070325,
-      "r_inner_start": 185.41356861998312,
-      "r_outer_start": 233.41356861998312,
-      "r_inner_end": 183.70917535036278,
-      "r_outer_end": 231.70917535036278
-    },
-    {
-      "cell_number": 22,
-      "theta_start": 2.7869624295070325,
-      "theta_end": 3.0118977095018433,
-      "r_inner_start": 183.70917535036278,
-      "r_outer_start": 231.70917535036278,
-      "r_inner_end": 181.99079638938997,
-      "r_outer_end": 229.99079638938997
-    },
-    {
-      "cell_number": 23,
-      "theta_start": 3.0118977095018433,
-      "theta_end": 3.2387094036835915,
-      "r_inner_start": 181.99079638938997,
-      "r_outer_start": 229.99079638938997,
-      "r_inner_end": 180.25808267994648,
-      "r_outer_end": 228.25808267994648
-    },
-    {
-      "cell_number": 24,
-      "theta_start": 3.2387094036835915,
-      "theta_end": 3.467445133021328,
-      "r_inner_start": 180.25808267994648,
-      "r_outer_start": 228.25808267994648,
-      "r_inner_end": 178.5106704246266,
-      "r_outer_end": 226.5106704246266
-    },
-    {
-      "cell_number": 25,
-      "theta_start": 3.467445133021328,
-      "theta_end": 3.698154563872353,
-      "r_inner_start": 178.5106704246266,
-      "r_outer_start": 226.5106704246266,
-      "r_inner_end": 176.74818020040942,
-      "r_outer_end": 224.74818020040942
-    },
-    {
-      "cell_number": 26,
-      "theta_start": 3.698154563872353,
-      "theta_end": 3.9308895329678775,
-      "r_inner_start": 176.74818020040942,
-      "r_outer_start": 224.74818020040942,
-      "r_inner_end": 174.97021600383857,
-      "r_outer_end": 222.97021600383857
-    },
-    {
-      "cell_number": 27,
-      "theta_start": 3.9308895329678775,
-      "theta_end": 4.165704182382661,
-      "r_inner_start": 174.97021600383857,
-      "r_outer_start": 222.97021600383857,
-      "r_inner_end": 173.17636421993043,
-      "r_outer_end": 221.17636421993043
-    },
-    {
-      "cell_number": 28,
-      "theta_start": 4.165704182382661,
-      "theta_end": 4.4026551054801795,
-      "r_inner_start": 173.17636421993043,
-      "r_outer_start": 221.17636421993043,
-      "r_inner_end": 171.36619250723487,
-      "r_outer_end": 219.36619250723487
-    },
-    {
-      "cell_number": 29,
-      "theta_start": 4.4026551054801795,
-      "theta_end": 4.641801504943305,
-      "r_inner_start": 171.36619250723487,
-      "r_outer_start": 219.36619250723487,
-      "r_inner_end": 169.53924859056997,
-      "r_outer_end": 217.53924859056997
-    },
-    {
-      "cell_number": 30,
-      "theta_start": 4.641801504943305,
-      "theta_end": 4.88320536413552,
-      "r_inner_start": 169.53924859056997,
-      "r_outer_start": 217.53924859056997,
-      "r_inner_end": 167.69505895191872,
-      "r_outer_end": 215.69505895191872
-    },
-    {
-      "cell_number": 31,
-      "theta_start": 4.88320536413552,
-      "theta_end": 5.126931633192063,
-      "r_inner_start": 167.69505895191872,
-      "r_outer_start": 215.69505895191872,
-      "r_inner_end": 165.8331274087974,
-      "r_outer_end": 213.8331274087974
-    },
-    {
-      "cell_number": 32,
-      "theta_start": 5.126931633192063,
-      "theta_end": 5.3730484314172395,
-      "r_inner_start": 165.8331274087974,
-      "r_outer_start": 213.8331274087974,
-      "r_inner_end": 163.952933568054,
-      "r_outer_end": 211.952933568054
-    },
-    {
-      "cell_number": 33,
-      "theta_start": 5.3730484314172395,
-      "theta_end": 5.621627267767289,
-      "r_inner_start": 163.952933568054,
-      "r_outer_start": 211.952933568054,
-      "r_inner_end": 162.0539311415032,
-      "r_outer_end": 210.0539311415032
-    },
-    {
-      "cell_number": 34,
-      "theta_start": 5.621627267767289,
-      "theta_end": 5.87274328143212,
-      "r_inner_start": 162.0539311415032,
-      "r_outer_start": 210.0539311415032,
-      "r_inner_end": 160.1355461080173,
-      "r_outer_end": 208.1355461080173
-    },
-    {
-      "cell_number": 35,
-      "theta_start": 5.87274328143212,
-      "theta_end": 6.126475504799344,
-      "r_inner_start": 160.1355461080173,
-      "r_outer_start": 208.1355461080173,
-      "r_inner_end": 158.19717470462894,
-      "r_outer_end": 206.19717470462894
-    },
-    {
-      "cell_number": 36,
-      "theta_start": 6.126475504799344,
-      "theta_end": 6.38290715139687,
-      "r_inner_start": 158.19717470462894,
-      "r_outer_start": 206.19717470462894,
-      "r_inner_end": 156.2381812268118,
-      "r_outer_end": 204.2381812268118
-    },
-    {
-      "cell_number": 37,
-      "theta_start": 6.38290715139687,
-      "theta_end": 6.642125931773549,
-      "r_inner_start": 156.2381812268118,
-      "r_outer_start": 204.2381812268118,
-      "r_inner_end": 154.25789561533017,
-      "r_outer_end": 202.25789561533017
-    },
-    {
-      "cell_number": 38,
-      "theta_start": 6.642125931773549,
-      "theta_end": 6.904224400700539,
-      "r_inner_start": 154.25789561533017,
-      "r_outer_start": 202.25789561533017,
-      "r_inner_end": 152.25561080381587,
-      "r_outer_end": 200.25561080381587
-    },
-    {
-      "cell_number": 39,
-      "theta_start": 6.904224400700539,
-      "theta_end": 7.16930033957053,
-      "r_inner_start": 152.25561080381587,
-      "r_outer_start": 200.25561080381587,
-      "r_inner_end": 150.23057979745343,
-      "r_outer_end": 198.23057979745343
-    },
-    {
-      "cell_number": 40,
-      "theta_start": 7.16930033957053,
-      "theta_end": 7.437457178451737,
-      "r_inner_start": 150.23057979745343,
-      "r_outer_start": 198.23057979745343,
-      "r_inner_end": 148.18201244872506,
-      "r_outer_end": 196.18201244872506
-    },
-    {
-      "cell_number": 41,
-      "theta_start": 7.437457178451737,
-      "theta_end": 7.708804462935582,
-      "r_inner_start": 148.18201244872506,
-      "r_outer_start": 196.18201244872506,
-      "r_inner_end": 146.10907189095707,
-      "r_outer_end": 194.10907189095707
-    },
-    {
-      "cell_number": 42,
-      "theta_start": 7.708804462935582,
-      "theta_end": 7.983458371722259,
-      "r_inner_start": 146.10907189095707,
-      "r_outer_start": 194.10907189095707,
-      "r_inner_end": 144.01087058425736,
-      "r_outer_end": 192.01087058425736
-    },
-    {
-      "cell_number": 43,
-      "theta_start": 7.983458371722259,
-      "theta_end": 8.26154229184274,
-      "r_inner_start": 144.01087058425736,
-      "r_outer_start": 192.01087058425736,
-      "r_inner_end": 141.88646592114316,
-      "r_outer_end": 189.88646592114316
-    },
-    {
-      "cell_number": 44,
-      "theta_start": 8.26154229184274,
-      "theta_end": 8.543187459551207,
-      "r_inner_start": 141.88646592114316,
-      "r_outer_start": 189.88646592114316,
-      "r_inner_end": 139.7348553304832,
-      "r_outer_end": 187.7348553304832
-    },
-    {
-      "cell_number": 45,
-      "theta_start": 8.543187459551207,
-      "theta_end": 8.828533676278385,
-      "r_inner_start": 139.7348553304832,
-      "r_outer_start": 187.7348553304832,
-      "r_inner_end": 137.55497080801754,
-      "r_outer_end": 185.55497080801754
-    },
-    {
-      "cell_number": 46,
-      "theta_start": 8.828533676278385,
-      "theta_end": 9.11773011066384,
-      "r_inner_start": 137.55497080801754,
-      "r_outer_start": 185.55497080801754,
-      "r_inner_end": 135.3456727892817,
-      "r_outer_end": 183.3456727892817
-    },
-    {
-      "cell_number": 47,
-      "theta_start": 9.11773011066384,
-      "theta_end": 9.410936199646935,
-      "r_inner_start": 135.3456727892817,
-      "r_outer_start": 183.3456727892817,
-      "r_inner_end": 133.10574326577927,
-      "r_outer_end": 181.10574326577927
-    },
-    {
-      "cell_number": 48,
-      "theta_start": 9.410936199646935,
-      "theta_end": 9.708322663971705,
-      "r_inner_start": 133.10574326577927,
-      "r_outer_start": 181.10574326577927,
-      "r_inner_end": 130.83387802709564,
-      "r_outer_end": 178.83387802709564
-    },
-    {
-      "cell_number": 49,
-      "theta_start": 9.708322663971705,
-      "theta_end": 10.010072656352243,
-      "r_inner_start": 130.83387802709564,
-      "r_outer_start": 178.83387802709564,
-      "r_inner_end": 128.52867788956104,
-      "r_outer_end": 176.52867788956104
-    },
-    {
-      "cell_number": 50,
-      "theta_start": 10.010072656352243,
-      "theta_end": 10.31638306408261,
-      "r_inner_start": 128.52867788956104,
-      "r_outer_start": 176.52867788956104,
-      "r_inner_end": 126.18863874504348,
-      "r_outer_end": 174.18863874504348
-    },
-    {
-      "cell_number": 51,
-      "theta_start": 10.31638306408261,
-      "theta_end": 10.627465992227645,
-      "r_inner_start": 126.18863874504348,
-      "r_outer_start": 174.18863874504348,
-      "r_inner_end": 123.8121402302059,
-      "r_outer_end": 171.8121402302059
-    },
-    {
-      "cell_number": 52,
-      "theta_start": 10.627465992227645,
-      "theta_end": 10.943550458917327,
-      "r_inner_start": 123.8121402302059,
-      "r_outer_start": 171.8121402302059,
-      "r_inner_end": 121.39743277541095,
-      "r_outer_end": 169.39743277541095
-    },
-    {
-      "cell_number": 53,
-      "theta_start": 10.943550458917327,
-      "theta_end": 11.264884340974882,
-      "r_inner_start": 121.39743277541095,
-      "r_outer_start": 169.39743277541095,
-      "r_inner_end": 118.94262274121726,
-      "r_outer_end": 166.94262274121726
-    },
-    {
-      "cell_number": 54,
-      "theta_start": 11.264884340974882,
-      "theta_end": 11.591736616516998,
-      "r_inner_start": 118.94262274121726,
-      "r_outer_start": 166.94262274121726,
-      "r_inner_end": 116.4456552861759,
-      "r_outer_end": 164.4456552861759
-    },
-    {
-      "cell_number": 55,
-      "theta_start": 11.591736616516998,
-      "theta_end": 11.924399961778374,
-      "r_inner_start": 116.4456552861759,
-      "r_outer_start": 164.4456552861759,
-      "r_inner_end": 113.90429452855187,
-      "r_outer_end": 161.90429452855187
-    },
-    {
-      "cell_number": 56,
-      "theta_start": 11.924399961778374,
-      "theta_end": 12.263193772911297,
-      "r_inner_start": 113.90429452855187,
-      "r_outer_start": 161.90429452855187,
-      "r_inner_end": 111.31610046147603,
-      "r_outer_end": 159.31610046147603
-    },
-    {
-      "cell_number": 57,
-      "theta_start": 12.263193772911297,
-      "theta_end": 12.608467700814847,
-      "r_inner_start": 111.31610046147603,
-      "r_outer_start": 159.31610046147603,
-      "r_inner_end": 108.678401948839,
-      "r_outer_end": 156.678401948839
-    },
-    {
-      "cell_number": 58,
-      "theta_start": 12.608467700814847,
-      "theta_end": 12.960605809419297,
-      "r_inner_start": 108.678401948839,
-      "r_outer_start": 156.678401948839,
-      "r_inner_end": 105.98826495833842,
-      "r_outer_end": 153.98826495833842
-    },
-    {
-      "cell_number": 59,
-      "theta_start": 12.960605809419297,
-      "theta_end": 13.320031497037325,
-      "r_inner_start": 105.98826495833842,
-      "r_outer_start": 153.98826495833842,
-      "r_inner_end": 103.242454965125,
-      "r_outer_end": 151.242454965125
-    },
-    {
-      "cell_number": 60,
-      "theta_start": 13.320031497037325,
-      "theta_end": 13.687213358843831,
-      "r_inner_start": 103.242454965125,
-      "r_outer_start": 151.242454965125,
-      "r_inner_end": 100.43739216575587,
-      "r_outer_end": 148.43739216575585
-    },
-    {
-      "cell_number": 61,
-      "theta_start": 13.687213358843831,
-      "theta_end": 14.062672219735825,
-      "r_inner_start": 100.43739216575587,
-      "r_outer_start": 148.43739216575585,
-      "r_inner_end": 97.56909775110243,
-      "r_outer_end": 145.56909775110245
-    },
-    {
-      "cell_number": 62,
-      "theta_start": 14.062672219735825,
-      "theta_end": 14.446989635750386,
-      "r_inner_start": 97.56909775110243,
-      "r_outer_start": 145.56909775110245,
-      "r_inner_end": 94.63312896030139,
-      "r_outer_end": 142.6331289603014
-    },
-    {
-      "cell_number": 63,
-      "theta_start": 14.446989635750386,
-      "theta_end": 14.840818256173604,
-      "r_inner_start": 94.63312896030139,
-      "r_outer_start": 142.6331289603014,
-      "r_inner_end": 91.62449992007338,
-      "r_outer_end": 139.6244999200734
-    },
-    {
-      "cell_number": 64,
-      "theta_start": 14.840818256173604,
-      "theta_end": 15.244894568263357,
-      "r_inner_start": 91.62449992007338,
-      "r_outer_start": 139.6244999200734,
-      "r_inner_end": 88.53758428221286,
-      "r_outer_end": 136.53758428221286
-    },
-    {
-      "cell_number": 65,
-      "theta_start": 15.244894568263357,
-      "theta_end": 15.660054728426042,
-      "r_inner_start": 88.53758428221286,
-      "r_outer_start": 136.53758428221286,
-      "r_inner_end": 85.36599428230656,
-      "r_outer_end": 133.36599428230656
-    },
-    {
-      "cell_number": 66,
-      "theta_start": 15.660054728426042,
-      "theta_end": 16.087254442757022,
-      "r_inner_start": 85.36599428230656,
-      "r_outer_start": 133.36599428230656,
-      "r_inner_end": 82.10242886359194,
-      "r_outer_end": 130.10242886359194
-    },
-    {
-      "cell_number": 67,
-      "theta_start": 16.087254442757022,
-      "theta_end": 16.527594235307774,
-      "r_inner_start": 82.10242886359194,
-      "r_outer_start": 130.10242886359194,
-      "r_inner_end": 78.73848064161538,
-      "r_outer_end": 126.73848064161538
-    },
-    {
-      "cell_number": 68,
-      "theta_start": 16.527594235307774,
-      "theta_end": 16.98235199718186,
-      "r_inner_start": 78.73848064161538,
-      "r_outer_start": 126.73848064161538,
-      "r_inner_end": 75.26438724745532,
-      "r_outer_end": 123.26438724745532
-    },
-    {
-      "cell_number": 69,
-      "theta_start": 16.98235199718186,
-      "theta_end": 17.453025546986325,
-      "r_inner_start": 75.26438724745532,
-      "r_outer_start": 123.26438724745532,
-      "r_inner_end": 71.66870618982378,
-      "r_outer_end": 119.66870618982378
-    },
-    {
-      "cell_number": 70,
-      "theta_start": 17.453025546986325,
-      "theta_end": 17.94138922802349,
-      "r_inner_start": 71.66870618982378,
-      "r_outer_start": 119.66870618982378,
-      "r_inner_end": 67.9378824843701,
-      "r_outer_end": 115.9378824843701
-    },
-    {
-      "cell_number": 71,
-      "theta_start": 17.94138922802349,
-      "theta_end": 18.449570624553566,
-      "r_inner_start": 67.9378824843701,
-      "r_outer_start": 115.9378824843701,
-      "r_inner_end": 64.0556625846051,
-      "r_outer_end": 112.0556625846051
-    },
-    {
-      "cell_number": 72,
-      "theta_start": 18.449570624553566,
-      "theta_end": 18.980156848580158,
-      "r_inner_start": 64.0556625846051,
-      "r_outer_start": 112.0556625846051,
-      "r_inner_end": 60.002282410670915,
-      "r_outer_end": 108.00228241067092
-    },
-    {
-      "cell_number": 73,
-      "theta_start": 18.980156848580158,
-      "theta_end": 19.536345563626192,
-      "r_inner_start": 60.002282410670915,
-      "r_outer_start": 108.00228241067092,
-      "r_inner_end": 55.75331361267865,
-      "r_outer_end": 103.75331361267865
-    },
-    {
-      "cell_number": 74,
-      "theta_start": 19.536345563626192,
-      "theta_end": 20.122166006671677,
-      "r_inner_start": 55.75331361267865,
-      "r_outer_start": 103.75331361267865,
-      "r_inner_end": 51.277975087479916,
-      "r_outer_end": 99.27797508747992
-    },
-    {
-      "cell_number": 75,
-      "theta_start": 20.122166006671677,
-      "theta_end": 20.742813964598696,
-      "r_inner_start": 51.277975087479916,
-      "r_outer_start": 99.27797508747992,
-      "r_inner_end": 46.53657394712911,
-      "r_outer_end": 94.53657394712911
-    },
-    {
-      "cell_number": 76,
-      "theta_start": 20.742813964598696,
-      "theta_end": 21.40518128555683,
-      "r_inner_start": 46.53657394712911,
-      "r_outer_start": 94.53657394712911,
-      "r_inner_end": 41.47646035002401,
-      "r_outer_end": 89.47646035002401
-    },
-    {
-      "cell_number": 77,
-      "theta_start": 21.40518128555683,
-      "theta_end": 22.11873729125969,
-      "r_inner_start": 41.47646035002401,
-      "r_outer_start": 89.47646035002401,
-      "r_inner_end": 36.02529400695906,
-      "r_outer_end": 84.02529400695906
-    },
-    {
-      "cell_number": 78,
-      "theta_start": 22.11873729125969,
-      "theta_end": 22.89709452028898,
-      "r_inner_start": 36.02529400695906,
-      "r_outer_start": 84.02529400695906,
-      "r_inner_end": 30.07908278337561,
-      "r_outer_end": 78.07908278337561
-    }
-  ],
-  "geometry": {
-    "R_HOLE": 25,
-    "R_MAX": 265,
-    "N_TURNS": 4
-  }
+  ]
 };
   </script>
   <script>"use strict";
@@ -5156,6 +4456,45 @@ html.phone .kb-spacer { flex: 7 1 0; }
 
   // spiral/src/layout.mjs
   var SEAM = -Math.PI / 2;
+  var LAYOUT_BASE = { R_HOLE: 25, R_MAX: 265 };
+  function nTurnsFor(totalCells) {
+    return Math.max(3, Math.round(totalCells / 20));
+  }
+  function geometryFor(totalCells) {
+    return { ...LAYOUT_BASE, N_TURNS: nTurnsFor(totalCells) };
+  }
+  function computeCells(totalCells, geometry = geometryFor(totalCells)) {
+    const { R_HOLE, R_MAX, N_TURNS } = geometry;
+    if (!Number.isInteger(totalCells) || totalCells < 1) {
+      throw new Error(`totalCells must be a positive integer, got ${totalCells}`);
+    }
+    const TOTAL_ANGLE = 2 * Math.PI * N_TURNS;
+    const BAND = (R_MAX - R_HOLE) / (N_TURNS + 1);
+    const R_CEN_MAX = R_MAX - BAND / 2;
+    const R_CEN_MIN = R_HOLE + BAND / 2;
+    const k = (R_CEN_MAX - R_CEN_MIN) / TOTAL_ANGLE;
+    const R_CEN_AVG = (R_CEN_MAX + R_CEN_MIN) / 2;
+    const TARGET_ARC = R_CEN_AVG * TOTAL_ANGLE / totalCells;
+    const cells = [];
+    let acc = 0;
+    for (let i = 0; i < totalCells; i++) {
+      const r_cen_s = R_CEN_MAX - k * acc;
+      const dtheta = TARGET_ARC / r_cen_s;
+      const acc_e = acc + dtheta;
+      const r_cen_e = R_CEN_MAX - k * acc_e;
+      cells.push({
+        cell_number: i + 1,
+        theta_start: SEAM + acc,
+        theta_end: SEAM + acc_e,
+        r_inner_start: r_cen_s - BAND / 2,
+        r_outer_start: r_cen_s + BAND / 2,
+        r_inner_end: r_cen_e - BAND / 2,
+        r_outer_end: r_cen_e + BAND / 2
+      });
+      acc = acc_e;
+    }
+    return cells;
+  }
   function polar(r, a) {
     return [r * Math.cos(a), r * Math.sin(a)];
   }
@@ -5229,7 +4568,9 @@ html.phone .kb-spacer { flex: 7 1 0; }
   // spiral/src/template/engine.js
   function init() {
     const data = window.PUZZLE_DATA;
-    const totalCells = data.cells.length;
+    const totalCells = data.inward.reduce((sum, e) => sum + e.length, 0);
+    const geometry = geometryFor(totalCells);
+    const layoutCells = computeCells(totalCells, geometry);
     function f(n) {
       return n.toFixed(3);
     }
@@ -5360,7 +4701,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       const curMap = cur.map;
       const curEntryIdx = curMap[activeCell].entryIndex;
       const activeEntryCells = new Set(activeContextCells());
-      data.cells.forEach((cell) => {
+      layoutCells.forEach((cell) => {
         const el = cellPaths[cell.cell_number];
         el.classList.toggle("active-entry", activeEntryCells.has(cell.cell_number));
         el.classList.toggle("active-cell", cell.cell_number === activeCell);
@@ -5393,7 +4734,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       );
       if (phone) phone.showingClue(cur.entries[curEntryIdx]);
       controls.syncHelp();
-      const ac = data.cells[activeCell - 1];
+      const ac = layoutCells[activeCell - 1];
       chevronEl.setAttribute("d", chevronPathD(ac, direction === "inward"));
       syncSolveState({ checker, latch, doneWrong });
     }
@@ -5420,13 +4761,13 @@ html.phone .kb-spacer { flex: 7 1 0; }
       makeSavePayload({ cells, helpRecord, timer, composer })
     );
     const svg = document.getElementById("spiral-svg");
-    const { R_MAX } = data.geometry;
+    const { R_MAX } = geometry;
     const PAD = 18;
     svg.setAttribute(
       "viewBox",
       `${-(R_MAX + PAD)} ${-(R_MAX + PAD)} ${2 * (R_MAX + PAD)} ${2 * (R_MAX + PAD)}`
     );
-    const lastCell = data.cells[data.cells.length - 1];
+    const lastCell = layoutCells[layoutCells.length - 1];
     svg.appendChild(svgEl("path", { id: "center-curl", d: curlPath(lastCell) }));
     const cellsLayer = svgEl("g", {});
     const circlesLayer = svgEl("g", {});
@@ -5435,13 +4776,13 @@ html.phone .kb-spacer { flex: 7 1 0; }
     const markShapes = setupMarkLayer(markLayer, (n) => cellPaths[n]);
     const lettersLayer = svgEl("g", {});
     svg.append(cellsLayer, circlesLayer, flashLayer, markLayer, lettersLayer);
-    const { band: BAND, numSize, letterSize, circleRadius } = sizesFor(data.geometry);
+    const { band: BAND, numSize, letterSize, circleRadius } = sizesFor(geometry);
     const cellCenters = {};
     const cellCircleCenters = {};
     const cellPaths = {};
     const letterTexts = {};
-    for (let i = data.cells.length - 1; i >= 0; i--) {
-      const cell = data.cells[i];
+    for (let i = layoutCells.length - 1; i >= 0; i--) {
+      const cell = layoutCells[i];
       const n = cell.cell_number;
       const path = svgEl("path", { id: `cell-${n}`, class: "cell", d: cellPath(cell) });
       cellsLayer.appendChild(path);
@@ -5469,8 +4810,8 @@ html.phone .kb-spacer { flex: 7 1 0; }
     }
     renderEntryCircles(data.inward, inwardEntryCells);
     renderEntryCircles(data.outward, outwardEntryCells);
-    for (let i = data.cells.length - 1; i >= 0; i--) {
-      const cell = data.cells[i];
+    for (let i = layoutCells.length - 1; i >= 0; i--) {
+      const cell = layoutCells[i];
       const n = cell.cell_number;
       const [nx, ny] = numberPosition(cell);
       const numText = svgEl("text", {

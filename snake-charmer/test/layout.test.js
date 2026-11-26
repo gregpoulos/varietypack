@@ -2,8 +2,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { autoShape, ringFor, assertRingFields, SHAPES } = require('../src/layout');
-const { SVG_PAD_H, SVG_PAD_V } = require('../src/layoutStadium');
+const { autoShape, ringFor, assertRingFields, SHAPES } = require('../src/layout.mjs');
+const { SVG_PAD_H, SVG_PAD_V } = require('../src/layoutStadium.mjs');
 
 // The rule the builder uses when neither --shape nor the YAML names a shape: the S-shape
 // when a double-turn ring exists for N, otherwise the stadium.
@@ -111,4 +111,15 @@ test('assertRingFields: passes a complete ring and names the missing fields othe
     () => assertRingFields({ N: 72, svgWidth: 400 }, 'double-turn'),
     /missing required fields.*svgHeight/s
   );
+});
+
+// assertRingFields enforces each shape's ring fields, so no per-shape field list is
+// needed here. What it does not check is the stadium ring's centering and that a turn
+// ring carries none of the stadium's own fields.
+test('ringFor: a stadium ring is centered, and a turn ring has no stadium nCurve', () => {
+  const { ring: stadium } = ringFor(72, 'stadium');
+  assert.ok(Math.abs(stadium.cx - stadium.svgWidth / 2) < 0.01, 'cx = svgWidth/2');
+  assert.ok(Math.abs(stadium.cy - stadium.svgHeight / 2) < 0.01, 'cy = svgHeight/2');
+  const { ring: turn } = ringFor(72, 'turn');
+  assert.equal(turn.nCurve, undefined, 'stadium field nCurve should be absent');
 });

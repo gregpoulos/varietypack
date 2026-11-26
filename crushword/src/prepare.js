@@ -29,7 +29,9 @@ function preparePuzzle(puzzle) {
       // muddled entry, which never reaches this branch.
       const rows = grid.length, cols = grid[0].length;
       const lettersByPos = {};
-      for (const [dir, entries] of [['across', across], ['down', down]]) {
+      // Across is written last, so it wins where the two disagree, as in the studio. That
+      // can't happen past validation; the order only keeps the two ends agreeing.
+      for (const [dir, entries] of [['down', down], ['across', across]]) {
         for (const { slot, _cells } of entries) {
           slotCells(slot, dir).forEach(({ r, c }, i) => { lettersByPos[`${r},${c}`] = _cells[i]; });
         }

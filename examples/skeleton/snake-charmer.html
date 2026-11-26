@@ -1622,6 +1622,15 @@ html.phone .kb-spacer { flex: 7 1 0; }
   .clue-item.secondary-entry { background: transparent; }
   .clue-item.filled .clue-text { opacity: 1; text-decoration: none; }
 
+  /* Ink on paper: a dark theme's light text and dark page would otherwise print as
+     near-white on white (backgrounds don't print by default) or, with them on, as a
+     dark page. The text elements a theme colors individually inherit the body's. */
+  body { background: #fff; color: #000; }
+  h1.title,
+  .byline,
+  .instructions,
+  .clue-section h2 { color: inherit; }
+
   /* A link prints in the color of the text around it: a theme's link color is chosen
      against its screen background, which paper doesn't have. */
   a { color: inherit; }
@@ -1887,34 +1896,7 @@ html.phone .kb-spacer { flex: 7 1 0; }
       "clue": "“New phone, ___?”",
       "length": 6
     }
-  ],
-  "ring": {
-    "N": 48,
-    "nArmStraight": 4,
-    "nMidStraight": 2,
-    "nArmCurve": 2,
-    "nBodyInner": 4,
-    "nBodyOuter": 8,
-    "rArmCenter": 22.91831180523293,
-    "rArmOuter": 40.91831180523293,
-    "rArmInner": 4.918311805232928,
-    "R_in": 45.83662361046586,
-    "R_out": 91.67324722093171,
-    "D": 68.75493541569878,
-    "L": 144,
-    "Lm": 72,
-    "cx_L": 152.91831180523292,
-    "cx_R": 224.91831180523292,
-    "cy": 182.42818263663048,
-    "cy_L": 113.6732472209317,
-    "cy_R": 251.18311805232926,
-    "cy_top": 44.91831180523292,
-    "cy_bot": 319.93805346802804,
-    "svgWidth": 377.83662361046584,
-    "svgHeight": 364.85636527326096,
-    "wCell": 36,
-    "hCell": 36
-  }
+  ]
 };
   </script>
   <script>"use strict";
@@ -4423,6 +4405,185 @@ html.phone .kb-spacer { flex: 7 1 0; }
     return (pos - 1 + total) % total;
   }
 
+  // snake-charmer/src/ringConstants.mjs
+  var W_CELL = 36;
+  var H_CELL = 36;
+  var SVG_PAD_V = 4;
+
+  // snake-charmer/src/layoutStadium.mjs
+  var SVG_PAD_H = 20;
+  function computeRing(N, shape) {
+    if (!Number.isInteger(N) || N < 4) throw new Error(`stadium/circle shape requires integer N >= 4, got ${N}`);
+    if (N % 2 !== 0) throw new Error(`stadium/circle shape requires even N, got ${N}`);
+    const nCurve = shape === "circle" ? N / 2 : Math.floor(N / 4);
+    const nStraight = N / 2 - nCurve;
+    const rCenter = nCurve * W_CELL / Math.PI;
+    const rOuter = rCenter + H_CELL / 2;
+    const rInner = rCenter - H_CELL / 2;
+    const L = nStraight * W_CELL;
+    const svgWidth = 2 * (rOuter + SVG_PAD_H) + L;
+    const svgHeight = 2 * (rOuter + SVG_PAD_V);
+    const cx = svgWidth / 2;
+    const cy = svgHeight / 2;
+    return {
+      N,
+      nCurve,
+      nStraight,
+      L,
+      rCenter,
+      rOuter,
+      rInner,
+      svgWidth,
+      svgHeight,
+      cx,
+      cy,
+      wCell: W_CELL,
+      hCell: H_CELL
+    };
+  }
+
+  // snake-charmer/src/layoutTurn.mjs
+  var SVG_PAD_H2 = 20;
+  function computeRing2(N) {
+    if (N % 4 !== 0) throw new Error(`turn shape requires N divisible by 4, got ${N}`);
+    const nArmCurve = Math.max(1, Math.round(N / 12));
+    const nBodyInner = 2 * nArmCurve;
+    const nBodyOuter = 4 * nArmCurve;
+    const nArmStraight = (N - 8 * nArmCurve) / 4;
+    const rArmCenter = nArmCurve * W_CELL / Math.PI;
+    const rArmOuter = rArmCenter + H_CELL / 2;
+    const rArmInner = rArmCenter - H_CELL / 2;
+    if (rArmInner <= 0) throw new Error(`turn shape N=${N} too small (arm curve inner radius is ${rArmInner.toFixed(1)}; try a larger N)`);
+    const R_in = nBodyInner * W_CELL / Math.PI;
+    const R_out = nBodyOuter * W_CELL / Math.PI;
+    const D = R_in + rArmCenter;
+    const L = nArmStraight * W_CELL;
+    const cx = R_out + H_CELL / 2 + SVG_PAD_H2;
+    const svgHeight = 2 * (D + rArmOuter) + 2 * SVG_PAD_V;
+    const cy = svgHeight / 2;
+    const svgWidth = cx + L + rArmOuter + SVG_PAD_H2;
+    return {
+      N,
+      nArmStraight,
+      nArmCurve,
+      nBodyInner,
+      nBodyOuter,
+      rArmCenter,
+      rArmOuter,
+      rArmInner,
+      D,
+      R_in,
+      R_out,
+      L,
+      svgWidth,
+      svgHeight,
+      cx,
+      cy,
+      wCell: W_CELL,
+      hCell: H_CELL
+    };
+  }
+
+  // snake-charmer/src/layoutDoubleTurn.mjs
+  var SVG_PAD_H3 = 40;
+  function computeRing3(N) {
+    if (N % 2 !== 0) throw new Error(`double-turn shape requires even N, got ${N}`);
+    const nArmCurve = Math.max(1, Math.round(N / 24));
+    const nBodyInner = 2 * nArmCurve;
+    const nBodyOuter = 4 * nArmCurve;
+    const R = N - 14 * nArmCurve;
+    if (R < 0) throw new Error(`double-turn shape requires N >= ${14 * nArmCurve} for nArmCurve=${nArmCurve}, got ${N}`);
+    const rem6 = R % 6;
+    const delta = rem6 === 0 ? 3 : rem6 === 2 ? 2 : 4;
+    const nMidStraight = (R - 4 * delta) / 6;
+    if (nMidStraight < 1) throw new Error(`double-turn shape N=${N} too small (middle arm requires at least 1 cell)`);
+    const nArmStraight = nMidStraight + delta;
+    const rArmCenter = nArmCurve * W_CELL / Math.PI;
+    const rArmOuter = rArmCenter + H_CELL / 2;
+    const rArmInner = rArmCenter - H_CELL / 2;
+    if (rArmInner <= 0) throw new Error(`double-turn shape N=${N} too small (arm curve inner radius is ${rArmInner.toFixed(1)}; try a larger N)`);
+    const R_in = 2 * rArmCenter;
+    const R_out = 4 * rArmCenter;
+    const D = 3 * rArmCenter;
+    const L = nArmStraight * W_CELL;
+    const Lm = nMidStraight * W_CELL;
+    const cx_L = Math.max(R_out + H_CELL / 2, L - Lm + rArmOuter) + SVG_PAD_H3;
+    const cx_R = cx_L + Lm;
+    const svgHeight = 2 * SVG_PAD_V + 4 * D + 2 * rArmOuter;
+    const cy = svgHeight / 2;
+    const cy_L = cy - D;
+    const cy_R = cy + D;
+    const cy_top = cy - 2 * D;
+    const cy_bot = cy + 2 * D;
+    const svgWidth = Math.max(cx_R + R_out + H_CELL / 2, cx_L + L + rArmOuter) + SVG_PAD_H3;
+    return {
+      N,
+      nArmStraight,
+      nMidStraight,
+      nArmCurve,
+      nBodyInner,
+      nBodyOuter,
+      rArmCenter,
+      rArmOuter,
+      rArmInner,
+      R_in,
+      R_out,
+      D,
+      L,
+      Lm,
+      cx_L,
+      cx_R,
+      cy,
+      cy_L,
+      cy_R,
+      cy_top,
+      cy_bot,
+      svgWidth,
+      svgHeight,
+      wCell: W_CELL,
+      hCell: H_CELL
+    };
+  }
+
+  // snake-charmer/src/layout.mjs
+  var STADIUM_FIELDS = ["N", "nCurve", "nStraight", "L", "rCenter", "rOuter", "rInner", "svgWidth", "svgHeight", "cx", "cy", "wCell", "hCell"];
+  var SHAPES = {
+    circle: { computeRing: (N) => computeRing(N, "circle"), fields: STADIUM_FIELDS },
+    stadium: { computeRing: (N) => computeRing(N, "stadium"), fields: STADIUM_FIELDS },
+    turn: {
+      computeRing: computeRing2,
+      fields: ["N", "nArmStraight", "nArmCurve", "nBodyInner", "nBodyOuter", "rArmCenter", "rArmOuter", "rArmInner", "D", "R_in", "R_out", "L", "svgWidth", "svgHeight", "cx", "cy", "wCell", "hCell"]
+    },
+    "double-turn": {
+      computeRing: computeRing3,
+      fields: ["N", "nArmStraight", "nMidStraight", "nArmCurve", "nBodyInner", "nBodyOuter", "rArmCenter", "rArmOuter", "rArmInner", "R_in", "R_out", "D", "L", "Lm", "cx_L", "cx_R", "cy", "cy_L", "cy_R", "cy_top", "cy_bot", "svgWidth", "svgHeight", "wCell", "hCell"]
+    }
+  };
+  var SHAPE_NAMES = Object.keys(SHAPES);
+  function assertRingFields(ring, shape) {
+    const missing = SHAPES[shape].fields.filter((f) => !(f in ring));
+    if (missing.length > 0) {
+      throw new Error(`computeRing for shape "${shape}" is missing required fields: ${missing.join(", ")}`);
+    }
+  }
+  function ringOf(N, shape) {
+    if (!Object.hasOwn(SHAPES, shape)) throw new Error(`unknown shape "${shape}"; expected one of: ${SHAPE_NAMES.join(", ")}`);
+    const ring = SHAPES[shape].computeRing(N);
+    assertRingFields(ring, shape);
+    return ring;
+  }
+  function ringFor(N, shape) {
+    if (shape !== void 0) return { shape, ring: ringOf(N, shape), fellBack: false };
+    let ring;
+    try {
+      ring = SHAPES["double-turn"].computeRing(N);
+    } catch {
+      return { shape: "stadium", ring: ringOf(N, "stadium"), fellBack: true };
+    }
+    assertRingFields(ring, "double-turn");
+    return { shape: "double-turn", ring, fellBack: false };
+  }
+
   // snake-charmer/src/template/shapes/ring.mjs
   var LABEL_LEAD_INSET = 6;
   var LABEL_OUTER_INSET = 8;
@@ -4494,15 +4655,15 @@ html.phone .kb-spacer { flex: 7 1 0; }
 
   // snake-charmer/src/template/shapes/stadium.mjs
   function getStadiumRenderer(ring) {
-    const { nCurve, nStraight, L, rCenter, rOuter, rInner, cx, cy, wCell: W_CELL } = ring;
+    const { nCurve, nStraight, L, rCenter, rOuter, rInner, cx, cy, wCell: W_CELL2 } = ring;
     const band = { rOut: rOuter, rIn: rInner, rc: rCenter };
     const step = Math.PI / nCurve;
     return makeRingRenderer([
-      trackSection(nStraight, cx - L / 2, cy, "top", band, W_CELL),
+      trackSection(nStraight, cx - L / 2, cy, "top", band, W_CELL2),
       // top, left → right
       arcSection(nCurve, cx + L / 2, cy, band, -Math.PI / 2, step),
       // right semicircle, top → bottom
-      trackSection(nStraight, cx + L / 2, cy, "bottom", band, W_CELL),
+      trackSection(nStraight, cx + L / 2, cy, "bottom", band, W_CELL2),
       // bottom, right → left
       arcSection(nCurve, cx - L / 2, cy, band, Math.PI / 2, step)
       // left semicircle, bottom → top
@@ -4525,26 +4686,26 @@ html.phone .kb-spacer { flex: 7 1 0; }
       L,
       cx,
       cy,
-      wCell: W_CELL,
-      hCell: H_CELL
+      wCell: W_CELL2,
+      hCell: H_CELL2
     } = ring;
     const arm = { rOut: rArmOuter, rIn: rArmInner, rc: rArmCenter };
-    const body = (R) => ({ rOut: R + H_CELL / 2, rIn: R - H_CELL / 2, rc: R });
+    const body = (R) => ({ rOut: R + H_CELL2 / 2, rIn: R - H_CELL2 / 2, rc: R });
     const PI = Math.PI;
     return makeRingRenderer([
-      trackSection(nArmStraight, cx, cy - D, "top", arm, W_CELL),
+      trackSection(nArmStraight, cx, cy - D, "top", arm, W_CELL2),
       // 0 top arm upper track
       arcSection(nArmCurve, cx + L, cy - D, arm, -PI / 2, PI / nArmCurve),
       // 1 top arm right curve
-      trackSection(nArmStraight, cx + L, cy - D, "bottom", arm, W_CELL),
+      trackSection(nArmStraight, cx + L, cy - D, "bottom", arm, W_CELL2),
       // 2 top arm lower track
       arcSection(nBodyInner, cx, cy, body(R_in), -PI / 2, -PI / nBodyInner),
       // 3 body inner arc (CCW)
-      trackSection(nArmStraight, cx, cy + D, "top", arm, W_CELL),
+      trackSection(nArmStraight, cx, cy + D, "top", arm, W_CELL2),
       // 4 bottom arm upper track
       arcSection(nArmCurve, cx + L, cy + D, arm, -PI / 2, PI / nArmCurve),
       // 5 bottom arm right curve
-      trackSection(nArmStraight, cx + L, cy + D, "bottom", arm, W_CELL),
+      trackSection(nArmStraight, cx + L, cy + D, "bottom", arm, W_CELL2),
       // 6 bottom arm lower track
       arcSection(nBodyOuter, cx, cy, body(R_out), PI / 2, PI / nBodyOuter)
       // 7 body outer arc
@@ -4572,34 +4733,34 @@ html.phone .kb-spacer { flex: 7 1 0; }
       cy_R,
       cy_top,
       cy_bot,
-      wCell: W_CELL,
-      hCell: H_CELL
+      wCell: W_CELL2,
+      hCell: H_CELL2
     } = ring;
     const arm = { rOut: rArmOuter, rIn: rArmInner, rc: rArmCenter };
-    const body = (R) => ({ rOut: R + H_CELL / 2, rIn: R - H_CELL / 2, rc: R });
+    const body = (R) => ({ rOut: R + H_CELL2 / 2, rIn: R - H_CELL2 / 2, rc: R });
     const PI = Math.PI;
     return makeRingRenderer([
-      trackSection(nArmStraight, cx_L, cy_top, "top", arm, W_CELL),
+      trackSection(nArmStraight, cx_L, cy_top, "top", arm, W_CELL2),
       //  0 top arm upper track
       arcSection(nArmCurve, cx_L + L, cy_top, arm, -PI / 2, PI / nArmCurve),
       //  1 top arm right curve
-      trackSection(nArmStraight, cx_L + L, cy_top, "bottom", arm, W_CELL),
+      trackSection(nArmStraight, cx_L + L, cy_top, "bottom", arm, W_CELL2),
       //  2 top arm lower track
       arcSection(nBodyInner, cx_L, cy_L, body(R_in), -PI / 2, -PI / nBodyInner),
       //  3 left body inside arc (CCW)
-      trackSection(nMidStraight, cx_L, cy, "top", arm, W_CELL),
+      trackSection(nMidStraight, cx_L, cy, "top", arm, W_CELL2),
       //  4 middle arm upper track
       arcSection(nBodyOuter, cx_R, cy_R, body(R_out), -PI / 2, PI / nBodyOuter),
       //  5 right body outside arc
-      trackSection(nArmStraight, cx_R, cy_bot, "bottom", arm, W_CELL),
+      trackSection(nArmStraight, cx_R, cy_bot, "bottom", arm, W_CELL2),
       //  6 bottom arm lower track
       arcSection(nArmCurve, cx_R - L, cy_bot, arm, PI / 2, PI / nArmCurve),
       //  7 bottom arm left curve
-      trackSection(nArmStraight, cx_R - L, cy_bot, "top", arm, W_CELL),
+      trackSection(nArmStraight, cx_R - L, cy_bot, "top", arm, W_CELL2),
       //  8 bottom arm upper track
       arcSection(nBodyInner, cx_R, cy_R, body(R_in), PI / 2, -PI / nBodyInner),
       //  9 right body inside arc (CCW)
-      trackSection(nMidStraight, cx_R, cy, "bottom", arm, W_CELL),
+      trackSection(nMidStraight, cx_R, cy, "bottom", arm, W_CELL2),
       // 10 middle arm lower track
       arcSection(nBodyOuter, cx_L, cy_L, body(R_out), PI / 2, PI / nBodyOuter)
       // 11 left body outside arc
@@ -4614,9 +4775,10 @@ html.phone .kb-spacer { flex: 7 1 0; }
   }
   function init() {
     const data = window.PUZZLE_DATA;
-    const { svgWidth, svgHeight } = data.ring;
-    const ringSize = data.ring.N;
-    const { cellPath, letterCenter, labelPos } = getShapeRenderer(data.shape)(data.ring);
+    const ringSize = data.entries.reduce((sum, e) => sum + e.length, 0) / LOOPS;
+    const { ring } = ringFor(ringSize, data.shape);
+    const { svgWidth, svgHeight } = ring;
+    const { cellPath, letterCenter, labelPos } = getShapeRenderer(data.shape)(ring);
     const { entryAtCell, ringPosByEntry, canonicalStart } = buildEntryMaps(data.entries, LOOPS);
     const entriesStartingAt = Array.from({ length: ringSize }, () => []);
     canonicalStart.forEach((start, ei) => entriesStartingAt[start.ringPos].push(ei));

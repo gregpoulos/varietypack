@@ -1391,6 +1391,21 @@ for (const tool of FILLED_TOOLS) {
     expect(await titleSize()).toBeCloseTo(1.4 * rem, 1);
   });
 
+  // A dark theme's light text and page color must not reach paper (print-base.css).
+  test(`[${tool.name}] skeleton prints dark ink on white, not its light text`, async ({ page }) => {
+    const out = path.join(tool.tmpDir, 'skeleton.html');
+    buildPuzzleFile(path.join(tool.fixDir, tool.plainFixture), out, { theme: 'skeleton' });
+    await page.goto('file://' + out);
+    await ready(tool, page);
+
+    await page.emulateMedia({ media: 'print' });
+    const colorOf = sel => page.locator(sel).first().evaluate(el => getComputedStyle(el).color);
+    // Snake Charmer's single clue list has no heading to check.
+    const sels = ['body', 'h1.title', ...(await page.locator('.clue-section h2').count() ? ['.clue-section h2'] : [])];
+    for (const sel of sels) expect(await colorOf(sel), sel).toBe('rgb(0, 0, 0)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  });
+
   test(`[${tool.name}] broadsheet keeps the centered masthead and round icon buttons`, async ({ page }) => {
     await page.goto('file://' + tool.paths.plain);
     await ready(tool, page);
@@ -1552,7 +1567,8 @@ const TAB_ENTRIES = {
   // entries of the second loop reuse loop 0's cells, so only E0..E2 are used here.
   'snake-charmer': d => {
     let p = 0;
-    return d.entries.map(e => Array.from({ length: e.length }, () => p++ % d.ring.N));
+    const N = d.entries.reduce((sum, e) => sum + e.length, 0) / 2;   // the ring's size: two loops
+    return d.entries.map(e => Array.from({ length: e.length }, () => p++ % N));
   },
   'marching-bands': d => Array.from({ length: d.size }, (_, r) =>
     Array.from({ length: d.size }, (_, c) => r * d.size + c + 1).filter(n => d.letters[n - 1] !== null)),

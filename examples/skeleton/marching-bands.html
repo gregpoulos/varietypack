@@ -1642,6 +1642,15 @@ html.phone .kb-spacer { flex: 7 1 0; }
   .clue-item.secondary-entry { background: transparent; }
   .clue-item.filled .clue-text { opacity: 1; text-decoration: none; }
 
+  /* Ink on paper: a dark theme's light text and dark page would otherwise print as
+     near-white on white (backgrounds don't print by default) or, with them on, as a
+     dark page. The text elements a theme colors individually inherit the body's. */
+  body { background: #fff; color: #000; }
+  h1.title,
+  .byline,
+  .instructions,
+  .clue-section h2 { color: inherit; }
+
   /* A link prints in the color of the text around it: a theme's link color is chosen
      against its screen background, which paper doesn't have. */
   a { color: inherit; }

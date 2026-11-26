@@ -8,7 +8,9 @@ const {
   pathCorners, rectCorners, flagCornerIndex, flagPolygon, slashLine,
 } = require('../markShapes.mjs');
 const { puzzleDataOf, buildPuzzleFile, tmpDir } = require('../../test/helpers');
-const { cellPath } = require('../../spiral/src/layout.mjs');
+const { cellPath, computeCells, geometryFor } = require('../../spiral/src/layout.mjs');
+const { ringFor } = require('../../snake-charmer/src/layout.mjs');
+const { LOOPS } = require('../../snake-charmer/src/entryMaps.mjs');
 const { getStadiumRenderer } = require('../../snake-charmer/src/template/shapes/stadium.mjs');
 const { getTurnRenderer } = require('../../snake-charmer/src/template/shapes/turn.mjs');
 const { getDoubleTurnRenderer } = require('../../snake-charmer/src/template/shapes/double-turn.mjs');
@@ -51,14 +53,16 @@ test('pathCorners handles every real cell path', () => {
   };
   const paths = [];
   for (const name of ['test-78', 'rebus-40']) {
-    for (const cell of puzzleDataOf(html('spiral', name)).cells) paths.push(cellPath(cell));
+    const total = puzzleDataOf(html('spiral', name)).inward.reduce((sum, e) => sum + e.length, 0);
+    for (const cell of computeCells(total, geometryFor(total))) paths.push(cellPath(cell));
   }
   const renderers = { stadium: getStadiumRenderer, turn: getTurnRenderer,
     'double-turn': getDoubleTurnRenderer };
   for (const name of ['circle-8', 'stadium-24', 'turn-20', 'double-turn-42']) {
     const data = puzzleDataOf(html('snake-charmer', name));
-    const { cellPath: snakePath } = (renderers[data.shape] || getStadiumRenderer)(data.ring);
-    for (let i = 0; i < data.ring.N; i++) paths.push(snakePath(i));
+    const { ring } = ringFor(data.entries.reduce((sum, e) => sum + e.length, 0) / LOOPS, data.shape);
+    const { cellPath: snakePath } = (renderers[data.shape] || getStadiumRenderer)(ring);
+    for (let i = 0; i < ring.N; i++) paths.push(snakePath(i));
   }
   assert.ok(paths.length > 100);
   for (const d of paths) {

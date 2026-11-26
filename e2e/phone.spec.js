@@ -19,7 +19,7 @@ const fs   = require('fs');
 const {
   TOOL_FIXTURES, LONG_CLUE, MUDDLED_CW, BAR_TEXT, buildClueVariant, dismissIntro, scrollFlush,
 } = require('./mobile');
-const { solveCrushwordBoard, solveRingBoard, buildVariant } = require('./helpers');
+const { findCrushwordCell, solveCrushwordBoard, solveRingBoard, buildVariant } = require('./helpers');
 const { startServer } = require('./studio-server');
 
 // Where each tool shows the active direction, mode or loop: the toggle's active segment
@@ -121,22 +121,6 @@ async function tapMiddleCell(page) {
   const id = await cells.nth(Math.floor((await cells.count()) / 2)).getAttribute('id');
   await page.locator('#' + id).tap();
   return id;
-}
-
-// A Crushword cell with both an across and a down entry, from the grid itself.
-function crossedCrushwordCell(page) {
-  return page.evaluate(() => {
-    const grid = window.PUZZLE_DATA.grid;
-    const open = (r, c) => grid[r] !== undefined && grid[r][c] === '.';
-    for (let r = 0; r < grid.length; r++) {
-      for (let c = 0; c < grid[r].length; c++) {
-        if (open(r, c) && (open(r, c - 1) || open(r, c + 1)) && (open(r - 1, c) || open(r + 1, c))) {
-          return 'cell-' + (r * grid[r].length + c + 1);
-        }
-      }
-    }
-    return null;
-  });
 }
 
 // Solves the board, then closes the congrats dialog. Marching Bands' solve types from
@@ -798,7 +782,7 @@ test.describe('crushword', () => {
   // Shared code, so one tool covers it.
   test('a tap on the active cell switches direction and shows no period tip', async ({ page }) => {
     await load(page, 'crushword');
-    const cell = page.locator('#' + await crossedCrushwordCell(page));
+    const cell = page.locator('#' + (await findCrushwordCell(page, 'crossed')).id);
     await cell.tap();
     const state = page.locator(SWITCH_STATE.crushword);
     const before = await state.textContent();
@@ -1079,7 +1063,7 @@ test.describe('crushword', () => {
 
   test('a tap on a clue that fits the bar switches direction', async ({ page }) => {
     await load(page, 'crushword-short');
-    await page.locator('#' + await crossedCrushwordCell(page)).tap();
+    await page.locator('#' + (await findCrushwordCell(page, 'crossed')).id).tap();
     const state = page.locator(SWITCH_STATE.crushword);
     const before = await state.textContent();
     await page.locator(BAR_TEXT('crushword')).tap();
@@ -1199,23 +1183,12 @@ test.describe('crushword', () => {
   // row empty rather than stale; the one test of that branch of setupClueBar().show.
   test('the bar shows the crossing clue, and none for a cell without one', async ({ page }) => {
     await load(page, 'crushword');
-    await page.locator('#' + await crossedCrushwordCell(page)).tap();
+    await page.locator('#' + (await findCrushwordCell(page, 'crossed')).id).tap();
     // The row is never shown on the phone (phone.css), so read the flag the bar sets.
     await expect(page.locator('#active-clue-secondary')).toHaveJSProperty('hidden', false);
-    const oneWay = await page.evaluate(() => {
-      const grid = window.PUZZLE_DATA.grid;
-      const open = (r, c) => grid[r] !== undefined && grid[r][c] === '.';
-      for (let r = 0; r < grid.length; r++) {
-        for (let c = 0; c < grid[r].length; c++) {
-          if (open(r, c) && !(open(r, c - 1) || open(r, c + 1)) && (open(r - 1, c) || open(r + 1, c))) {
-            return 'cell-' + (r * grid[r].length + c + 1);
-          }
-        }
-      }
-      return null;
-    });
-    expect(oneWay, 'cw-9 has a Down-only cell').not.toBeNull();
-    await page.locator('#' + oneWay).tap();
+    const oneWay = await findCrushwordCell(page, 'oneWay');
+    expect(oneWay, 'cw-9 has a one-way cell').not.toBeNull();
+    await page.locator('#' + oneWay.id).tap();
     await expect(page.locator('#active-clue-secondary')).toHaveJSProperty('hidden', true);
   });
 

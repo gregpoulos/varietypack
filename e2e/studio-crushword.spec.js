@@ -81,14 +81,32 @@ test('typing works as on the puzzle page', async ({ page }) => {
   await expect(letter(page, 1, 3)).toHaveText('E');
 });
 
+test('pasting fills one cell and advances once, as on the puzzle page', async ({ page }) => {
+  await newGrid(page, 5, 5);
+  await cell(page, 1, 1).click();
+  await page.locator('#board-input').fill('abcdef');   // one input event, as a paste is
+  await expect(letter(page, 1, 1)).toHaveText('ABC');
+  await expect(letter(page, 1, 2)).toHaveCount(0);
+  expect(await caretAt(page)).toEqual({ r: 1, c: 2 });
+});
+
+test('Delete clears the whole cell and keeps the caret in it', async ({ page }) => {
+  await newGrid(page, 5, 5);
+  await cell(page, 1, 1).click();
+  await type(page, 'ab');
+  await page.keyboard.press('Delete');
+  await expect(letter(page, 1, 1)).toHaveCount(0);
+  expect(await caretAt(page)).toEqual({ r: 1, c: 1 });
+});
+
 test('clicking the caret\'s cell again switches direction', async ({ page }) => {
   await newGrid(page, 5, 5);
   await cell(page, 2, 2).click();
-  await expect(page.locator('#direction-toggle [data-dir="A"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#cut-toggle [data-cut="across"]')).toHaveAttribute('aria-pressed', 'true');
   await cell(page, 2, 2).click();
-  await expect(page.locator('#direction-toggle [data-dir="D"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#cut-toggle [data-cut="down"]')).toHaveAttribute('aria-pressed', 'true');
   await cell(page, 2, 2).click();
-  await expect(page.locator('#direction-toggle [data-dir="A"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#cut-toggle [data-cut="across"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('"#" blocks the cell, moves the caret on and renumbers', async ({ page }) => {
@@ -217,7 +235,15 @@ test('the Board phase shows Crushword\'s word list and checks', async ({ page })
   await expect(page.locator('#checks')).toContainText('Symmetric');
 });
 
-test('Tab walks clue to clue, one stop per entry, and the board follows', async ({ page }) => {
+test('Tab on the board goes from the last across entry into the first down', async ({ page }) => {
+  await newGrid(page, 3, 3);
+  await cell(page, 3, 1).click();   // across 3, the last across entry
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#cut-toggle [data-cut="down"]')).toHaveAttribute('aria-pressed', 'true');
+  expect(await caretAt(page)).toEqual({ r: 1, c: 1 });
+});
+
+test('Tab walks clue to clue and the board follows; Shift+Tab reaches the display-text control', async ({ page, browserName }) => {
   await openFile(page, EXAMPLE);
   await showPhase(page, 'clues');
   const inputs = page.locator('.clue-row .clue-input');
@@ -226,12 +252,30 @@ test('Tab walks clue to clue, one stop per entry, and the board follows', async 
   await page.keyboard.press('Tab');
   await expect(inputs.nth(1)).toBeFocused();
   await expect(page.locator('.clue-row.on .clue-input')).toBeFocused();
-  // No display-text field in Crushword: Shift+Tab goes straight to the previous clue.
   await page.keyboard.press('Shift+Tab');
+  // WebKit on macOS skips buttons when Tabbing (a system setting), so the closed
+  // "+ display text" is no stop there; WebKit on Linux stops on it.
+  if (!(browserName === 'webkit' && process.platform === 'darwin')) {
+    await expect(page.locator('.clue-row.on [data-display-text]')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+  }
   await expect(inputs.nth(0)).toBeFocused();
-  await expect(page.locator('#entry-display')).toHaveCount(0);
   // The last clue's Tab leaves the list: no wrap, no trap.
   await expectTabLeavesClues(page, inputs.last());
+});
+
+test('the display text is edited on the selected row and reports its match', async ({ page }) => {
+  await openFile(page, EXAMPLE);
+  await showPhase(page, 'clues');
+  await page.locator('.clue-row .clue-input').first().focus();
+  await expect(page.locator('#entry-display')).toHaveCount(0);   // only the quiet control, until opened
+  await page.locator('.clue-row.on .display-add').click();
+  await expect(page.locator('#entry-display')).toBeFocused();
+  // The first entry is [SNO][UTT]OT[AIL]; a hyphen changes how it reads, not what it is.
+  await page.locator('#entry-display').fill('[SNO]-[UTT]OT[AIL]');
+  await expect(page.locator('#entry-display-status')).toHaveCount(0);
+  await page.locator('#entry-display').fill('[SNO]-[UTX]OT[AIL]');
+  await expect(page.locator('#entry-display-status')).toContainText('Doesn’t match');
 });
 
 test('focusing the clue of the entry the caret is in leaves the caret, and a different entry clue moves it', async ({ page }) => {
@@ -253,8 +297,8 @@ test('focusing the clue of the entry the caret is in leaves the caret, and a dif
 test('a clue field is named by its direction and number', async ({ page }) => {
   await openFile(page, EXAMPLE);
   await showPhase(page, 'clues');
-  await expect(page.locator('.clue-row[data-dir="A"] .clue-input').first()).toHaveAccessibleName('Clue for Across 1');
-  await expect(page.locator('.clue-row[data-dir="D"] .clue-input').first()).toHaveAccessibleName(/^Clue for Down \d+$/);
+  await expect(page.locator('.clue-row[data-cut="across"] .clue-input').first()).toHaveAccessibleName('Clue for Across 1');
+  await expect(page.locator('.clue-row[data-cut="down"] .clue-input').first()).toHaveAccessibleName(/^Clue for Down \d+$/);
 });
 
 test('a missing-clue problem focuses that slot\'s clue', async ({ page }) => {
@@ -265,6 +309,6 @@ test('a missing-clue problem focuses that slot\'s clue', async ({ page }) => {
   await expect(page.locator('#phase-steps [data-view="clues"]')).toHaveAttribute('aria-current', 'step');
   const input = page.locator('.clue-row.on .clue-input');
   await expect(input).toBeFocused();
-  await expect(page.locator('.clue-row.on')).toHaveAttribute('data-dir', 'D');
+  await expect(page.locator('.clue-row.on')).toHaveAttribute('data-cut', 'down');
   await expect(input).toHaveAccessibleName('Clue for Down 3');
 });

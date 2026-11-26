@@ -56,6 +56,24 @@ test('typing: the cap is the model\'s maxCellLetters', () => {
   assert.deepEqual([s.ui.r, s.ui.c], [0, 1]);
 });
 
+test('a pasted string fills one cell and advances once, dropping the rest', () => {
+  const letters = [...'abcdef'];
+  const res = E.typeText(blank(), at(0, 0), letters);
+  const m = E.apply(blank(), res);
+  assert.equal(cell(m, 0, 0), 'abc');
+  assert.equal(cell(m, 0, 1), '');
+  assert.deepEqual([res.ui.r, res.ui.c, res.ui.pos], [0, 1, 0]);
+  assert.ok(res.calls.every(c => c.typing), 'one undo run');
+  // Into a cell already holding a letter: the room left is filled, then it advances.
+  const held = E.apply(blank(), { calls: [{ name: 'setCell', args: [0, 0, 'x'] }] });
+  const more = E.typeText(held, at(0, 0, { pos: 1, col: 1 }), letters);
+  assert.equal(cell(E.apply(held, more), 0, 0), 'xab');
+  assert.equal(more.ui.c, 1);
+  // A string short of the cap stays in the cell.
+  const short = E.typeText(blank(), at(0, 0), [...'ab']);
+  assert.deepEqual([short.ui.c, short.ui.pos], [0, 2]);
+});
+
 test('typing on a block says so and changes nothing', () => {
   const m = cw.commands.toggleBlock(blank(), 0, 0);
   const res = E.typeLetter(m, at(0, 0), 'a');
@@ -75,6 +93,17 @@ test('Backspace deletes the letter before the cursor; Alt deletes everything bef
   const alt = E.pressKey(m, at(0, 0, { pos: 2, col: 2 }), key('Backspace', { altKey: true }));
   assert.deepEqual(alt.calls.map(c => c.args), [[0, 0, 'c']]);
   assert.equal(alt.ui.pos, 0);
+});
+
+test('Delete clears the whole cell and puts the cursor at its front; on a block it says so', () => {
+  const m = E.apply(blank(), { calls: [{ name: 'setCell', args: [0, 0, 'abc'] }] });
+  const res = E.pressKey(m, at(0, 0, { pos: 2, col: 2 }), key('Delete'));
+  assert.deepEqual(res.calls.map(c => [c.name, c.args, c.typing]), [['setCell', [0, 0, ''], undefined]]);
+  assert.deepEqual([res.ui.pos, res.ui.col], [0, 0]);
+  assert.deepEqual(E.pressKey(blank(), at(0, 0), key('Delete')).calls, []);   // already empty
+  const blocked = E.pressKey(cw.commands.toggleBlock(blank(), 0, 0), at(0, 0), key('Delete'));
+  assert.deepEqual(blocked.calls, []);
+  assert.equal(blocked.message, 'This cell is a block. Press # to open it.');
 });
 
 test('arrows: ←/→ move through the letters, then cross to the neighbor setting Across; Alt jumps to the edge', () => {
@@ -119,13 +148,28 @@ test('landing on a cell with no entry in the current direction flips the directi
   assert.deepEqual([res.ui.r, res.ui.c, res.ui.dir], [0, 2, 'D']);
 });
 
-test('Tab goes to the first cell of the next entry in the direction; past the last (Shift+Tab before the first) it is left to the browser', () => {
+const filled = (m, ...cells) => E.apply(m, { calls: cells.map(([r, c]) => ({ name: 'setCell', args: [r, c, 'a'] })) });
+const where = (res) => [res.ui.r, res.ui.c, res.ui.dir];
+
+test('Tab goes to the first cell of the next entry; the last across entry leads into the first down', () => {
   const m = blank(3, 3);
-  assert.deepEqual([E.pressKey(m, at(0, 1), key('Tab')).ui.r, E.pressKey(m, at(0, 1), key('Tab')).ui.c], [1, 0]);
-  assert.equal(E.pressKey(m, at(2, 0), key('Tab')).handled, false);
+  assert.deepEqual(where(E.pressKey(m, at(0, 1), key('Tab'))), [1, 0, 'A']);
+  assert.deepEqual(where(E.pressKey(m, at(2, 0), key('Tab'))), [0, 0, 'D']);   // across 3 → down 1
+  assert.deepEqual(where(E.pressKey(m, at(0, 0, { dir: 'D' }), key('Tab', { shiftKey: true }))), [2, 0, 'A']);   // down 1 → across 3
+  assert.deepEqual(where(E.pressKey(m, at(1, 0), key('Tab', { shiftKey: true }))), [0, 0, 'A']);
+});
+
+test('Tab stops at a complete entry, on its first cell, rather than skipping it', () => {
+  let m = filled(blank(3, 3), [1, 0], [1, 1], [1, 2]);            // across 2 is full
+  assert.deepEqual(where(E.pressKey(m, at(0, 0), key('Tab'))), [1, 0, 'A']);
+  m = filled(blank(3, 3), [0, 0], [0, 2]);                         // across 1 has only (0,1) empty
+  assert.deepEqual(where(E.pressKey(m, at(1, 0), key('Tab', { shiftKey: true }))), [0, 0, 'A']);
+});
+
+test('Tab past the last entry (Shift+Tab before the first) is left to the browser', () => {
+  const m = blank(3, 3);
+  assert.equal(E.pressKey(m, at(0, 2, { dir: 'D' }), key('Tab')).handled, false);   // down 3, the last
   assert.equal(E.pressKey(m, at(0, 0), key('Tab', { shiftKey: true })).handled, false);
-  const back = E.pressKey(m, at(1, 0), key('Tab', { shiftKey: true }));
-  assert.deepEqual([back.ui.r, back.ui.c], [0, 0]);
 });
 
 test('Tab on a block is left to the browser', () => {

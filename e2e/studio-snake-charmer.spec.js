@@ -39,7 +39,7 @@ const openFile = (page, file) => openStudioFile(page, studio.url, file);
 const cell = (page, k) => page.locator(`.rc[data-k="${k}"]`);
 const letter = (page, k) => page.locator(`.rl[data-k="${k}"]`);
 const gap = (page, k) => page.locator(`.rgap[data-gap="${k}"]`);
-const lap = (page, n) => page.locator(`#lap-toggle [data-lap="${n}"]`);
+const lap = (page, n) => page.locator(`#cut-toggle [data-cut="${n}"]`);
 
 async function fillRing(page, letters) {
   await cell(page, 0).click();

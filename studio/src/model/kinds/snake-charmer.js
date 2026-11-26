@@ -12,7 +12,7 @@
 //     ring: string[], cut: { starts, entries }, circles: number[] /* ring indices */,
 //     orphans: [], nextId }
 const { findCoincidentStarts } = require('../../../../snake-charmer/src/validator');
-const { SHAPE_NAMES } = require('../../../../snake-charmer/src/layout');
+const { SHAPE_NAMES } = require('../../../../snake-charmer/src/layout.mjs');
 const { LOOPS } = require('../../../../snake-charmer/src/entryMaps.mjs');
 const { StructureError } = require('../errors');
 const { formatCell } = require('../cells');

@@ -164,7 +164,7 @@ puzzles, cells or clues, and `engine-phone.mjs` is what attaches them to a grid 
 feeds them the cursor.
 
 **Build-path modules** (`shared/build/` plus each tool's `validator.js`,
-`prepare.js`, `layout.js` and `builder.js`). These run in two places: Node, for
+`prepare.js`, `layout.mjs` and `builder.js`). These run in two places: Node, for
 the CLI, and the studio page, via esbuild ("the studio bundle"; "the page
 script" is `engineJs(tool)`'s output, a separate thing). Apart from the `.mjs`
 page modules that the builders also import, they never reach a puzzle page.

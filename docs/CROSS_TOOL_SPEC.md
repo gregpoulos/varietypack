@@ -34,7 +34,9 @@ back from the id. `n` is 1-based in Spiral (cell number), Marching Bands and Cru
 0-based in Snake Charmer (ring position).
 
 `PUZZLE_DATA` carries no entry→cell mapping: each engine derives it at init from the entry
-lengths and its traversal rule.
+lengths and its traversal rule. Nor does it carry geometry: Spiral's engine computes its
+cells and Snake Charmer's its ring (from the shape, which the build chooses and ships),
+the way Marching Bands and Crushword derive theirs.
 
 ## syncUI() contract
 
@@ -61,7 +63,9 @@ never scrolls a pane" in `e2e/crushword.spec.js`.
 
 For the same reason, Crushword's PageUp, PageDown and arrow keys at the grid's edge do
 nothing in the fill layout, where the page doesn't move while solving; in the stacked
-fallback they scroll the page, as they do in the other tools.
+fallback they scroll the page, as they do in the other tools, and don't first bring the grid
+back into view. Pinned by "a narrow window scrolls all the way with PageDown, and with ↓
+from the bottom row" in `e2e/crushword.spec.js`.
 
 ## Focus management
 
@@ -104,6 +108,12 @@ a click on the other toggle option, and `noteKey` after a `.` that switched, whi
 the tip on every puzzle (see "localStorage key format"). Pinned by "a second click on the
 active cell shows the period tip at the cell, once" in `e2e/shared.spec.js`.
 
+The toggle's id and button attribute are named differently on each engine page
+(`#loop-toggle`, `#direction-toggle`, `#mode-toggle`), each for what that puzzle calls the
+concept; nothing shared selects on them (`shared.spec.js` uses `.puzzle-toggle .toggle-opt`).
+The studio editors, which share `Latch`, all use `#cut-toggle` with `data-cut` holding the
+cut's name, the same value its rows carry.
+
 ## Tab / Shift+Tab entry navigation
 
 Tab goes to the next entry in the current direction that still has an empty cell, and
@@ -114,7 +124,10 @@ takes Tab and Shift+Tab, so the solver can read through the clues; it ignores ev
 key. The phone's ‹ › press these keys.
 
 - **Crushword:** the across entries then the down entries form one loop, so Tab from the
-  last across entry goes to the first down entry and switches the direction.
+  last across entry goes to the first down entry and switches the direction. The studio's
+  editor keeps that order but, as in its other editors, stops at complete entries and
+  lets focus leave the board at the ends instead of wrapping (`pressKey`'s Tab case in
+  `studio/src/model/crushwordEditing.js` says why).
 - **Spiral:** Tab never switches between inward and outward. They read the same cells in
   opposite orders, so hopping across would feel like a jump rather than the next clue.
 - **Snake Charmer:** entries are numbered across both loops, and Tab moves to the next

@@ -3,18 +3,17 @@
 const path = require('path');
 const { validate } = require('./validator');
 const { preparePuzzle } = require('./prepare');
-const { ringFor } = require('./layout');
+const { ringFor } = require('./layout.mjs');
 const { LOOPS } = require('./entryMaps.mjs');
 const { commonPuzzleData, buildToolHtml } = require('../../shared/build/page');
 
 const TEMPLATE_DIR = path.join(__dirname, 'template');
 
-function buildHtml(prepared, ring, shape, opts) {
+function buildHtml(prepared, shape, opts) {
   const puzzleData = {
     ...commonPuzzleData(prepared),
     shape,
     entries: prepared.entries,
-    ring,
   };
 
   return buildToolHtml(TEMPLATE_DIR, {
@@ -30,11 +29,12 @@ const HOOKS = {
   buildHtmlFn(prepared, rawPuzzle, opts, notes) {
     // The --shape flag, else the YAML's shape:, else ringFor's automatic choice.
     const N = prepared.entries.reduce((s, e) => s + e.length, 0) / LOOPS;
-    const { shape, ring, fellBack } = ringFor(N, opts.shape ?? rawPuzzle.shape);
+    const { shape, fellBack } = ringFor(N, opts.shape ?? rawPuzzle.shape);
     if (fellBack) notes.push('Note: double-turn shape not supported for this puzzle size; using stadium');
 
-    return buildHtml(prepared, ring, shape, opts);
+    // The page derives the ring from N and the shape, so only the shape ships.
+    return buildHtml(prepared, shape, opts);
   },
 };
 
-module.exports = { buildHtml, HOOKS };
+module.exports = { HOOKS };

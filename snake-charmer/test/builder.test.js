@@ -3,25 +3,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
-const { buildHtml, HOOKS } = require('../src/builder');
+const { HOOKS } = require('../src/builder');
 const { buildFromObject } = require('../../shared/build/buildFromObject');
 const { loadPuzzle } = require('../../shared/cli/puzzleFiles');
-const { ringFor, SHAPES } = require('../src/layout');
-const { preparePuzzle } = require('../src/prepare');
+const { SHAPES } = require('../src/layout.mjs');
 const { puzzleDataOf } = require('../../test/helpers');
 
 const SAMPLE = path.join(__dirname, 'fixtures', 'double-turn-72.yaml');
-
-// ── buildHtml ─────────────────────────────────────────────────────────────────
-
-test('buildHtml: PUZZLE_DATA carries the ring and no loop count, and omits cells (entry mapping derived at engine init)', () => {
-  const prepared = preparePuzzle(loadPuzzle(SAMPLE));
-  const { ring } = ringFor(72, 'stadium');   // the fixture's ring size
-  const data = puzzleDataOf(buildHtml(prepared, ring));
-  assert.equal(data.cells, undefined);
-  assert.equal(data.loops, undefined);
-  assert.equal(data.ring.N, 72);
-});
 
 // ── auto-shape ────────────────────────────────────────────────────────────────
 
@@ -54,18 +42,6 @@ test('build: YAML shape disables auto-select fallback — throws on incompatible
   // With shape: 'double-turn' in the YAML the fallback is disabled, so it must throw.
   assert.throws(() => buildFromObject(smallPuzzle('double-turn'), {}, HOOKS),
     /"shape" "double-turn" cannot lay out a ring of 8 cells/);
-});
-
-// assertRingFields enforces each shape's ring fields at build time, so the page data's
-// ring needs no per-shape field list here. What it does not check is the stadium ring's
-// centering and that a turn ring carries none of the stadium's own fields.
-test('build: the ring in PUZZLE_DATA is centered, and a turn ring has no stadium nCurve', () => {
-  const stadium = puzzleDataOf(buildFromObject(loadPuzzle(SAMPLE), { shape: 'stadium' }, HOOKS).html);
-  assert.ok(Math.abs(stadium.ring.cx - stadium.ring.svgWidth / 2) < 0.01, 'cx = svgWidth/2');
-  assert.ok(Math.abs(stadium.ring.cy - stadium.ring.svgHeight / 2) < 0.01, 'cy = svgHeight/2');
-  const turn = puzzleDataOf(buildFromObject(loadPuzzle(SAMPLE), { shape: 'turn' }, HOOKS).html);
-  assert.equal(turn.shape, 'turn');
-  assert.equal(turn.ring.nCurve, undefined, 'stadium field nCurve should be absent');
 });
 
 function captureStderr(fn) {

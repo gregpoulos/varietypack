@@ -11,14 +11,17 @@ import {
 } from '../../../shared/engine-chrome.mjs';
 import { setupPhoneLayout } from '../../../shared/engine-phone.mjs';
 import {
-  cellPath, cellsOfEntries, circleCenter, curlPath, letterCenter, numberPosition,
-  polar, sizesFor
+  cellPath, cellsOfEntries, circleCenter, computeCells, curlPath, geometryFor, letterCenter,
+  numberPosition, polar, sizesFor
 } from '../layout.mjs';
 
 function init() {
   // ── Data & constants ────────────────────────────────────────────────────
-  const data       = window.PUZZLE_DATA;
-  const totalCells = data.cells.length;
+  const data        = window.PUZZLE_DATA;
+  const totalCells  = data.inward.reduce((sum, e) => sum + e.length, 0);
+  // The geometry is derived here, as the studio's board does, so the page ships none.
+  const geometry    = geometryFor(totalCells);
+  const layoutCells = computeCells(totalCells, geometry);
 
   // ── Geometry & index maps ────────────────────────────────────────────────
   function f(n) { return n.toFixed(3); }
@@ -141,7 +144,7 @@ function init() {
   // Chevron geometry: a small stroke on the leading edge of the active cell,
   // protruding toward the direction of travel. Split out of syncUI so the geometry
   // math reads apart from the DOM/state sync it feeds into. `ac` is the active cell's
-  // data.cells entry; `isInward` is `direction === 'inward'` at call time.
+  // layoutCells entry; `isInward` is `direction === 'inward'` at call time.
   function chevronPathD(ac, isInward) {
     const theta_e   = isInward ? ac.theta_end    : ac.theta_start;
     const r_inner_e = isInward ? ac.r_inner_end  : ac.r_inner_start;
@@ -173,7 +176,7 @@ function init() {
 
     // Cells: highlight the active entry and cell, and mark the composing one.
     const activeEntryCells = new Set(activeContextCells());
-    data.cells.forEach(cell => {
+    layoutCells.forEach(cell => {
       const el  = cellPaths[cell.cell_number];
       el.classList.toggle('active-entry', activeEntryCells.has(cell.cell_number));
       el.classList.toggle('active-cell',  cell.cell_number === activeCell);
@@ -213,7 +216,7 @@ function init() {
     controls.syncHelp();
 
     // Chevron on leading edge of active cell pointing in direction of travel
-    const ac = data.cells[activeCell - 1];
+    const ac = layoutCells[activeCell - 1];
     chevronEl.setAttribute('d', chevronPathD(ac, direction === 'inward'));
 
     // Solve state: the done-wrong banner, and solved-ness for the completion latch.
@@ -247,13 +250,13 @@ function init() {
   // ── Build SVG ────────────────────────────────────────────────────────────
   const svg = document.getElementById('spiral-svg');
 
-  const { R_MAX } = data.geometry;
+  const { R_MAX } = geometry;
   const PAD = 18;
   svg.setAttribute('viewBox',
     `${-(R_MAX + PAD)} ${-(R_MAX + PAD)} ${2 * (R_MAX + PAD)} ${2 * (R_MAX + PAD)}`);
 
   // Spiral curl: winds inward from the last cell's inner edge, tapering to a point
-  const lastCell = data.cells[data.cells.length - 1];
+  const lastCell = layoutCells[layoutCells.length - 1];
   svg.appendChild(svgEl('path', { id: 'center-curl', d: curlPath(lastCell) }));
 
   // Layer groups, painted bottom to top in the order svg.append lists them.
@@ -268,7 +271,7 @@ function init() {
   const lettersLayer = svgEl('g', {});
   svg.append(cellsLayer, circlesLayer, flashLayer, markLayer, lettersLayer);
 
-  const { band: BAND, numSize, letterSize, circleRadius } = sizesFor(data.geometry);
+  const { band: BAND, numSize, letterSize, circleRadius } = sizesFor(geometry);
 
   const cellCenters       = {};
   const cellCircleCenters = {};
@@ -276,8 +279,8 @@ function init() {
   const letterTexts       = {};
 
   // Pass 1: cell paths (innermost-first for correct z-ordering of strokes).
-  for (let i = data.cells.length - 1; i >= 0; i--) {
-    const cell = data.cells[i];
+  for (let i = layoutCells.length - 1; i >= 0; i--) {
+    const cell = layoutCells[i];
     const n    = cell.cell_number;
     const path = svgEl('path', { id: `cell-${n}`, class: 'cell', d: cellPath(cell) });
     cellsLayer.appendChild(path);
@@ -308,8 +311,8 @@ function init() {
   renderEntryCircles(data.outward, outwardEntryCells);
 
   // Pass 3: cell number labels and letter texts.
-  for (let i = data.cells.length - 1; i >= 0; i--) {
-    const cell = data.cells[i];
+  for (let i = layoutCells.length - 1; i >= 0; i--) {
+    const cell = layoutCells[i];
     const n    = cell.cell_number;
 
     const [nx, ny] = numberPosition(cell);

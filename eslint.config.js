@@ -6,7 +6,8 @@ const globals = require('globals');
 const jsx = { parserOptions: { ecmaFeatures: { jsx: true } } };
 
 module.exports = [
-  { ignores: ['node_modules/', 'studio/build/', 'test-results/', 'playwright-report/', '.worktrees/'] },
+  // '.*/': hidden directories hold worktrees and tools' local state, never source.
+  { ignores: ['node_modules/', 'studio/build/', 'test-results/', 'playwright-report/', '.*/'] },
   js.configs.recommended,
   {
     rules: {
